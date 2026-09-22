@@ -463,34 +463,70 @@ public sealed class MainForm : Form
 
     private const string ProfileInfoScript = """
         (async () => {
-          const unwrap = el => el?.tagName === 'IMG' ? el : el?.querySelector?.('img') || el;
+          const rectOk = el => {
+            if (!el) return false;
+            const r = el.getBoundingClientRect();
+            return r.width >= 24 && r.width <= 100 && r.height >= 24 && r.height <= 100 &&
+                   r.top >= 0 && r.bottom <= innerHeight;
+          };
+
+          let selfAvatar = null;
+          const selfLabels = [...document.querySelectorAll('span, div')]
+            .filter(el => {
+              const text = (el.textContent || '').trim();
+              const r = el.getBoundingClientRect();
+              return /\(você\)$/i.test(text) && text.length < 100 &&
+                     r.width > 20 && r.width < 500 && r.height > 10 && r.height < 80;
+            })
+            .sort((a,b) => a.getBoundingClientRect().width - b.getBoundingClientRect().width);
+
+          for (const label of selfLabels) {
+            let row = label;
+            for (let level = 0; level < 8 && row; level++, row = row.parentElement) {
+              const rr = row.getBoundingClientRect();
+              const images = [...row.querySelectorAll('img')].filter(rectOk);
+              const candidate = images.find(img => {
+                const ir = img.getBoundingClientRect();
+                return ir.left < label.getBoundingClientRect().left && ir.left < 260;
+              });
+              if (candidate && rr.height >= 45 && rr.height <= 130) {
+                selfAvatar = candidate;
+                break;
+              }
+            }
+            if (selfAvatar) break;
+          }
+
+          const unwrap = el => el?.tagName === 'IMG' ? el : el?.querySelector?.('img') || null;
           const explicit = [
-            '[aria-label="Perfil"]', '[aria-label="Profile"]', '[title="Perfil"]',
-            '[title="Profile"]', '[data-testid="menu-bar-profile"]'
-          ].map(s => unwrap(document.querySelector(s))).filter(Boolean);
-          const visual = [...document.querySelectorAll('img')]
+            '[aria-label="Perfil"]', '[aria-label="Profile"]',
+            '[title="Perfil"]', '[title="Profile"]',
+            '[data-testid="menu-bar-profile"]'
+          ].map(selector => unwrap(document.querySelector(selector))).filter(rectOk);
+
+          const lowerLeft = [...document.querySelectorAll('img')]
             .filter(el => {
               const r = el.getBoundingClientRect();
-              return r.width >= 24 && r.width <= 90 && r.height >= 24 && r.height <= 90 &&
-                     r.left >= 55 && r.left < 150 && r.top > innerHeight * .55 && r.bottom <= innerHeight;
+              return rectOk(el) && r.left >= 0 && r.left < 75 && r.top > innerHeight * .65;
             })
             .sort((a,b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom);
-          const el = explicit.find(e => {
-            const r=e.getBoundingClientRect();
-            return r.width>=20 && r.height>=20 && r.left>=55 && r.left<160 && r.top>innerHeight*.45;
-          }) || visual[0];
+
+          const el = selfAvatar || explicit[0] || lowerLeft[0];
           if (!el) return null;
           const r = el.getBoundingClientRect();
           let data = null;
           try {
-            const response = await fetch(el.currentSrc || el.src);
-            const blob = await response.blob();
-            data = await new Promise((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = () => resolve(reader.result);
-              reader.onerror = reject;
-              reader.readAsDataURL(blob);
-            });
+            const source = el.currentSrc || el.src;
+            if (source) {
+              const response = await fetch(source);
+              const blob = await response.blob();
+              data = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+              });
+            }
           } catch {}
           return { x:r.left, y:r.top, width:r.width, height:r.height, data };
         })()
