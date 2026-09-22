@@ -75,12 +75,21 @@ async function syncAccountProfile(accountId, view) {
           if (!phone || !image) continue;
           const nameLine = text.split("\\n").map(line => line.trim()).find(line => /\\((você|voce|you)\\)/i.test(line));
           const profileName = nameLine?.replace(/\\s*\\((você|voce|you)\\)\\s*/i, "").trim();
-          let photoUrl = image.src || "";
-          if (photoUrl.startsWith("blob:")) {
-            try {
-              const blob = await fetch(photoUrl).then(response => response.blob());
-              photoUrl = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(blob); });
-            } catch { photoUrl = ""; }
+          let photoUrl = "";
+          try {
+            const canvas = document.createElement("canvas");
+            canvas.width = image.naturalWidth || 256;
+            canvas.height = image.naturalHeight || 256;
+            canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+            photoUrl = canvas.toDataURL("image/png");
+          } catch {
+            photoUrl = image.src || "";
+            if (photoUrl.startsWith("blob:")) {
+              try {
+                const blob = await fetch(photoUrl).then(response => response.blob());
+                photoUrl = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(blob); });
+              } catch { photoUrl = ""; }
+            }
           }
           const avatarRect = image.getBoundingClientRect();
           if (profileName) return { profileName, phoneNumber: phone, photoUrl, avatarBounds: { x: avatarRect.x, y: avatarRect.y, width: avatarRect.width, height: avatarRect.height } };
