@@ -1,6 +1,7 @@
-const { app, BrowserWindow, WebContentsView, ipcMain, session, shell, Notification, Menu } = require("electron");
+const { app, BrowserWindow, WebContentsView, ipcMain, session, shell, Notification, Menu, dialog } = require("electron");
 const { spawn } = require("node:child_process");
 const path = require("node:path");
+const fs = require("node:fs");
 
 let mainWindow;
 let rendererServer;
@@ -9,6 +10,31 @@ let panelBounds = { x: 260, y: 74, width: 1024, height: 700 };
 const accountViews = new Map();
 const chromeVersion = process.versions.chrome;
 const chromeMajor = chromeVersion.split(".")[0];
+const extensionConfigPath = () => path.join(app.getPath("userData"), "account-extensions.json");
+
+function readExtensionConfig() {
+  try { return JSON.parse(fs.readFileSync(extensionConfigPath(), "utf8")); } catch { return {}; }
+}
+
+function writeExtensionConfig(config) {
+  fs.writeFileSync(extensionConfigPath(), JSON.stringify(config, null, 2), "utf8");
+}
+
+async function loadAccountExtension(accountId, extensionPath) {
+  const accountSession = session.fromPartition(`persist:whatsapp-${safeAccountId(accountId)}`);
+  const manifestPath = path.join(extensionPath, "manifest.json");
+  if (!fs.existsSync(manifestPath)) throw new Error("A pasta escolhida não contém o manifest.json do WaSeller.");
+  const extension = accountSession.extensions?.loadExtension
+    ? await accountSession.extensions.loadExtension(extensionPath)
+    : await accountSession.loadExtension(extensionPath);
+  if (extension.id !== "illemhbijpiebjfilfmgebahaakajkpe") {
+    const remover = accountSession.extensions?.removeExtension ?? accountSession.removeExtension?.bind(accountSession);
+    remover?.(extension.id);
+    throw new Error("A pasta escolhida não pertence à extensão oficial WaSeller.");
+  }
+  return extension;
+}
+
 const chromeUserAgent = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
 
 function safeAccountId(value) {
@@ -80,7 +106,15 @@ function createAccountView(accountId) {
   accountViews.set(id, view);
   applyBounds(view);
   view.setVisible(false);
-  view.webContents.loadURL("https://web.whatsapp.com/");
+  const savedExtensionPath = readExtensionConfig()[id];
+  const loadPage = async () => {
+    if (savedExtensionPath) {
+      try { await loadAccountExtension(id, savedExtensionPath); }
+      catch (error) { mainWindow?.webContents.send("whatsapp:extension-error", { accountId: id, message: error.message }); }
+    }
+    await view.webContents.loadURL("https://web.whatsapp.com/");
+  };
+  void loadPage();
   return view;
 }
 
@@ -177,6 +211,22 @@ app.whenReady().then(async () => {
     removeAccountView(id);
     await session.fromPartition(`persist:whatsapp-${id}`).clearStorageData();
     return true;
+  });
+  ipcMain.handle("whatsapp:install-extension", async (_event, accountId) => {
+    const id = safeAccountId(accountId);
+    const selection = await dialog.showOpenDialog(mainWindow, {
+      title: "Selecione a pasta da versão do WaSeller",
+      properties: ["openDirectory"],
+    });
+    if (selection.canceled || !selection.filePaths[0]) return { canceled: true };
+    const extensionPath = selection.filePaths[0];
+    const extension = await loadAccountExtension(id, extensionPath);
+    const config = readExtensionConfig();
+    config[id] = extensionPath;
+    writeExtensionConfig(config);
+    const view = accountViews.get(id);
+    view?.webContents.reload();
+    return { canceled: false, id: extension.id, name: extension.name, version: extension.version };
   });
   ipcMain.handle("whatsapp:set-bounds", (_event, bounds) => {
     panelBounds = bounds;
