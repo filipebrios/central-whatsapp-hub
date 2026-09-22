@@ -166,7 +166,7 @@ export function CentralWhatsAppApp() {
     setAccounts(current => current.map(account => account.id === accountId ? { ...account, unreadCount: count } : account));
   }), []);
   useEffect(() => desktopBridge.onProfile(({ accountId, profileName, phoneNumber, photoUrl }) => {
-    setAccounts(current => current.map(account => account.id === accountId ? { ...account, profileName, phoneNumber, photoUrl: photoUrl || account.photoUrl, connectionStatus: "connected" } : account));
+    setAccounts(current => current.map(account => account.id === accountId ? { ...account, profileName: profileName || account.profileName, phoneNumber: phoneNumber || account.phoneNumber, photoUrl: photoUrl || account.photoUrl, connectionStatus: "connected" } : account));
   }), []);
   useEffect(() => {
     const overlayOpen = addOpen || settingsOpen || Boolean(edit);
