@@ -8,6 +8,7 @@ let rendererServer;
 let activeAccountId = null;
 let panelBounds = { x: 260, y: 74, width: 1024, height: 700 };
 const accountViews = new Map();
+const profileSyncTimers = new Map();
 const chromeVersion = process.versions.chrome;
 const chromeMajor = chromeVersion.split(".")[0];
 const extensionConfigPath = () => path.join(app.getPath("userData"), "account-extensions.json");
@@ -60,6 +61,44 @@ function setVisibleAccount(accountId) {
   }
 }
 
+async function syncAccountProfile(accountId, view) {
+  if (view.webContents.isDestroyed()) return;
+  try {
+    const profile = await view.webContents.executeJavaScript(`(async () => {
+      const markers = Array.from(document.querySelectorAll("span, div")).filter((element) => /\\((você|voce|you)\\)/i.test((element.textContent || "").trim()));
+      for (const marker of markers) {
+        let row = marker;
+        for (let level = 0; level < 7 && row; level += 1, row = row.parentElement) {
+          const text = (row.innerText || "").trim();
+          const phone = text.match(/(?:\\+?55\\s*)?(?:\\(?\\d{2}\\)?\\s*)?9?\\d{4}[-\\s]?\\d{4}/)?.[0];
+          const image = row.querySelector("img");
+          if (!phone || !image) continue;
+          const nameLine = text.split("\\n").map(line => line.trim()).find(line => /\\((você|voce|you)\\)/i.test(line));
+          const profileName = nameLine?.replace(/\\s*\\((você|voce|you)\\)\\s*/i, "").trim();
+          let photoUrl = image.src || "";
+          if (photoUrl.startsWith("blob:")) {
+            try {
+              const blob = await fetch(photoUrl).then(response => response.blob());
+              photoUrl = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(blob); });
+            } catch { photoUrl = ""; }
+          }
+          if (profileName) return { profileName, phoneNumber: phone, photoUrl };
+        }
+      }
+      return null;
+    })()`);
+    if (profile?.profileName) mainWindow?.webContents.send("whatsapp:profile", { accountId, ...profile });
+  } catch (error) {
+    console.warn(`[profile-sync:${accountId}]`, error.message);
+  }
+}
+
+function scheduleProfileSync(accountId, view) {
+  clearInterval(profileSyncTimers.get(accountId));
+  setTimeout(() => void syncAccountProfile(accountId, view), 5000);
+  profileSyncTimers.set(accountId, setInterval(() => void syncAccountProfile(accountId, view), 30000));
+}
+
 function createAccountView(accountId) {
   const id = safeAccountId(accountId);
   if (!id) throw new Error("Identificador de conta inválido.");
@@ -94,6 +133,7 @@ function createAccountView(accountId) {
     if (url.startsWith("https://")) shell.openExternal(url);
     return { action: "deny" };
   });
+  view.webContents.on("did-finish-load", () => scheduleProfileSync(id, view));
   view.webContents.on("page-title-updated", (_event, title) => {
     const match = title.match(/^\((\d+)\)/);
     mainWindow?.webContents.send("whatsapp:unread", { accountId: id, count: match ? Number(match[1]) : 0 });
@@ -117,6 +157,8 @@ function removeAccountView(accountId) {
   mainWindow?.contentView.removeChildView(view);
   view.webContents.close();
   accountViews.delete(id);
+  clearInterval(profileSyncTimers.get(id));
+  profileSyncTimers.delete(id);
   if (activeAccountId === id) activeAccountId = null;
 }
 
@@ -202,6 +244,11 @@ app.whenReady().then(async () => {
     const id = safeAccountId(accountId);
     removeAccountView(id);
     await session.fromPartition(`persist:whatsapp-${id}`).clearStorageData();
+    return true;
+  });
+  ipcMain.handle("whatsapp:set-visible", (_event, visible) => {
+    const active = accountViews.get(activeAccountId);
+    if (active) active.setVisible(Boolean(visible));
     return true;
   });
   ipcMain.handle("whatsapp:set-bounds", (_event, bounds) => {
