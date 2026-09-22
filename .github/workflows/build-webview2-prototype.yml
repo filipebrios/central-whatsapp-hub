@@ -1,0 +1,30 @@
+name: Build WebView2 WaSeller prototype
+
+on:
+  push:
+    branches:
+      - codex/electron-windows-mvp
+    paths:
+      - "webview2-prototype/**"
+      - ".github/workflows/build-webview2-prototype.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Publish Windows prototype
+        run: dotnet publish webview2-prototype/CentralWhatsApp.WebView2.csproj -c Release -r win-x64 --self-contained true -o webview2-prototype/publish
+      - name: Upload prototype
+        uses: actions/upload-artifact@v4
+        with:
+          name: Central-WhatsApp-WebView2-WaSeller-Test
+          path: webview2-prototype/publish/**
+          if-no-files-found: error
