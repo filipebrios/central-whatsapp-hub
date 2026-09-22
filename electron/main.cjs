@@ -1,10 +1,9 @@
 const { app, BrowserWindow, WebContentsView, ipcMain, session, shell, Notification } = require("electron");
-const http = require("node:http");
-const fs = require("node:fs");
+const { spawn } = require("node:child_process");
 const path = require("node:path");
 
 let mainWindow;
-let staticServer;
+let rendererServer;
 let activeAccountId = null;
 let panelBounds = { x: 260, y: 74, width: 1024, height: 700 };
 const accountViews = new Map();
@@ -83,28 +82,29 @@ function removeAccountView(accountId) {
   if (activeAccountId === id) activeAccountId = null;
 }
 
-function startStaticServer() {
-  const root = path.join(process.resourcesPath, "renderer");
-  staticServer = http.createServer((request, response) => {
-    const requestPath = decodeURIComponent((request.url || "/").split("?")[0]);
-    const relative = requestPath === "/" ? "index.html" : requestPath.replace(/^\/+/, "");
-    let filePath = path.normalize(path.join(root, relative));
-    if (!filePath.startsWith(root)) {
-      response.writeHead(403).end();
-      return;
-    }
-    if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) filePath = path.join(root, "index.html");
-    if (!fs.existsSync(filePath)) {
-      response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
-      response.end("Interface do aplicativo não encontrada.");
-      return;
-    }
-    const extension = path.extname(filePath);
-    const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".woff2": "font/woff2" };
-    response.writeHead(200, { "Content-Type": types[extension] || "application/octet-stream" });
-    fs.createReadStream(filePath).pipe(response);
+function startRendererServer() {
+  const serverEntry = path.join(process.resourcesPath, "app-output", "server", "index.mjs");
+  const port = 43127;
+  rendererServer = spawn(process.execPath, [serverEntry], {
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", HOST: "127.0.0.1", PORT: String(port), NODE_ENV: "production" },
+    stdio: "ignore",
+    windowsHide: true,
   });
-  return new Promise((resolve) => staticServer.listen(0, "127.0.0.1", () => resolve(staticServer.address().port)));
+  return new Promise((resolve, reject) => {
+    const startedAt = Date.now();
+    const check = () => {
+      const request = require("node:http").get(`http://127.0.0.1:${port}/`, response => {
+        response.resume();
+        resolve(port);
+      });
+      request.on("error", () => {
+        if (rendererServer?.exitCode !== null) return reject(new Error("Servidor da interface encerrou antes de iniciar."));
+        if (Date.now() - startedAt > 15000) return reject(new Error("Tempo esgotado ao iniciar a interface."));
+        setTimeout(check, 200);
+      });
+    };
+    check();
+  });
 }
 
 async function createMainWindow() {
@@ -138,7 +138,7 @@ async function createMainWindow() {
   if (!app.isPackaged) {
     await mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL || "http://127.0.0.1:3000");
   } else {
-    const port = await startStaticServer();
+    const port = await startRendererServer();
     await mainWindow.loadURL(`http://127.0.0.1:${port}`);
   }
 }
@@ -180,6 +180,6 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
-  staticServer?.close();
+  rendererServer?.kill();
   if (process.platform !== "darwin") app.quit();
 });
