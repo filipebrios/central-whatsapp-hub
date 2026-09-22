@@ -8,7 +8,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>CentralWhatsApp.WebView2</AssemblyName>
     <RootNamespace>CentralWhatsApp.WebView2</RootNamespace>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
