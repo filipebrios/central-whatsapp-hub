@@ -10,9 +10,12 @@ type DesktopApi = {
   connectAccount: (accountId: string) => Promise<boolean>;
   disconnectAccount: (accountId: string) => Promise<boolean>;
   installExtension: (accountId: string) => Promise<{ canceled: boolean; id?: string; name?: string; version?: string }>;
+  setWhatsAppVisible: (visible: boolean) => Promise<boolean>;
   setWhatsAppBounds: (bounds: Bounds) => Promise<void>;
   showNotification: (title: string, body: string) => Promise<void>;
   updateUnreadCount: (count: number) => Promise<void>;
+  onProfile: (callback: (payload: { accountId: string; profileName: string; phoneNumber: string; photoUrl?: string }) => void) => () => void;
+  onProfile: (callback: (payload: { accountId: string; profileName: string; phoneNumber: string; photoUrl?: string }) => void) => api()?.onProfile(callback) ?? (() => undefined),
   onUnread: (callback: (payload: { accountId: string; count: number }) => void) => () => void;
 };
 
@@ -33,6 +36,7 @@ export const desktopBridge = {
   connectAccount: (accountId: string) => api()?.connectAccount(accountId) ?? console.info("[desktopBridge] Conta conectada", accountId),
   disconnectAccount: (accountId: string) => api()?.disconnectAccount(accountId) ?? console.info("[desktopBridge] Conta desconectada", accountId),
   installExtension: (accountId: string) => api()?.installExtension(accountId),
+  setWhatsAppVisible: (visible: boolean) => api()?.setWhatsAppVisible(visible),
   setWhatsAppBounds: (bounds: Bounds) => api()?.setWhatsAppBounds(bounds),
   showNotification: (title: string, body: string) => api()?.showNotification(title, body) ?? console.info("[desktopBridge] Notificação", title, body),
   updateUnreadCount: (count: number) => api()?.updateUnreadCount(count) ?? console.info("[desktopBridge] Não lidas", count),
