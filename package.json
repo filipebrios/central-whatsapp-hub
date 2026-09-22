@@ -94,7 +94,7 @@
     "electron-builder": "latest",
     "wait-on": "latest"
   },
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Central de múltiplas contas do WhatsApp Web",
   "author": "Filipe Branco Rios",
   "main": "electron/main.cjs",
