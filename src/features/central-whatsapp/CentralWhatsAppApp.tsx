@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   Archive, Bell, BellOff, Check, CheckCheck, ChevronLeft, ChevronRight, CircleHelp,
   EllipsisVertical, LockKeyhole, MessageCircleMore, Mic, MonitorCog, Paperclip, Plus,
@@ -94,6 +94,37 @@ function ChatPanel({ conversation, onSend, onMarkRead }: { conversation: Convers
   </section>;
 }
 
+function DesktopWhatsAppPanel({ accountId }: { accountId: string }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    const syncBounds = () => {
+      const rect = panel.getBoundingClientRect();
+      desktopBridge.setWhatsAppBounds({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
+    };
+    syncBounds();
+    const observer = new ResizeObserver(syncBounds);
+    observer.observe(panel);
+    window.addEventListener("resize", syncBounds);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", syncBounds);
+    };
+  }, []);
+
+  useEffect(() => {
+    desktopBridge.selectAccount(accountId);
+  }, [accountId]);
+
+  return <section ref={panelRef} className="relative min-w-0 flex-1 overflow-hidden bg-chat">
+    <div className="grid h-full place-items-center text-sm text-muted-foreground">
+      Carregando WhatsApp Web…
+    </div>
+  </section>;
+}
+
 function AddAccountDialog({ open, onOpenChange, onAdd }: { open: boolean; onOpenChange: (open: boolean) => void; onAdd: (account: Account) => void }) {
   const [step, setStep] = useState(1); const [name, setName] = useState(""); const [phone, setPhone] = useState(""); const [color, setColor] = useState("emerald"); const [avatarInitials, setAvatarInitials] = useState("");
   const reset = () => { setStep(1); setName(""); setPhone(""); setColor("emerald"); setAvatarInitials(""); };
@@ -139,5 +170,5 @@ export function CentralWhatsAppApp() {
   const handleAction = (action: string) => { if (action === "reload") { desktopBridge.reloadAccount(active.id); } else if (action === "mute") updateAccount(active.id, a => ({ ...a, muted: !a.muted })); else if (action === "rename" || action === "color") setEdit({ mode: action, id: active.id }); else if (action === "reorder") reorder(active.id); else if (action === "delete") remove(active.id); else if (action === "disconnect") { const connected = active.connectionStatus === "connected"; updateAccount(active.id, a => ({ ...a, connectionStatus: connected ? "disconnected" : "connected" })); connected ? desktopBridge.disconnectAccount(active.id) : desktopBridge.connectAccount(active.id); } };
   const markRead = () => { if (!conversation) return; updateAccount(active.id, account => { const removed = account.conversations.find(c => c.id === conversation.id)?.unread ?? 0; return { ...account, unreadCount: Math.max(0, account.unreadCount - removed), conversations: account.conversations.map(c => c.id === conversation.id ? { ...c, unread: 0 } : c) }; }); };
   const send = (text: string) => { if (!conversation) return; updateAccount(active.id, account => ({ ...account, conversations: account.conversations.map(c => c.id === conversation.id ? { ...c, preview: text, time: now(), messages: [...c.messages, { id: crypto.randomUUID(), text, time: now(), outgoing: true }] } : c) })); desktopBridge.showNotification(active.profileName, "Mensagem simulada enviada"); };
-  return <TooltipProvider delayDuration={250}><div className="flex h-screen min-w-[1024px] overflow-hidden bg-background text-foreground"><AccountSidebar accounts={accounts} activeId={active.id} expanded={expanded} totalUnread={settings.showTotalUnread ? totalUnread : 0} onSelect={id => { setActiveId(id); desktopBridge.selectAccount(id); }} onAdd={() => setAddOpen(true)} onSettings={() => setSettingsOpen(true)} onToggle={() => setExpanded(v => !v)} /><main className="flex min-w-0 flex-1 flex-col"><ActiveAccountHeader account={active} onAction={handleAction} /><div className="flex min-h-0 flex-1"><ConversationList conversations={active.conversations} selectedId={conversation?.id} onSelect={id => { setSelectedConversation(current => ({ ...current, [active.id]: id })); }} /><ChatPanel conversation={conversation} onSend={send} onMarkRead={markRead} /></div></main></div><AddAccountDialog open={addOpen} onOpenChange={setAddOpen} onAdd={account => { setAccounts(current => [...current, account]); setActiveId(account.id); desktopBridge.addAccount(account); }} /><SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} settings={settings} onSettings={setSettings} accounts={accounts} onRename={id => setEdit({ mode: "rename", id })} onColor={id => setEdit({ mode: "color", id })} onRemove={remove} onMove={reorder} onClear={() => { if (window.confirm("Limpar contas e configurações locais e restaurar os dados simulados?")) { localStorage.clear(); setAccounts(initialAccounts); setSettings(initialSettings); setActiveId(firstAccountId); } }} /><SimpleEditDialog mode={edit?.mode ?? null} account={accounts.find(a => a.id === edit?.id)} onClose={() => setEdit(null)} onSave={value => { if (!edit) return; updateAccount(edit.id, a => edit.mode === "rename" ? { ...a, profileName: value } : { ...a, accountColor: value }); setEdit(null); }} /></TooltipProvider>;
+  return <TooltipProvider delayDuration={250}><div className="flex h-screen min-w-[1024px] overflow-hidden bg-background text-foreground"><AccountSidebar accounts={accounts} activeId={active.id} expanded={expanded} totalUnread={settings.showTotalUnread ? totalUnread : 0} onSelect={id => { setActiveId(id); desktopBridge.selectAccount(id); }} onAdd={() => setAddOpen(true)} onSettings={() => setSettingsOpen(true)} onToggle={() => setExpanded(v => !v)} /><main className="flex min-w-0 flex-1 flex-col"><ActiveAccountHeader account={active} onAction={handleAction} /><div className="flex min-h-0 flex-1">{desktopBridge.isDesktop ? <DesktopWhatsAppPanel accountId={active.id} /> : <><ConversationList conversations={active.conversations} selectedId={conversation?.id} onSelect={id => { setSelectedConversation(current => ({ ...current, [active.id]: id })); }} /><ChatPanel conversation={conversation} onSend={send} onMarkRead={markRead} /></>}</div></main></div><AddAccountDialog open={addOpen} onOpenChange={setAddOpen} onAdd={account => { setAccounts(current => [...current, account]); setActiveId(account.id); desktopBridge.addAccount(account); }} /><SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} settings={settings} onSettings={setSettings} accounts={accounts} onRename={id => setEdit({ mode: "rename", id })} onColor={id => setEdit({ mode: "color", id })} onRemove={remove} onMove={reorder} onClear={() => { if (window.confirm("Limpar contas e configurações locais e restaurar os dados simulados?")) { localStorage.clear(); setAccounts(initialAccounts); setSettings(initialSettings); setActiveId(firstAccountId); } }} /><SimpleEditDialog mode={edit?.mode ?? null} account={accounts.find(a => a.id === edit?.id)} onClose={() => setEdit(null)} onSave={value => { if (!edit) return; updateAccount(edit.id, a => edit.mode === "rename" ? { ...a, profileName: value } : { ...a, accountColor: value }); setEdit(null); }} /></TooltipProvider>;
 }
