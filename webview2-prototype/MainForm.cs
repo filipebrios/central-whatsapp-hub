@@ -38,6 +38,7 @@ public sealed class MainForm : Form
     };
 
     private readonly Button addAccountButton = CreateToolbarButton("+ Adicionar conta");
+    private readonly Button manageAccountsButton = CreateToolbarButton("⚙ Gerenciar contas");
     private readonly Button collapseButton = CreateToolbarButton("◀");
     private readonly Button installButton = CreateToolbarButton("Instalar WaSeller nesta conta");
     private readonly Button reloadButton = CreateToolbarButton("Recarregar");
@@ -68,14 +69,17 @@ public sealed class MainForm : Form
         sidebar.Padding = new Padding(0, 10, 0, 0);
         brand.Dock = DockStyle.Top;
         brand.Height = 55;
-        brand.Text = "      Central WhatsApp";
+        brand.Text = "";
         brand.ForeColor = Color.White;
         brand.Font = new Font("Segoe UI", 12, FontStyle.Bold);
         brand.TextAlign = ContentAlignment.MiddleLeft;
-        brand.Image = CreateAppLogo(38);
-        brand.ImageAlign = ContentAlignment.MiddleLeft;
-        var sidebarBottom = new Panel { Dock = DockStyle.Bottom, Height = 64, Padding = new Padding(10) };
-        addAccountButton.Dock = DockStyle.Fill;
+        brand.Paint += DrawBrand;
+        var sidebarBottom = new Panel { Dock = DockStyle.Bottom, Height = 112, Padding = new Padding(10, 4, 10, 8) };
+        manageAccountsButton.Dock = DockStyle.Top;
+        manageAccountsButton.Height = 42;
+        addAccountButton.Dock = DockStyle.Bottom;
+        addAccountButton.Height = 42;
+        sidebarBottom.Controls.Add(manageAccountsButton);
         sidebarBottom.Controls.Add(addAccountButton);
         sidebar.Controls.Add(accountsPanel);
         sidebar.Controls.Add(sidebarBottom);
@@ -106,6 +110,7 @@ public sealed class MainForm : Form
         Controls.Add(sidebar);
 
         collapseButton.Click += (_, _) => ToggleSidebar();
+        manageAccountsButton.Click += ManageAccounts;
         addAccountButton.Click += AddAccount;
         installButton.Click += InstallExtension;
         reloadButton.Click += (_, _) => ActiveBrowser()?.CoreWebView2?.Reload();
@@ -170,9 +175,9 @@ public sealed class MainForm : Form
     {
         sidebarCollapsed = !sidebarCollapsed;
         sidebar.Width = sidebarCollapsed ? CollapsedSidebarWidth : ExpandedSidebarWidth;
-        brand.Text = sidebarCollapsed ? "" : "      Central WhatsApp";
-        brand.ImageAlign = sidebarCollapsed ? ContentAlignment.MiddleCenter : ContentAlignment.MiddleLeft;
+        brand.Invalidate();
         addAccountButton.Text = sidebarCollapsed ? "+" : "+ Adicionar conta";
+        manageAccountsButton.Text = sidebarCollapsed ? "⚙" : "⚙ Gerenciar contas";
         collapseButton.Text = sidebarCollapsed ? "☰" : "◀";
         RenderAccountButtons();
     }
@@ -259,6 +264,7 @@ public sealed class MainForm : Form
         browser.Visible = true;
         browser.BringToFront();
         statusLabel.Text = $"{account.Name} — sessão independente";
+        _ = CaptureAvatarWithRetries(account.Id, browser);
     }
 
     private Image BuildAccountIcon(AccountInfo account)
@@ -319,58 +325,103 @@ public sealed class MainForm : Form
         return bitmap;
     }
 
-    private static Image CreateAppLogo(int size)
+    private void DrawBrand(object? sender, PaintEventArgs e)
     {
-        var bitmap = new Bitmap(size, size);
-        using var graphics = Graphics.FromImage(bitmap);
-        graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        using var green = new SolidBrush(Color.FromArgb(34, 197, 94));
-        graphics.FillEllipse(green, 1, 1, size - 2, size - 2);
-        using var whitePen = new Pen(Color.White, 2.4f) { StartCap = LineCap.Round, EndCap = LineCap.Round };
-        var bubble = new RectangleF(8, 8, size - 16, size - 18);
-        graphics.DrawArc(whitePen, bubble, 15, 300);
-        graphics.DrawLine(whitePen, 12, size - 11, 9, size - 6);
-        graphics.DrawLine(whitePen, 9, size - 6, 16, size - 9);
-        graphics.FillEllipse(Brushes.White, size / 2f - 7, size / 2f - 2, 3.5f, 3.5f);
-        graphics.FillEllipse(Brushes.White, size / 2f - 1.5f, size / 2f - 2, 3.5f, 3.5f);
-        graphics.FillEllipse(Brushes.White, size / 2f + 4, size / 2f - 2, 3.5f, 3.5f);
-        return bitmap;
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        var logoSize = 40;
+        var logoX = sidebarCollapsed ? (brand.Width - logoSize) / 2 : 12;
+        var logoY = (brand.Height - logoSize) / 2;
+        using var path = RoundedRectangle(new Rectangle(logoX, logoY, logoSize, logoSize), 11);
+        using var gradient = new LinearGradientBrush(
+            new Rectangle(logoX, logoY, logoSize, logoSize),
+            Color.FromArgb(16, 185, 129), Color.FromArgb(34, 197, 94), 45f);
+        e.Graphics.FillPath(gradient, path);
+
+        using var pen = new Pen(Color.White, 2.2f)
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round,
+            LineJoin = LineJoin.Round
+        };
+        e.Graphics.DrawEllipse(pen, logoX + 8, logoY + 9, 23, 18);
+        e.Graphics.DrawLine(pen, logoX + 11, logoY + 25, logoX + 8, logoY + 31);
+        e.Graphics.DrawLine(pen, logoX + 8, logoY + 31, logoX + 16, logoY + 27);
+        e.Graphics.FillEllipse(Brushes.White, logoX + 13, logoY + 17, 3, 3);
+        e.Graphics.FillEllipse(Brushes.White, logoX + 19, logoY + 17, 3, 3);
+        e.Graphics.FillEllipse(Brushes.White, logoX + 25, logoY + 17, 3, 3);
+        using var accent = new SolidBrush(Color.FromArgb(7, 13, 18));
+        e.Graphics.FillEllipse(accent, logoX + 28, logoY + 5, 9, 9);
+        e.Graphics.FillEllipse(Brushes.White, logoX + 31, logoY + 8, 3, 3);
+
+        if (!sidebarCollapsed)
+        {
+            using var titleFont = new Font("Segoe UI", 11.5f, FontStyle.Bold);
+            using var subtitleFont = new Font("Segoe UI", 7.5f, FontStyle.Regular);
+            e.Graphics.DrawString("Central WhatsApp", titleFont, Brushes.White, logoX + 50, logoY + 4);
+            using var muted = new SolidBrush(Color.FromArgb(148, 163, 184));
+            e.Graphics.DrawString("suas contas em um só lugar", subtitleFont, muted, logoX + 51, logoY + 25);
+        }
+    }
+
+    private static GraphicsPath RoundedRectangle(Rectangle bounds, int radius)
+    {
+        var path = new GraphicsPath();
+        var diameter = radius * 2;
+        path.AddArc(bounds.Left, bounds.Top, diameter, diameter, 180, 90);
+        path.AddArc(bounds.Right - diameter, bounds.Top, diameter, diameter, 270, 90);
+        path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
+        path.AddArc(bounds.Left, bounds.Bottom - diameter, diameter, diameter, 90, 90);
+        path.CloseFigure();
+        return path;
     }
 
     private async Task CaptureAvatarWithRetries(string accountId, Microsoft.Web.WebView2.WinForms.WebView2 browser)
     {
         for (var attempt = 0; attempt < 12; attempt++)
         {
-            await Task.Delay(attempt == 0 ? 3000 : 4000);
+            await Task.Delay(attempt == 0 ? 2500 : 3500);
             if (browser.IsDisposed || browser.CoreWebView2 is null) return;
+            if (!browser.Visible || activeAccount?.Id != accountId) return;
             try
             {
-                var result = await browser.CoreWebView2.ExecuteScriptAsync(ProfileRectScript);
+                var result = await browser.CoreWebView2.ExecuteScriptAsync(ProfileInfoScript);
                 using var json = JsonDocument.Parse(result);
                 if (json.RootElement.ValueKind != JsonValueKind.Object) continue;
-                var x = json.RootElement.GetProperty("x").GetDouble();
-                var y = json.RootElement.GetProperty("y").GetDouble();
-                var width = json.RootElement.GetProperty("width").GetDouble();
-                var height = json.RootElement.GetProperty("height").GetDouble();
-                if (width < 20 || height < 20) continue;
 
-                await using var preview = new MemoryStream();
-                await browser.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, preview);
-                preview.Position = 0;
-                using var screenshot = new Bitmap(preview);
-                var scaleX = screenshot.Width / Math.Max(1d, browser.ClientSize.Width);
-                var scaleY = screenshot.Height / Math.Max(1d, browser.ClientSize.Height);
-                var crop = Rectangle.Intersect(
-                    new Rectangle((int)(x * scaleX), (int)(y * scaleY),
-                        Math.Max(1, (int)(width * scaleX)), Math.Max(1, (int)(height * scaleY))),
-                    new Rectangle(0, 0, screenshot.Width, screenshot.Height));
-                if (crop.Width < 10 || crop.Height < 10) continue;
-                using var cropped = screenshot.Clone(crop, screenshot.PixelFormat);
-                using var avatar = new Bitmap(cropped, new Size(128, 128));
-                using var encoded = new MemoryStream();
-                avatar.Save(encoded, System.Drawing.Imaging.ImageFormat.Png);
-                var data = "data:image/png;base64," + Convert.ToBase64String(encoded.ToArray());
+                string? data = null;
+                if (json.RootElement.TryGetProperty("data", out var dataNode) &&
+                    dataNode.ValueKind == JsonValueKind.String)
+                    data = dataNode.GetString();
 
+                if (string.IsNullOrWhiteSpace(data) || !data.StartsWith("data:image/"))
+                {
+                    var x = json.RootElement.GetProperty("x").GetDouble();
+                    var y = json.RootElement.GetProperty("y").GetDouble();
+                    var width = json.RootElement.GetProperty("width").GetDouble();
+                    var height = json.RootElement.GetProperty("height").GetDouble();
+                    if (width < 20 || height < 20) continue;
+
+                    await using var preview = new MemoryStream();
+                    await browser.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, preview);
+                    preview.Position = 0;
+                    using var screenshot = new Bitmap(preview);
+                    var scaleX = screenshot.Width / Math.Max(1d, browser.ClientSize.Width);
+                    var scaleY = screenshot.Height / Math.Max(1d, browser.ClientSize.Height);
+                    var side = Math.Min(width, height);
+                    var crop = Rectangle.Intersect(
+                        new Rectangle((int)((x + (width - side) / 2) * scaleX),
+                            (int)((y + (height - side) / 2) * scaleY),
+                            Math.Max(1, (int)(side * scaleX)), Math.Max(1, (int)(side * scaleY))),
+                        new Rectangle(0, 0, screenshot.Width, screenshot.Height));
+                    if (crop.Width < 10 || crop.Height < 10) continue;
+                    using var cropped = screenshot.Clone(crop, screenshot.PixelFormat);
+                    using var avatar = new Bitmap(cropped, new Size(256, 256));
+                    using var encoded = new MemoryStream();
+                    avatar.Save(encoded, System.Drawing.Imaging.ImageFormat.Png);
+                    data = "data:image/png;base64," + Convert.ToBase64String(encoded.ToArray());
+                }
+
+                if (!browser.Visible || activeAccount?.Id != accountId) return;
                 var index = accounts.FindIndex(item => item.Id == accountId);
                 if (index < 0) return;
                 accounts[index] = accounts[index] with { AvatarData = data };
@@ -410,27 +461,38 @@ public sealed class MainForm : Form
         finally { refreshingIndicators = false; }
     }
 
-    private const string ProfileRectScript = """
-        (() => {
+    private const string ProfileInfoScript = """
+        (async () => {
           const unwrap = el => el?.tagName === 'IMG' ? el : el?.querySelector?.('img') || el;
           const explicit = [
             '[aria-label="Perfil"]', '[aria-label="Profile"]', '[title="Perfil"]',
-            '[title="Profile"]', '[data-testid="menu-bar-profile"]',
-            '[data-icon="default-user"]'
+            '[title="Profile"]', '[data-testid="menu-bar-profile"]'
           ].map(s => unwrap(document.querySelector(s))).filter(Boolean);
-          const visual = [...document.querySelectorAll('img, [style*="background-image"]')]
+          const visual = [...document.querySelectorAll('img')]
             .filter(el => {
               const r = el.getBoundingClientRect();
               return r.width >= 24 && r.width <= 90 && r.height >= 24 && r.height <= 90 &&
-                     r.left >= 0 && r.left < 150 && r.top > innerHeight * .50 && r.bottom <= innerHeight;
+                     r.left >= 55 && r.left < 150 && r.top > innerHeight * .55 && r.bottom <= innerHeight;
             })
             .sort((a,b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom);
           const el = explicit.find(e => {
-            const r=e.getBoundingClientRect(); return r.width>=20 && r.height>=20 && r.left<160;
+            const r=e.getBoundingClientRect();
+            return r.width>=20 && r.height>=20 && r.left>=55 && r.left<160 && r.top>innerHeight*.45;
           }) || visual[0];
           if (!el) return null;
           const r = el.getBoundingClientRect();
-          return { x:r.left, y:r.top, width:r.width, height:r.height };
+          let data = null;
+          try {
+            const response = await fetch(el.currentSrc || el.src);
+            const blob = await response.blob();
+            data = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result);
+              reader.onerror = reject;
+              reader.readAsDataURL(blob);
+            });
+          } catch {}
+          return { x:r.left, y:r.top, width:r.width, height:r.height, data };
         })()
         """;
 
@@ -449,6 +511,98 @@ public sealed class MainForm : Form
 
     private Microsoft.Web.WebView2.WinForms.WebView2? ActiveBrowser()
         => activeAccount is not null && browsers.TryGetValue(activeAccount.Id, out var browser) ? browser : null;
+
+    private async void ManageAccounts(object? sender, EventArgs e)
+    {
+        using var dialog = new Form
+        {
+            Text = "Gerenciar contas", Width = 520, Height = 390,
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false, MinimizeBox = false,
+            BackColor = Color.FromArgb(17, 24, 39),
+            ForeColor = Color.White
+        };
+        var title = new Label
+        {
+            Text = "Contas conectadas ao Central", Left = 20, Top = 18, Width = 450, Height = 28,
+            Font = new Font("Segoe UI", 12, FontStyle.Bold), ForeColor = Color.White
+        };
+        var list = new ListBox
+        {
+            Left = 20, Top = 52, Width = 465, Height = 210,
+            Font = new Font("Segoe UI", 10), BackColor = Color.FromArgb(7, 13, 18),
+            ForeColor = Color.White, BorderStyle = BorderStyle.FixedSingle
+        };
+        var rename = new Button { Text = "Renomear", Left = 20, Top = 280, Width = 115, Height = 38 };
+        var remove = new Button { Text = "Remover do Central", Left = 145, Top = 280, Width = 165, Height = 38 };
+        var close = new Button { Text = "Fechar", Left = 370, Top = 280, Width = 115, Height = 38, DialogResult = DialogResult.OK };
+        void RefreshList()
+        {
+            var selectedId = list.SelectedItem is AccountInfo selected ? selected.Id : null;
+            list.DataSource = null;
+            list.DataSource = accounts.ToList();
+            list.DisplayMember = nameof(AccountInfo.Name);
+            if (selectedId is not null)
+                list.SelectedItem = accounts.FirstOrDefault(item => item.Id == selectedId);
+            if (list.SelectedIndex < 0 && list.Items.Count > 0) list.SelectedIndex = 0;
+        }
+        rename.Click += (_, _) =>
+        {
+            if (list.SelectedItem is not AccountInfo selected) return;
+            var newName = PromptForText("Renomear conta", "Novo nome da conta:", selected.Name);
+            if (string.IsNullOrWhiteSpace(newName)) return;
+            var index = accounts.FindIndex(item => item.Id == selected.Id);
+            accounts[index] = accounts[index] with { Name = newName.Trim() };
+            if (activeAccount?.Id == selected.Id) activeAccount = accounts[index];
+            SaveAccounts();
+            RefreshList();
+            RenderAccountButtons();
+        };
+        remove.Click += async (_, _) =>
+        {
+            if (list.SelectedItem is not AccountInfo selected) return;
+            var confirmation = MessageBox.Show(
+                $"Remover “{selected.Name}” do Central WhatsApp?\n\nA conta sairá do menu. Os dados locais da sessão serão preservados como segurança.",
+                "Remover conta", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+            if (confirmation != DialogResult.Yes) return;
+            if (browsers.Remove(selected.Id, out var removedBrowser))
+            {
+                browserHost.Controls.Remove(removedBrowser);
+                removedBrowser.Dispose();
+            }
+            accounts.RemoveAll(item => item.Id == selected.Id);
+            if (activeAccount?.Id == selected.Id) activeAccount = null;
+            SaveAccounts();
+            RefreshList();
+            RenderAccountButtons();
+            if (activeAccount is null && accounts.Count > 0) await ActivateAccount(accounts[0]);
+            else if (accounts.Count == 0) statusLabel.Text = "Nenhuma conta adicionada";
+        };
+        dialog.Controls.AddRange([title, list, rename, remove, close]);
+        dialog.AcceptButton = close;
+        RefreshList();
+        dialog.ShowDialog(this);
+    }
+
+    private string? PromptForText(string title, string labelText, string initialValue)
+    {
+        using var dialog = new Form
+        {
+            Text = title, Width = 420, Height = 180,
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false, MinimizeBox = false
+        };
+        var label = new Label { Text = labelText, Left = 20, Top = 20, Width = 350 };
+        var input = new TextBox { Left = 20, Top = 50, Width = 360, Text = initialValue };
+        var confirm = new Button { Text = "Salvar", DialogResult = DialogResult.OK, Left = 275, Top = 88, Width = 105 };
+        var cancel = new Button { Text = "Cancelar", DialogResult = DialogResult.Cancel, Left = 170, Top = 88, Width = 95 };
+        dialog.Controls.AddRange([label, input, cancel, confirm]);
+        dialog.AcceptButton = confirm;
+        dialog.CancelButton = cancel;
+        return dialog.ShowDialog(this) == DialogResult.OK ? input.Text : null;
+    }
 
     private async void AddAccount(object? sender, EventArgs e)
     {
