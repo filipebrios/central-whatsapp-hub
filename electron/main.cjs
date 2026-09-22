@@ -82,12 +82,20 @@ async function syncAccountProfile(accountId, view) {
               photoUrl = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(blob); });
             } catch { photoUrl = ""; }
           }
-          if (profileName) return { profileName, phoneNumber: phone, photoUrl };
+          const avatarRect = image.getBoundingClientRect();
+          if (profileName) return { profileName, phoneNumber: phone, photoUrl, avatarBounds: { x: avatarRect.x, y: avatarRect.y, width: avatarRect.width, height: avatarRect.height } };
         }
       }
+      const navigationAvatar = Array.from(document.querySelectorAll("img")).map(image => ({ image, rect: image.getBoundingClientRect() })).find(({ rect }) => rect.x >= 8 && rect.x < 70 && rect.y > window.innerHeight - 90 && rect.width >= 20 && rect.width <= 60);
+      if (navigationAvatar) return { avatarBounds: { x: navigationAvatar.rect.x, y: navigationAvatar.rect.y, width: navigationAvatar.rect.width, height: navigationAvatar.rect.height } };
       return null;
     })()`);
-    if (profile?.profileName) mainWindow?.webContents.send("whatsapp:profile", { accountId, ...profile });
+    if (profile?.avatarBounds && !profile.photoUrl) {
+      const bounds = profile.avatarBounds;
+      const image = await view.webContents.capturePage({ x: Math.max(0, Math.round(bounds.x)), y: Math.max(0, Math.round(bounds.y)), width: Math.max(1, Math.round(bounds.width)), height: Math.max(1, Math.round(bounds.height)) });
+      profile.photoUrl = image.toDataURL();
+    }
+    if (profile && (profile.profileName || profile.photoUrl)) mainWindow?.webContents.send("whatsapp:profile", { accountId, ...profile });
   } catch (error) {
     console.warn(`[profile-sync:${accountId}]`, error.message);
   }
