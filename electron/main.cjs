@@ -1,0 +1,185 @@
+const { app, BrowserWindow, WebContentsView, ipcMain, session, shell, Notification } = require("electron");
+const http = require("node:http");
+const fs = require("node:fs");
+const path = require("node:path");
+
+let mainWindow;
+let staticServer;
+let activeAccountId = null;
+let panelBounds = { x: 260, y: 74, width: 1024, height: 700 };
+const accountViews = new Map();
+
+function safeAccountId(value) {
+  return String(value || "").replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80);
+}
+
+function applyBounds(view) {
+  if (!view || !mainWindow || mainWindow.isDestroyed()) return;
+  const [windowWidth, windowHeight] = mainWindow.getContentSize();
+  view.setBounds({
+    x: Math.max(0, Math.round(panelBounds.x)),
+    y: Math.max(0, Math.round(panelBounds.y)),
+    width: Math.max(1, Math.min(Math.round(panelBounds.width), windowWidth)),
+    height: Math.max(1, Math.min(Math.round(panelBounds.height), windowHeight)),
+  });
+}
+
+function setVisibleAccount(accountId) {
+  activeAccountId = accountId;
+  for (const [id, view] of accountViews) {
+    view.setVisible(id === accountId);
+    if (id === accountId) applyBounds(view);
+  }
+}
+
+function createAccountView(accountId) {
+  const id = safeAccountId(accountId);
+  if (!id) throw new Error("Identificador de conta inválido.");
+  if (accountViews.has(id)) return accountViews.get(id);
+
+  const accountSession = session.fromPartition(`persist:whatsapp-${id}`);
+  accountSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    const allowedOrigin = webContents.getURL().startsWith("https://web.whatsapp.com/");
+    callback(allowedOrigin && ["media", "notifications", "clipboard-sanitized-write"].includes(permission));
+  });
+
+  const view = new WebContentsView({
+    webPreferences: {
+      session: accountSession,
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      spellcheck: true,
+    },
+  });
+
+  view.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith("https://")) shell.openExternal(url);
+    return { action: "deny" };
+  });
+  view.webContents.on("page-title-updated", (_event, title) => {
+    const match = title.match(/^\((\d+)\)/);
+    mainWindow?.webContents.send("whatsapp:unread", { accountId: id, count: match ? Number(match[1]) : 0 });
+  });
+  view.webContents.on("did-fail-load", (_event, code, description, url, isMainFrame) => {
+    if (isMainFrame) mainWindow?.webContents.send("whatsapp:error", { accountId: id, code, description, url });
+  });
+
+  mainWindow.contentView.addChildView(view);
+  accountViews.set(id, view);
+  applyBounds(view);
+  view.setVisible(false);
+  view.webContents.loadURL("https://web.whatsapp.com/");
+  return view;
+}
+
+function removeAccountView(accountId) {
+  const id = safeAccountId(accountId);
+  const view = accountViews.get(id);
+  if (!view) return;
+  mainWindow?.contentView.removeChildView(view);
+  view.webContents.close();
+  accountViews.delete(id);
+  if (activeAccountId === id) activeAccountId = null;
+}
+
+function startStaticServer() {
+  const root = path.join(process.resourcesPath, "renderer");
+  staticServer = http.createServer((request, response) => {
+    const requestPath = decodeURIComponent((request.url || "/").split("?")[0]);
+    const relative = requestPath === "/" ? "index.html" : requestPath.replace(/^\/+/, "");
+    let filePath = path.normalize(path.join(root, relative));
+    if (!filePath.startsWith(root)) {
+      response.writeHead(403).end();
+      return;
+    }
+    if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) filePath = path.join(root, "index.html");
+    if (!fs.existsSync(filePath)) {
+      response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+      response.end("Interface do aplicativo não encontrada.");
+      return;
+    }
+    const extension = path.extname(filePath);
+    const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".woff2": "font/woff2" };
+    response.writeHead(200, { "Content-Type": types[extension] || "application/octet-stream" });
+    fs.createReadStream(filePath).pipe(response);
+  });
+  return new Promise((resolve) => staticServer.listen(0, "127.0.0.1", () => resolve(staticServer.address().port)));
+}
+
+async function createMainWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1440,
+    height: 900,
+    minWidth: 1024,
+    minHeight: 640,
+    title: "Central WhatsApp",
+    backgroundColor: "#111827",
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.cjs"),
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  mainWindow.on("resize", () => {
+    const active = accountViews.get(activeAccountId);
+    if (active) applyBounds(active);
+  });
+  mainWindow.on("closed", () => {
+    for (const view of accountViews.values()) view.webContents.close();
+    accountViews.clear();
+    mainWindow = null;
+  });
+  mainWindow.once("ready-to-show", () => mainWindow.show());
+
+  if (!app.isPackaged) {
+    await mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL || "http://127.0.0.1:3000");
+  } else {
+    const port = await startStaticServer();
+    await mainWindow.loadURL(`http://127.0.0.1:${port}`);
+  }
+}
+
+app.whenReady().then(async () => {
+  app.userAgentFallback = app.userAgentFallback.replace(/Electron\/[^ ]+ /, "");
+  ipcMain.handle("whatsapp:select-account", (_event, accountId) => {
+    const id = safeAccountId(accountId);
+    createAccountView(id);
+    setVisibleAccount(id);
+    return true;
+  });
+  ipcMain.handle("whatsapp:add-account", (_event, account) => {
+    const id = safeAccountId(account?.id);
+    createAccountView(id);
+    setVisibleAccount(id);
+    return true;
+  });
+  ipcMain.handle("whatsapp:remove-account", (_event, accountId) => removeAccountView(accountId));
+  ipcMain.handle("whatsapp:reload-account", (_event, accountId) => accountViews.get(safeAccountId(accountId))?.webContents.reload());
+  ipcMain.handle("whatsapp:disconnect-account", async (_event, accountId) => {
+    const id = safeAccountId(accountId);
+    removeAccountView(id);
+    await session.fromPartition(`persist:whatsapp-${id}`).clearStorageData();
+    return true;
+  });
+  ipcMain.handle("whatsapp:set-bounds", (_event, bounds) => {
+    panelBounds = bounds;
+    const active = accountViews.get(activeAccountId);
+    if (active) applyBounds(active);
+  });
+  ipcMain.handle("app:notification", (_event, title, body) => {
+    if (Notification.isSupported()) new Notification({ title, body }).show();
+  });
+  ipcMain.handle("app:set-badge", (_event, count) => {
+    if (process.platform === "darwin" || process.platform === "linux") app.setBadgeCount(Number(count) || 0);
+  });
+  await createMainWindow();
+});
+
+app.on("window-all-closed", () => {
+  staticServer?.close();
+  if (process.platform !== "darwin") app.quit();
+});
