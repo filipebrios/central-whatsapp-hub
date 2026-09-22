@@ -5,7 +5,7 @@ namespace CentralWhatsApp.WebView2;
 
 public sealed class MainForm : Form
 {
-    private readonly WebView2 browser = new() { Dock = DockStyle.Fill };
+    private readonly Microsoft.Web.WebView2.WinForms.WebView2 browser = new() { Dock = DockStyle.Fill };
     private readonly Button installButton = new()
     {
         Text = "Instalar WaSeller",
