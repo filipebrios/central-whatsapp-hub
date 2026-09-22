@@ -1,4 +1,4 @@
-const { app, BrowserWindow, WebContentsView, ipcMain, session, shell, Notification } = require("electron");
+const { app, BrowserWindow, WebContentsView, ipcMain, session, shell, Notification, Menu } = require("electron");
 const { spawn } = require("node:child_process");
 const path = require("node:path");
 
@@ -7,6 +7,9 @@ let rendererServer;
 let activeAccountId = null;
 let panelBounds = { x: 260, y: 74, width: 1024, height: 700 };
 const accountViews = new Map();
+const chromeVersion = process.versions.chrome;
+const chromeMajor = chromeVersion.split(".")[0];
+const chromeUserAgent = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
 
 function safeAccountId(value) {
   return String(value || "").replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80);
@@ -37,6 +40,14 @@ function createAccountView(accountId) {
   if (accountViews.has(id)) return accountViews.get(id);
 
   const accountSession = session.fromPartition(`persist:whatsapp-${id}`);
+  accountSession.setUserAgent(chromeUserAgent, "pt-BR");
+  accountSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    details.requestHeaders["User-Agent"] = chromeUserAgent;
+    details.requestHeaders["sec-ch-ua"] = `"Google Chrome";v="${chromeMajor}", "Chromium";v="${chromeMajor}", "Not_A Brand";v="99"`;
+    details.requestHeaders["sec-ch-ua-mobile"] = "?0";
+    details.requestHeaders["sec-ch-ua-platform"] = '"Windows"';
+    callback({ requestHeaders: details.requestHeaders });
+  });
   accountSession.setPermissionRequestHandler((webContents, permission, callback) => {
     const allowedOrigin = webContents.getURL().startsWith("https://web.whatsapp.com/");
     callback(allowedOrigin && ["media", "notifications", "clipboard-sanitized-write"].includes(permission));
@@ -52,6 +63,7 @@ function createAccountView(accountId) {
     },
   });
 
+  view.webContents.setUserAgent(chromeUserAgent);
   view.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("https://")) shell.openExternal(url);
     return { action: "deny" };
@@ -144,7 +156,8 @@ async function createMainWindow() {
 }
 
 app.whenReady().then(async () => {
-  app.userAgentFallback = app.userAgentFallback.replace(/Electron\/[^ ]+ /, "");
+  app.userAgentFallback = chromeUserAgent;
+  Menu.setApplicationMenu(null);
   ipcMain.handle("whatsapp:select-account", (_event, accountId) => {
     const id = safeAccountId(accountId);
     createAccountView(id);
