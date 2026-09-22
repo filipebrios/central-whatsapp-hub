@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("centralDesktop", {
   reloadAccount: (accountId) => ipcRenderer.invoke("whatsapp:reload-account", accountId),
   connectAccount: (accountId) => ipcRenderer.invoke("whatsapp:select-account", accountId),
   disconnectAccount: (accountId) => ipcRenderer.invoke("whatsapp:disconnect-account", accountId),
+  installExtension: (accountId) => ipcRenderer.invoke("whatsapp:install-extension", accountId),
   setWhatsAppBounds: (bounds) => ipcRenderer.invoke("whatsapp:set-bounds", bounds),
   showNotification: (title, body) => ipcRenderer.invoke("app:notification", title, body),
   updateUnreadCount: (count) => ipcRenderer.invoke("app:set-badge", count),
