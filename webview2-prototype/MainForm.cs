@@ -6,12 +6,18 @@ namespace CentralWhatsApp.WebView2;
 
 public sealed class MainForm : Form
 {
-    private sealed record AccountInfo(string Id, string Name);
+    private sealed record AccountInfo(string Id, string Name, string? AvatarData = null);
 
     private readonly string appDataFolder = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "CentralWhatsApp",
         "WebView2Prototype");
+
+    private const int ExpandedSidebarWidth = 245;
+    private const int CollapsedSidebarWidth = 72;
+    private readonly Panel sidebar = new();
+    private readonly Label brand = new();
+    private bool sidebarCollapsed;
 
     private readonly FlowLayoutPanel accountsPanel = new()
     {
@@ -29,6 +35,7 @@ public sealed class MainForm : Form
     };
 
     private readonly Button addAccountButton = CreateToolbarButton("+ Adicionar conta");
+    private readonly Button collapseButton = CreateToolbarButton("◀");
     private readonly Button installButton = CreateToolbarButton("Instalar WaSeller nesta conta");
     private readonly Button reloadButton = CreateToolbarButton("Recarregar");
     private readonly Label statusLabel = new()
@@ -52,22 +59,16 @@ public sealed class MainForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(17, 24, 39);
 
-        var sidebar = new Panel
-        {
-            Dock = DockStyle.Left,
-            Width = 245,
-            BackColor = Color.FromArgb(7, 13, 18),
-            Padding = new Padding(0, 10, 0, 0)
-        };
-        var brand = new Label
-        {
-            Dock = DockStyle.Top,
-            Height = 55,
-            Text = "  Central WhatsApp",
-            ForeColor = Color.White,
-            Font = new Font("Segoe UI", 12, FontStyle.Bold),
-            TextAlign = ContentAlignment.MiddleLeft
-        };
+        sidebar.Dock = DockStyle.Left;
+        sidebar.Width = ExpandedSidebarWidth;
+        sidebar.BackColor = Color.FromArgb(7, 13, 18);
+        sidebar.Padding = new Padding(0, 10, 0, 0);
+        brand.Dock = DockStyle.Top;
+        brand.Height = 55;
+        brand.Text = "  Central WhatsApp";
+        brand.ForeColor = Color.White;
+        brand.Font = new Font("Segoe UI", 12, FontStyle.Bold);
+        brand.TextAlign = ContentAlignment.MiddleLeft;
         var sidebarBottom = new Panel { Dock = DockStyle.Bottom, Height = 64, Padding = new Padding(10) };
         addAccountButton.Dock = DockStyle.Fill;
         sidebarBottom.Controls.Add(addAccountButton);
@@ -84,6 +85,10 @@ public sealed class MainForm : Form
             BackColor = Color.FromArgb(17, 24, 39),
             Padding = new Padding(8, 4, 8, 4)
         };
+        collapseButton.Width = 44;
+        collapseButton.Padding = new Padding(4);
+        collapseButton.AccessibleName = "Recolher ou abrir menu de contas";
+        toolbar.Controls.Add(collapseButton);
         toolbar.Controls.Add(installButton);
         toolbar.Controls.Add(reloadButton);
         toolbar.Controls.Add(statusLabel);
@@ -95,6 +100,7 @@ public sealed class MainForm : Form
         Controls.Add(rightPanel);
         Controls.Add(sidebar);
 
+        collapseButton.Click += (_, _) => ToggleSidebar();
         addAccountButton.Click += AddAccount;
         installButton.Click += InstallExtension;
         reloadButton.Click += (_, _) => ActiveBrowser()?.CoreWebView2?.Reload();
@@ -150,6 +156,16 @@ public sealed class MainForm : Form
         File.WriteAllText(AccountsFile, JsonSerializer.Serialize(accounts, new JsonSerializerOptions { WriteIndented = true }));
     }
 
+    private void ToggleSidebar()
+    {
+        sidebarCollapsed = !sidebarCollapsed;
+        sidebar.Width = sidebarCollapsed ? CollapsedSidebarWidth : ExpandedSidebarWidth;
+        brand.Text = sidebarCollapsed ? " CW" : "  Central WhatsApp";
+        addAccountButton.Text = sidebarCollapsed ? "+" : "+ Adicionar conta";
+        collapseButton.Text = sidebarCollapsed ? "☰" : "◀";
+        RenderAccountButtons();
+    }
+
     private void RenderAccountButtons()
     {
         accountsPanel.Controls.Clear();
@@ -157,16 +173,19 @@ public sealed class MainForm : Form
         {
             var button = new Button
             {
-                Text = account.Name,
-                Width = 205,
+                Text = sidebarCollapsed ? "" : account.Name,
+                Width = sidebarCollapsed ? 48 : 205,
                 Height = 58,
                 TextAlign = ContentAlignment.MiddleLeft,
-                Padding = new Padding(12, 0, 8, 0),
+                ImageAlign = sidebarCollapsed ? ContentAlignment.MiddleCenter : ContentAlignment.MiddleLeft,
+                TextImageRelation = sidebarCollapsed ? TextImageRelation.Overlay : TextImageRelation.ImageBeforeText,
+                Padding = sidebarCollapsed ? new Padding(0) : new Padding(8, 0, 8, 0),
                 FlatStyle = FlatStyle.Flat,
                 ForeColor = Color.White,
                 BackColor = activeAccount?.Id == account.Id ? Color.FromArgb(25, 45, 55) : Color.FromArgb(13, 22, 29),
                 Margin = new Padding(0, 0, 0, 8),
-                Tag = account
+                Tag = account,
+                Image = GetAccountAvatar(account)
             };
             button.FlatAppearance.BorderColor = activeAccount?.Id == account.Id ? Color.FromArgb(34, 197, 94) : Color.FromArgb(31, 41, 55);
             button.Click += async (_, _) => await ActivateAccount(account);
@@ -214,6 +233,10 @@ public sealed class MainForm : Form
                     args.Handled = true;
                     browser.CoreWebView2.Navigate(args.Uri);
                 };
+                browser.CoreWebView2.NavigationCompleted += async (_, args) =>
+                {
+                    if (args.IsSuccess) await CaptureAvatarWithRetries(account.Id, browser);
+                };
                 browser.CoreWebView2.Navigate("https://web.whatsapp.com/");
             }
             catch (Exception error)
@@ -226,6 +249,74 @@ public sealed class MainForm : Form
         browser.BringToFront();
         statusLabel.Text = $"{account.Name} — sessão independente";
     }
+
+    private Image GetAccountAvatar(AccountInfo account)
+    {
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(account.AvatarData))
+            {
+                var comma = account.AvatarData.IndexOf(',');
+                var bytes = Convert.FromBase64String(comma >= 0 ? account.AvatarData[(comma + 1)..] : account.AvatarData);
+                using var stream = new MemoryStream(bytes);
+                return new Bitmap(Image.FromStream(stream), new Size(38, 38));
+            }
+        }
+        catch { }
+        var bitmap = new Bitmap(38, 38);
+        using var graphics = Graphics.FromImage(bitmap);
+        graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        using var brush = new SolidBrush(Color.FromArgb(5, 150, 105));
+        graphics.FillEllipse(brush, 0, 0, 37, 37);
+        var initials = string.Concat(account.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(word => char.ToUpperInvariant(word[0])));
+        using var font = new Font("Segoe UI", 10, FontStyle.Bold);
+        TextRenderer.DrawText(graphics, initials, font, new Rectangle(0, 0, 38, 38), Color.White,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+        return bitmap;
+    }
+
+    private async Task CaptureAvatarWithRetries(string accountId, Microsoft.Web.WebView2.WinForms.WebView2 browser)
+    {
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            await Task.Delay(attempt == 0 ? 2500 : 4000);
+            if (browser.IsDisposed || browser.CoreWebView2 is null) return;
+            try
+            {
+                var result = await browser.CoreWebView2.ExecuteScriptAsync(AvatarCaptureScript);
+                var data = JsonSerializer.Deserialize<string>(result);
+                if (string.IsNullOrWhiteSpace(data) || !data.StartsWith("data:image/")) continue;
+                var index = accounts.FindIndex(item => item.Id == accountId);
+                if (index < 0 || accounts[index].AvatarData == data) return;
+                accounts[index] = accounts[index] with { AvatarData = data };
+                SaveAccounts();
+                if (!IsDisposed) BeginInvoke(RenderAccountButtons);
+                return;
+            }
+            catch { }
+        }
+    }
+
+    private const string AvatarCaptureScript = """
+        (async () => {
+          const candidates = [
+            document.querySelector('[aria-label="Perfil"] img'),
+            document.querySelector('[title="Perfil"] img'),
+            document.querySelector('[data-testid="menu-bar-profile"] img'),
+            ...document.querySelectorAll('header img')
+          ].filter(Boolean);
+          let img = candidates.find(x => x.naturalWidth >= 24) ||
+            [...document.images].filter(x => x.naturalWidth >= 24 && x.naturalWidth <= 512)
+              .sort((a,b) => (a.getBoundingClientRect().left - b.getBoundingClientRect().left) ||
+                             (b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom))[0];
+          if (!img || !img.src) return null;
+          if (!img.complete) await new Promise(r => { img.addEventListener('load', r, {once:true}); setTimeout(r, 1500); });
+          const canvas = document.createElement('canvas');
+          canvas.width = canvas.height = 128;
+          canvas.getContext('2d').drawImage(img, 0, 0, 128, 128);
+          return canvas.toDataURL('image/png');
+        })()
+        """;
 
     private Microsoft.Web.WebView2.WinForms.WebView2? ActiveBrowser()
         => activeAccount is not null && browsers.TryGetValue(activeAccount.Id, out var browser) ? browser : null;
