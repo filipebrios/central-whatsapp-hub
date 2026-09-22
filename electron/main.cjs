@@ -96,7 +96,17 @@ async function syncAccountProfile(accountId, view) {
         }
       }
       const navigationAvatar = Array.from(document.querySelectorAll("img")).map(image => ({ image, rect: image.getBoundingClientRect() })).find(({ rect }) => rect.x >= 8 && rect.x < 70 && rect.y > window.innerHeight - 90 && rect.width >= 20 && rect.width <= 60);
-      if (navigationAvatar) return { avatarBounds: { x: navigationAvatar.rect.x, y: navigationAvatar.rect.y, width: navigationAvatar.rect.width, height: navigationAvatar.rect.height } };
+      if (navigationAvatar) {
+        let photoUrl = "";
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = navigationAvatar.image.naturalWidth || 256;
+          canvas.height = navigationAvatar.image.naturalHeight || 256;
+          canvas.getContext("2d").drawImage(navigationAvatar.image, 0, 0, canvas.width, canvas.height);
+          photoUrl = canvas.toDataURL("image/png");
+        } catch {}
+        return { photoUrl, avatarBounds: { x: navigationAvatar.rect.x, y: navigationAvatar.rect.y, width: navigationAvatar.rect.width, height: navigationAvatar.rect.height } };
+      }
       return null;
     })()`);
     if (profile?.avatarBounds && !profile.photoUrl) {
