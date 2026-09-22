@@ -14,7 +14,7 @@ type DesktopApi = {
   setWhatsAppBounds: (bounds: Bounds) => Promise<void>;
   showNotification: (title: string, body: string) => Promise<void>;
   updateUnreadCount: (count: number) => Promise<void>;
-  onProfile: (callback: (payload: { accountId: string; profileName: string; phoneNumber: string; photoUrl?: string }) => void) => () => void;
+  onProfile: (callback: (payload: { accountId: string; profileName?: string; phoneNumber?: string; photoUrl?: string }) => void) => () => void;
   onUnread: (callback: (payload: { accountId: string; count: number }) => void) => () => void;
 };
 
@@ -39,6 +39,6 @@ export const desktopBridge = {
   setWhatsAppBounds: (bounds: Bounds) => api()?.setWhatsAppBounds(bounds),
   showNotification: (title: string, body: string) => api()?.showNotification(title, body) ?? console.info("[desktopBridge] Notificação", title, body),
   updateUnreadCount: (count: number) => api()?.updateUnreadCount(count) ?? console.info("[desktopBridge] Não lidas", count),
-  onProfile: (callback: (payload: { accountId: string; profileName: string; phoneNumber: string; photoUrl?: string }) => void) => api()?.onProfile(callback) ?? (() => undefined),
+  onProfile: (callback: (payload: { accountId: string; profileName?: string; phoneNumber?: string; photoUrl?: string }) => void) => api()?.onProfile(callback) ?? (() => undefined),
   onUnread: (callback: (payload: { accountId: string; count: number }) => void) => api()?.onUnread(callback) ?? (() => undefined),
 };
