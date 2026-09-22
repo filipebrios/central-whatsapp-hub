@@ -11,7 +11,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "desktop:dev": "concurrently -k \"npm run dev\" \"wait-on http://127.0.0.1:3000 && cross-env ELECTRON_RENDERER_URL=http://127.0.0.1:3000 electron .\"",
-    "desktop:dist": "npm run build && electron-builder --win nsis --publish never"
+    "desktop:dist": "cross-env NITRO_PRESET=node-server npm run build && electron-builder --win nsis --publish never"
   },
   "overrides": {
     "rolldown": "1.2.1"
@@ -110,8 +110,8 @@
     ],
     "extraResources": [
       {
-        "from": ".output/public",
-        "to": "renderer",
+        "from": ".output",
+        "to": "app-output",
         "filter": [
           "**/*"
         ]
