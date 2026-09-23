@@ -49,11 +49,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "modux-v1.5.0"
-          $installer = "installer-output/MODUX-Setup-1.5.0.exe"
+          $tag = "modux-v1.5.1"
+          $installer = "installer-output/MODUX-Setup-1.5.1.exe"
           gh release view $tag 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag $installer --title "MODUX 1.5.0" --notes "Novo seletor visual de contas e preferências persistentes de tema, fonte, tamanho da interface e zoom do WhatsApp." --prerelease --target codex/electron-windows-mvp
+            gh release create $tag $installer --title "MODUX 1.5.1" --notes "Selo vermelho na barra de tarefas com a soma das mensagens não lidas de todas as contas, reaplicado ao abrir e restaurar o MODUX." --prerelease --target codex/electron-windows-mvp
           } else {
             gh release upload $tag $installer --clobber
           }
@@ -61,6 +61,6 @@ jobs:
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: MODUX-Setup-1.5.0
-          path: webview2-prototype/installer-output/MODUX-Setup-1.5.0.exe
+          name: MODUX-Setup-1.5.1
+          path: webview2-prototype/installer-output/MODUX-Setup-1.5.1.exe
           if-no-files-found: error

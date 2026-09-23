@@ -74,7 +74,7 @@ public sealed class MainForm : Form
 
     private static string AppVersion => Assembly.GetExecutingAssembly().GetName().Version is { } version
         ? $"{version.Major}.{version.Minor}.{version.Build}"
-        : "1.5.0";
+        : "1.5.1";
 
     private readonly FlowLayoutPanel accountsPanel = new()
     {
@@ -256,8 +256,13 @@ public sealed class MainForm : Form
         Shown += async (_, _) =>
         {
             await Start();
+            // O botão da janela precisa existir na barra do Windows antes de receber o selo.
+            await Task.Delay(750);
+            InitializeTaskbar();
+            UpdateTaskbarBadge();
             unreadTimer.Start();
         };
+        Activated += (_, _) => UpdateTaskbarBadge();
         FormClosing += HandleFormClosing;
         HandleCreated += (_, _) => InitializeTaskbar();
     }
@@ -320,6 +325,12 @@ public sealed class MainForm : Form
         WindowState = FormWindowState.Normal;
         Activate();
         BringToFront();
+        BeginInvoke(async () =>
+        {
+            await Task.Delay(300);
+            InitializeTaskbar();
+            UpdateTaskbarBadge();
+        });
     }
 
     protected override void Dispose(bool disposing)
@@ -1032,6 +1043,7 @@ public sealed class MainForm : Form
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) return;
         try
         {
+            if (taskbar is not null) return;
             taskbar = (ITaskbarList3)new TaskbarListCom();
             taskbar.HrInit();
             UpdateTaskbarBadge();
@@ -1057,14 +1069,16 @@ public sealed class MainForm : Form
             using var graphics = Graphics.FromImage(badge);
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
             graphics.Clear(Color.Transparent);
-            using var background = new SolidBrush(Color.FromArgb(6, 182, 212));
+            // Vermelho de alerta: deve contrastar com o ícone azul do MODUX na barra de tarefas.
+            using var background = new SolidBrush(Color.FromArgb(220, 38, 38));
             graphics.FillEllipse(background, 1, 1, 30, 30);
             var text = total > 99 ? "99+" : total.ToString();
             using var font = new Font("Segoe UI", total > 99 ? 10f : 14f, FontStyle.Bold, GraphicsUnit.Pixel);
             TextRenderer.DrawText(graphics, text, font, new Rectangle(1, 1, 30, 30), Color.White,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             taskbarOverlayIcon = badge.GetHicon();
-            taskbar.SetOverlayIcon(Handle, taskbarOverlayIcon, $"{total} mensagens não lidas");
+            taskbar.SetOverlayIcon(Handle, taskbarOverlayIcon,
+                total == 1 ? "1 mensagem não lida" : $"{total} mensagens não lidas no total");
         }
         catch (Exception error) { Log($"Falha ao atualizar contador da barra de tarefas: {error.Message}"); }
     }

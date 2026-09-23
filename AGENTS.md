@@ -64,7 +64,7 @@ Requisitos permanentes:
 - Repositório público: `filipebrios/central-whatsapp-hub`.
 - Branch de desenvolvimento e releases atuais: `codex/electron-windows-mvp`.
 - Pull request existente: PR #1, mantido como rascunho; não mesclar sem solicitação explícita.
-- Última release pública confirmada: `MODUX 1.5.0` para Windows.
+- Última release pública confirmada: `MODUX 1.5.0` para Windows. A correção 1.5.1 está em validação.
 - Instalador confirmado: `MODUX-Setup-1.5.0.exe` na release `modux-v1.5.0`.
 - Instalador confirmado: `MODUX-Setup-1.4.0.exe`.
 - A 1.4.0 foi compilada com sucesso pelo workflow Windows e publicada na release `modux-v1.4.0`.
@@ -128,6 +128,12 @@ Antes de entregar uma versão:
 - WaSeller, quando aplicável, permanece limitado à conta escolhida.
 
 ## Registro de mudanças
+
+### 2026-09-23 — candidata MODUX 1.5.1
+
+- O badge da barra de tarefas passou a usar círculo vermelho e mostrar a soma das não lidas de todas as contas.
+- O badge é reaplicado depois que a janela aparece e ao restaurar o MODUX da bandeja, evitando a tentativa precoce antes de o botão existir no Windows.
+- Estado: implementação em validação; instalador ainda não publicado.
 
 ### 2026-09-23 — candidata MODUX 1.5.0
 
