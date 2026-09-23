@@ -5,7 +5,7 @@ namespace CentralWhatsApp.WebView2;
 
 internal static class Program
 {
-    private const string MutexName = "CentralWhatsApp.WebView2.SingleInstance";
+    private const string MutexName = "MODUX.SingleInstance";
 
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
