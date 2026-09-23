@@ -49,11 +49,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "modux-v1.2.0"
-          $installer = "installer-output/MODUX-Setup-1.2.0.exe"
+          $tag = "modux-v1.3.0"
+          $installer = "installer-output/MODUX-Setup-1.3.0.exe"
           gh release view $tag 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag $installer --title "MODUX 1.2.0" --notes "Instalador oficial do MODUX para Windows." --prerelease --target codex/electron-windows-mvp
+            gh release create $tag $installer --title "MODUX 1.3.0" --notes "Instalador oficial do MODUX para Windows." --prerelease --target codex/electron-windows-mvp
           } else {
             gh release upload $tag $installer --clobber
           }
@@ -61,6 +61,6 @@ jobs:
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: MODUX-Setup-1.2.0
-          path: webview2-prototype/installer-output/MODUX-Setup-1.2.0.exe
+          name: MODUX-Setup-1.3.0
+          path: webview2-prototype/installer-output/MODUX-Setup-1.3.0.exe
           if-no-files-found: error
