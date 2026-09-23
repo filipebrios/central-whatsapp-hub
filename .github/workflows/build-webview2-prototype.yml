@@ -1,4 +1,4 @@
-name: Build Central WhatsApp installer
+name: Build MODUX installer
 
 on:
   push:
@@ -21,7 +21,7 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
-      - name: Publish Central WhatsApp
+      - name: Publish MODUX
         shell: pwsh
         run: dotnet publish webview2-prototype/CentralWhatsApp.WebView2.csproj -c Release -r win-x64 --self-contained true -o webview2-prototype/publish
 
@@ -49,11 +49,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "central-whatsapp-v0.7.0"
-          $installer = "installer-output/Central-WhatsApp-Setup-0.7.0.exe"
+          $tag = "modux-v1.0.0"
+          $installer = "installer-output/MODUX-Setup-1.0.0.exe"
           gh release view $tag 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag $installer --title "Central WhatsApp 0.7.0" --notes "Instalador automático do Central WhatsApp para Windows." --prerelease --target codex/electron-windows-mvp
+            gh release create $tag $installer --title "MODUX 1.0.0" --notes "Instalador oficial do MODUX para Windows." --prerelease --target codex/electron-windows-mvp
           } else {
             gh release upload $tag $installer --clobber
           }
@@ -61,6 +61,6 @@ jobs:
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Central-WhatsApp-Setup-0.7.0
-          path: webview2-prototype/installer-output/Central-WhatsApp-Setup-0.7.0.exe
+          name: MODUX-Setup-1.0.0
+          path: webview2-prototype/installer-output/MODUX-Setup-1.0.0.exe
           if-no-files-found: error
