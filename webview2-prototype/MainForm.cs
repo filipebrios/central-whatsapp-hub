@@ -48,6 +48,7 @@ public sealed class MainForm : Form
     private readonly Button collapseButton = CreateToolbarButton("◀");
     private readonly Button installButton = CreateToolbarButton("Instalar WaSeller nesta conta");
     private readonly Button reloadButton = CreateToolbarButton("Recarregar");
+    private readonly Button clearCacheButton = CreateToolbarButton("Limpar cache");
     private readonly Label statusLabel = new()
     {
         Text = "Iniciando…",
@@ -108,6 +109,7 @@ public sealed class MainForm : Form
         toolbar.Controls.Add(collapseButton);
         toolbar.Controls.Add(installButton);
         toolbar.Controls.Add(reloadButton);
+        toolbar.Controls.Add(clearCacheButton);
         toolbar.Controls.Add(statusLabel);
 
         var rightPanel = new Panel { Dock = DockStyle.Fill };
@@ -122,6 +124,7 @@ public sealed class MainForm : Form
         addAccountButton.Click += AddAccount;
         installButton.Click += InstallExtension;
         reloadButton.Click += (_, _) => ActiveBrowser()?.CoreWebView2?.Reload();
+        clearCacheButton.Click += ClearCache;
         unreadTimer.Tick += async (_, _) => await RefreshUnreadCounts();
         Shown += async (_, _) =>
         {
@@ -197,14 +200,34 @@ public sealed class MainForm : Form
     }
 
     private string AccountsFile => Path.Combine(appDataFolder, "accounts.json");
+    private string CacheFlagFile => Path.Combine(appDataFolder, "clear-cache.flag");
+    private string LogFile => Path.Combine(appDataFolder, "modux.log");
 
     private async Task Start()
     {
         Directory.CreateDirectory(appDataFolder);
+        Log("Inicialização iniciada.");
+        if (File.Exists(CacheFlagFile))
+        {
+            Log("Limpeza de cache pendente encontrada.");
+            DeleteCacheFolders();
+            try { File.Delete(CacheFlagFile); } catch { }
+        }
         detectedWaSellerPath = FindWaSellerFolder();
+        Log(detectedWaSellerPath is null ? "WaSeller não encontrado nos navegadores." : "WaSeller localizado no computador.");
         LoadAccounts();
         RenderAccountButtons();
         if (accounts.Count > 0) await ActivateAccount(accounts[0]);
+        Log("Inicialização concluída.");
+    }
+
+    private void Log(string message)
+    {
+        try
+        {
+            File.AppendAllText(LogFile, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}");
+        }
+        catch { }
     }
 
     private void LoadAccounts()
@@ -306,7 +329,6 @@ public sealed class MainForm : Form
                 };
                 var environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder, options);
                 await browser.EnsureCoreWebView2Async(environment);
-                await TryAutoInstallWaSeller(browser, account);
                 browser.CoreWebView2.Settings.AreDevToolsEnabled = true;
                 browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
                 browser.CoreWebView2.NewWindowRequested += (_, args) =>
@@ -335,25 +357,36 @@ public sealed class MainForm : Form
     private Image BuildAccountIcon(AccountInfo account)
     {
         using var avatar = LoadAvatar(account);
-        var icon = new Bitmap(48, 48);
+        var icon = new Bitmap(52, 52);
         using var graphics = Graphics.FromImage(icon);
         graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+        graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        graphics.CompositingQuality = CompositingQuality.HighQuality;
         graphics.Clear(Color.Transparent);
+
+        var sourceSide = Math.Min(avatar.Width, avatar.Height);
+        var source = new Rectangle(
+            (avatar.Width - sourceSide) / 2,
+            (avatar.Height - sourceSide) / 2,
+            sourceSide,
+            sourceSide);
+        var destination = new Rectangle(4, 8, 40, 40);
         using (var path = new GraphicsPath())
         {
-            path.AddEllipse(3, 7, 38, 38);
+            path.AddEllipse(destination);
             graphics.SetClip(path);
-            graphics.DrawImage(avatar, new Rectangle(3, 7, 38, 38));
+            graphics.DrawImage(avatar, destination, source, GraphicsUnit.Pixel);
             graphics.ResetClip();
         }
-        using (var border = new Pen(Color.FromArgb(45, 212, 191), 1.5f))
-            graphics.DrawEllipse(border, 3, 7, 38, 38);
+        using (var border = new Pen(Color.FromArgb(6, 182, 212), 1.5f))
+            graphics.DrawEllipse(border, destination);
 
         if (account.UnreadCount > 0)
         {
             var badgeText = account.UnreadCount > 99 ? "99+" : account.UnreadCount.ToString();
-            var badgeWidth = account.UnreadCount > 99 ? 24 : 19;
-            var badgeRect = new Rectangle(48 - badgeWidth, 0, badgeWidth, 19);
+            var badgeWidth = account.UnreadCount > 99 ? 25 : 20;
+            var badgeRect = new Rectangle(52 - badgeWidth, 0, badgeWidth, 20);
             using var badgeBrush = new SolidBrush(Color.FromArgb(6, 182, 212));
             graphics.FillEllipse(badgeBrush, badgeRect);
             using var font = new Font("Segoe UI", account.UnreadCount > 99 ? 7 : 8, FontStyle.Bold);
@@ -646,25 +679,50 @@ public sealed class MainForm : Form
             .Select(item => item.FullName).FirstOrDefault();
     }
 
-    private async Task TryAutoInstallWaSeller(Microsoft.Web.WebView2.WinForms.WebView2 browser, AccountInfo account)
+    private async void ClearCache(object? sender, EventArgs e)
     {
-        if (browser.CoreWebView2 is null || string.IsNullOrWhiteSpace(detectedWaSellerPath)) return;
+        clearCacheButton.Enabled = false;
+        statusLabel.Text = "Limpando cache…";
         try
         {
-            var installed = await browser.CoreWebView2.Profile.GetBrowserExtensionsAsync();
-            if (installed.Any(extension => extension.Name.Contains("WaSeller", StringComparison.OrdinalIgnoreCase)))
+            Directory.CreateDirectory(appDataFolder);
+            File.WriteAllText(CacheFlagFile, DateTime.Now.ToString("O"));
+            foreach (var browser in browsers.Values)
             {
-                statusLabel.Text = $"{account.Name} — WaSeller pronto";
-                return;
+                if (browser.CoreWebView2 is not null)
+                    await browser.CoreWebView2.Profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.DiskCache);
             }
-
-            var extension = await browser.CoreWebView2.Profile.AddBrowserExtensionAsync(detectedWaSellerPath);
-            statusLabel.Text = $"{account.Name} — {extension.Name} instalado automaticamente";
+            Log("Limpeza de cache solicitada pelo usuário.");
+            statusLabel.Text = "Cache limpo — reinicie o MODUX";
+            MessageBox.Show(
+                "O cache das contas abertas foi limpo.\n\nFeche o MODUX pelo ícone perto do relógio e abra novamente para concluir a limpeza dos arquivos antigos. Seus logins serão preservados.",
+                "Limpeza concluída", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
-        catch
+        catch (Exception error)
         {
-            // A instalação manual continua disponível se o navegador bloquear esta cópia.
+            Log($"Falha ao limpar cache: {error.Message}");
+            MessageBox.Show($"Não foi possível concluir a limpeza.\n\n{error.Message}", "MODUX",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
+        finally { clearCacheButton.Enabled = true; }
+    }
+
+    private void DeleteCacheFolders()
+    {
+        var exactNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "Cache", "Code Cache", "GPUCache", "DawnCache", "GrShaderCache", "ShaderCache"
+        };
+        try
+        {
+            foreach (var directory in Directory.EnumerateDirectories(appDataFolder, "*", SearchOption.AllDirectories)
+                         .Where(path => exactNames.Contains(Path.GetFileName(path)))
+                         .OrderByDescending(path => path.Length))
+            {
+                try { Directory.Delete(directory, true); } catch { }
+            }
+        }
+        catch (Exception error) { Log($"Falha parcial na limpeza de cache: {error.Message}"); }
     }
 
     private Microsoft.Web.WebView2.WinForms.WebView2? ActiveBrowser()
@@ -674,27 +732,28 @@ public sealed class MainForm : Form
     {
         using var dialog = new Form
         {
-            Text = "Gerenciar contas", Width = 520, Height = 390,
+            Text = "Gerenciar contas", Width = 650, Height = 410,
             StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog,
             MaximizeBox = false, MinimizeBox = false,
-            BackColor = Color.FromArgb(11, 19, 43),
-            ForeColor = Color.White
+            BackColor = Color.FromArgb(11, 19, 43), ForeColor = Color.White
         };
         var title = new Label
         {
-            Text = "Contas conectadas ao Central", Left = 20, Top = 18, Width = 450, Height = 28,
+            Text = "Contas conectadas ao MODUX", Left = 20, Top = 18, Width = 560, Height = 28,
             Font = new Font("Segoe UI", 12, FontStyle.Bold), ForeColor = Color.White
         };
         var list = new ListBox
         {
-            Left = 20, Top = 52, Width = 465, Height = 210,
+            Left = 20, Top = 52, Width = 595, Height = 220,
             Font = new Font("Segoe UI", 10), BackColor = Color.FromArgb(6, 12, 28),
             ForeColor = Color.White, BorderStyle = BorderStyle.FixedSingle
         };
-        var rename = new Button { Text = "Renomear", Left = 20, Top = 280, Width = 115, Height = 38 };
-        var remove = new Button { Text = "Remover do Central", Left = 145, Top = 280, Width = 165, Height = 38 };
-        var close = new Button { Text = "Fechar", Left = 370, Top = 280, Width = 115, Height = 38, DialogResult = DialogResult.OK };
+        var rename = new Button { Text = "Renomear", Left = 20, Top = 292, Width = 105, Height = 38 };
+        var changePhoto = new Button { Text = "Escolher foto", Left = 135, Top = 292, Width = 125, Height = 38 };
+        var refreshPhoto = new Button { Text = "Buscar foto", Left = 270, Top = 292, Width = 110, Height = 38 };
+        var remove = new Button { Text = "Remover", Left = 390, Top = 292, Width = 100, Height = 38 };
+        var close = new Button { Text = "Fechar", Left = 510, Top = 292, Width = 105, Height = 38, DialogResult = DialogResult.OK };
         void RefreshList()
         {
             var selectedId = list.SelectedItem is AccountInfo selected ? selected.Id : null;
@@ -713,15 +772,59 @@ public sealed class MainForm : Form
             var index = accounts.FindIndex(item => item.Id == selected.Id);
             accounts[index] = accounts[index] with { Name = newName.Trim() };
             if (activeAccount?.Id == selected.Id) activeAccount = accounts[index];
-            SaveAccounts();
-            RefreshList();
-            RenderAccountButtons();
+            SaveAccounts(); RefreshList(); RenderAccountButtons();
+        };
+        changePhoto.Click += (_, _) =>
+        {
+            if (list.SelectedItem is not AccountInfo selected) return;
+            using var picker = new OpenFileDialog
+            {
+                Title = "Escolher foto da conta",
+                Filter = "Imagens|*.png;*.jpg;*.jpeg;*.jfif;*.webp;*.bmp"
+            };
+            if (picker.ShowDialog(dialog) != DialogResult.OK) return;
+            try
+            {
+                using var original = Image.FromFile(picker.FileName);
+                var side = Math.Min(original.Width, original.Height);
+                using var square = new Bitmap(512, 512);
+                using var graphics = Graphics.FromImage(square);
+                graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                graphics.DrawImage(original, new Rectangle(0, 0, 512, 512),
+                    new Rectangle((original.Width - side) / 2, (original.Height - side) / 2, side, side),
+                    GraphicsUnit.Pixel);
+                using var encoded = new MemoryStream();
+                square.Save(encoded, System.Drawing.Imaging.ImageFormat.Png);
+                var data = "data:image/png;base64," + Convert.ToBase64String(encoded.ToArray());
+                var index = accounts.FindIndex(item => item.Id == selected.Id);
+                accounts[index] = accounts[index] with { AvatarData = data };
+                if (activeAccount?.Id == selected.Id) activeAccount = accounts[index];
+                SaveAccounts(); RefreshList(); RenderAccountButtons();
+            }
+            catch (Exception error)
+            {
+                MessageBox.Show($"Não foi possível usar esta foto.\n\n{error.Message}", "MODUX",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        };
+        refreshPhoto.Click += async (_, _) =>
+        {
+            if (list.SelectedItem is not AccountInfo selected) return;
+            if (activeAccount?.Id != selected.Id)
+            {
+                MessageBox.Show("Abra esta conta no menu lateral e tente novamente.", "MODUX");
+                return;
+            }
+            if (browsers.TryGetValue(selected.Id, out var browser))
+                await CaptureAvatarWithRetries(selected.Id, browser);
+            RefreshList(); RenderAccountButtons();
         };
         remove.Click += async (_, _) =>
         {
             if (list.SelectedItem is not AccountInfo selected) return;
             var confirmation = MessageBox.Show(
-                $"Remover “{selected.Name}” do MODUX?\n\nA conta sairá do menu. Os dados locais da sessão serão preservados como segurança.",
+                $"Remover “{selected.Name}” do MODUX?\n\nA conta sairá do menu. Os dados locais da sessão serão preservados.",
                 "Remover conta", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
             if (confirmation != DialogResult.Yes) return;
             if (browsers.Remove(selected.Id, out var removedBrowser))
@@ -731,13 +834,11 @@ public sealed class MainForm : Form
             }
             accounts.RemoveAll(item => item.Id == selected.Id);
             if (activeAccount?.Id == selected.Id) activeAccount = null;
-            SaveAccounts();
-            RefreshList();
-            RenderAccountButtons();
+            SaveAccounts(); RefreshList(); RenderAccountButtons();
             if (activeAccount is null && accounts.Count > 0) await ActivateAccount(accounts[0]);
             else if (accounts.Count == 0) statusLabel.Text = "Nenhuma conta adicionada";
         };
-        dialog.Controls.AddRange([title, list, rename, remove, close]);
+        dialog.Controls.AddRange([title, list, rename, changePhoto, refreshPhoto, remove, close]);
         dialog.AcceptButton = close;
         RefreshList();
         dialog.ShowDialog(this);
@@ -805,36 +906,56 @@ public sealed class MainForm : Form
             return;
         }
 
-        using var picker = new FolderBrowserDialog
+        var extensionPath = detectedWaSellerPath;
+        if (string.IsNullOrWhiteSpace(extensionPath) || !File.Exists(Path.Combine(extensionPath, "manifest.json")))
         {
-            Description = "Selecione a pasta da versão do WaSeller que contém o manifest.json.",
-            UseDescriptionForTitle = true,
-            ShowNewFolderButton = false
-        };
-        if (picker.ShowDialog(this) != DialogResult.OK) return;
-        if (!File.Exists(Path.Combine(picker.SelectedPath, "manifest.json")))
+            using var picker = new FolderBrowserDialog
+            {
+                Description = "O WaSeller não foi localizado automaticamente. Selecione a pasta que contém manifest.json.",
+                UseDescriptionForTitle = true, ShowNewFolderButton = false
+            };
+            if (picker.ShowDialog(this) != DialogResult.OK) return;
+            extensionPath = picker.SelectedPath;
+        }
+        if (!File.Exists(Path.Combine(extensionPath, "manifest.json")))
         {
-            MessageBox.Show("A pasta escolhida não contém manifest.json.", "Pasta inválida", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show("A pasta escolhida não contém manifest.json.", "Pasta inválida",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
         try
         {
+            var installed = await browser.CoreWebView2.Profile.GetBrowserExtensionsAsync();
+            if (installed.Any(extension => extension.Name.Contains("WaSeller", StringComparison.OrdinalIgnoreCase)))
+            {
+                MessageBox.Show($"O WaSeller já está instalado somente na conta “{activeAccount.Name}”.",
+                    "WaSeller", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var confirmation = MessageBox.Show(
+                $"Instalar o WaSeller somente na conta “{activeAccount.Name}”?",
+                "Confirmar instalação", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (confirmation != DialogResult.Yes) return;
+
             installButton.Enabled = false;
             statusLabel.Text = $"Instalando WaSeller em {activeAccount.Name}…";
-            var extension = await browser.CoreWebView2.Profile.AddBrowserExtensionAsync(picker.SelectedPath);
+            var extension = await browser.CoreWebView2.Profile.AddBrowserExtensionAsync(extensionPath);
             statusLabel.Text = $"{activeAccount.Name} — {extension.Name} instalado";
             browser.CoreWebView2.Reload();
-            MessageBox.Show($"WaSeller instalado somente na conta “{activeAccount.Name}”.", "Instalação concluída", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            Log($"WaSeller instalado manualmente em {activeAccount.Name}.");
+            MessageBox.Show($"WaSeller instalado somente na conta “{activeAccount.Name}”.",
+                "Instalação concluída", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception error)
         {
             statusLabel.Text = "Falha ao instalar a extensão";
-            MessageBox.Show($"Não foi possível instalar o WaSeller.\n\n{error.Message}", "Erro", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            Log($"Falha ao instalar WaSeller: {error.Message}");
+            MessageBox.Show($"Não foi possível instalar o WaSeller.\n\n{error.Message}", "Erro",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
-        finally
-        {
-            installButton.Enabled = true;
-        }
+        finally { installButton.Enabled = true; }
     }
+
 }
