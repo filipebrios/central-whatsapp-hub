@@ -1,4 +1,4 @@
-name: Build WebView2 WaSeller prototype
+name: Build Central WhatsApp installer
 
 on:
   push:
@@ -20,11 +20,32 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
-      - name: Publish Windows prototype
+
+      - name: Publish Central WhatsApp
+        shell: pwsh
         run: dotnet publish webview2-prototype/CentralWhatsApp.WebView2.csproj -c Release -r win-x64 --self-contained true -o webview2-prototype/publish
-      - name: Upload prototype
+
+      - name: Locate Inno Setup
+        id: inno
+        shell: pwsh
+        run: |
+          $compiler = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $compiler)) {
+            choco install innosetup --no-progress -y
+          }
+          if (-not (Test-Path $compiler)) {
+            throw "Inno Setup compiler was not found."
+          }
+          "compiler=$compiler" >> $env:GITHUB_OUTPUT
+
+      - name: Build automatic installer
+        shell: pwsh
+        working-directory: webview2-prototype
+        run: '& "${{ steps.inno.outputs.compiler }}" "CentralWhatsApp.iss"'
+
+      - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Central-WhatsApp-WebView2-WaSeller-Test
-          path: webview2-prototype/publish/**
+          name: Central-WhatsApp-Setup-0.7.0
+          path: webview2-prototype/installer-output/Central-WhatsApp-Setup-0.7.0.exe
           if-no-files-found: error
