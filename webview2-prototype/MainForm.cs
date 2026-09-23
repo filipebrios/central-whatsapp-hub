@@ -1,5 +1,7 @@
 using System.Text.Json;
 using System.Drawing.Drawing2D;
+using System.Media;
+using System.Reflection;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -26,7 +28,12 @@ public sealed class MainForm : Form
     private string? detectedWaSellerPath;
     private readonly NotifyIcon trayIcon = new();
     private readonly Image? brandLogo;
+    private readonly HashSet<string> notificationBaselines = [];
     private bool sidebarCollapsed;
+
+    private static string AppVersion => Assembly.GetExecutingAssembly().GetName().Version is { } version
+        ? $"{version.Major}.{version.Minor}.{version.Build}"
+        : "1.2.0";
 
     private readonly FlowLayoutPanel accountsPanel = new()
     {
@@ -63,13 +70,15 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "MODUX — WebView2 + WaSeller";
+        Text = $"MODUX {AppVersion} — Gestão Multicontas";
         Width = 1440;
         Height = 900;
         MinimumSize = new Size(1024, 640);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(11, 19, 43);
         brandLogo = LoadBrandLogo();
+        var appIcon = LoadBrandIcon();
+        if (appIcon is not null) Icon = appIcon;
         ConfigureTrayIcon();
 
         sidebar.Dock = DockStyle.Left;
@@ -147,7 +156,7 @@ public sealed class MainForm : Form
 
     private void ConfigureTrayIcon()
     {
-        trayIcon.Text = "MODUX";
+        trayIcon.Text = $"MODUX {AppVersion}";
         trayIcon.Icon = Icon;
         trayIcon.Visible = true;
         var menu = new ContextMenuStrip();
@@ -329,6 +338,17 @@ public sealed class MainForm : Form
                 };
                 var environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder, options);
                 await browser.EnsureCoreWebView2Async(environment);
+                browser.CoreWebView2.IsMuted = false;
+                browser.CoreWebView2.PermissionRequested += (_, args) =>
+                {
+                    if (args.PermissionKind == CoreWebView2PermissionKind.Notifications &&
+                        Uri.TryCreate(args.Uri, UriKind.Absolute, out var permissionUri) &&
+                        permissionUri.Host.Equals("web.whatsapp.com", StringComparison.OrdinalIgnoreCase))
+                    {
+                        args.State = CoreWebView2PermissionState.Allow;
+                        args.SavesInProfile = true;
+                    }
+                };
                 browser.CoreWebView2.Settings.AreDevToolsEnabled = true;
                 browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
                 browser.CoreWebView2.NewWindowRequested += (_, args) =>
@@ -423,6 +443,16 @@ public sealed class MainForm : Form
         return bitmap;
     }
 
+    private static Icon? LoadBrandIcon()
+    {
+        try
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "assets", "modux.ico");
+            return File.Exists(path) ? new Icon(path) : null;
+        }
+        catch { return null; }
+    }
+
     private static Image? LoadBrandLogo()
     {
         try
@@ -448,7 +478,7 @@ public sealed class MainForm : Form
             using var subtitleFont = new Font("Segoe UI", 7.5f, FontStyle.Regular);
             e.Graphics.DrawString("MODUX", titleFont, Brushes.White, logoX + 53, logoY + 4);
             using var cyan = new SolidBrush(Color.FromArgb(6, 182, 212));
-            e.Graphics.DrawString("GESTÃO MULTICONTAS", subtitleFont, cyan, logoX + 54, logoY + 27);
+            e.Graphics.DrawString($"GESTÃO MULTICONTAS  •  v{AppVersion}", subtitleFont, cyan, logoX + 54, logoY + 27);
         }
     }
 
@@ -539,8 +569,26 @@ public sealed class MainForm : Form
                     var index = accounts.FindIndex(item => item.Id == pair.Key);
                     if (index >= 0 && accounts[index].UnreadCount != count)
                     {
+                        var previous = accounts[index].UnreadCount;
                         accounts[index] = accounts[index] with { UnreadCount = count };
                         changed = true;
+
+                        // A primeira leitura estabelece a base e não toca som ao iniciar o programa.
+                        if (notificationBaselines.Add(pair.Key)) continue;
+                        if (count > previous)
+                        {
+                            SystemSounds.Asterisk.Play();
+                            var accountName = accounts[index].Name;
+                            trayIcon.BalloonTipTitle = $"Nova mensagem — {accountName}";
+                            trayIcon.BalloonTipText = count == 1
+                                ? "Há 1 conversa não lida."
+                                : $"Há {count} conversas não lidas.";
+                            trayIcon.ShowBalloonTip(3500);
+                        }
+                    }
+                    else if (index >= 0)
+                    {
+                        notificationBaselines.Add(pair.Key);
                     }
                 }
                 catch { }
