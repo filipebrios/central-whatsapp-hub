@@ -12,7 +12,7 @@ public sealed class MainForm : Form
 {
     private sealed record AccountInfo(string Id, string Name, string? AvatarData = null, int UnreadCount = 0);
 
-    [ComImport, Guid("56FDF342-FD6D-11d0-958A-006097C9A090")]
+    [ComImport, Guid("56FDF344-FD6D-11d0-958A-006097C9A090")]
     private class TaskbarListCom { }
 
     [ComImport, Guid("EA1AFB91-9E28-4B86-90E9-9E9F8A5EEA84"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -93,9 +93,47 @@ public sealed class MainForm : Form
     {
         Width = 42,
         Height = 42,
-        SizeMode = PictureBoxSizeMode.CenterImage,
+        SizeMode = PictureBoxSizeMode.Zoom,
         Margin = new Padding(12, 3, 4, 3),
         BackColor = Color.Transparent
+    };
+    private readonly Panel activeAccountCard = new()
+    {
+        Width = 310,
+        Height = 48,
+        Margin = new Padding(8, 3, 8, 3),
+        BackColor = Color.FromArgb(16, 29, 58)
+    };
+    private readonly Label activeMarkerLabel = new()
+    {
+        Text = "EM USO AGORA",
+        AutoSize = true,
+        ForeColor = Color.FromArgb(6, 182, 212),
+        Font = new Font("Segoe UI", 7f, FontStyle.Bold),
+        Left = 50,
+        Top = 4
+    };
+    private readonly Label activeNameLabel = new()
+    {
+        Text = "Aguardando conta…",
+        AutoEllipsis = true,
+        ForeColor = Color.White,
+        Font = new Font("Segoe UI", 10f, FontStyle.Bold),
+        Left = 50,
+        Top = 17,
+        Width = 245,
+        Height = 18
+    };
+    private readonly Label activeDetailsLabel = new()
+    {
+        Text = "",
+        AutoEllipsis = true,
+        ForeColor = Color.FromArgb(156, 163, 175),
+        Font = new Font("Segoe UI", 7.5f),
+        Left = 50,
+        Top = 34,
+        Width = 245,
+        Height = 13
     };
     private readonly Label statusLabel = new()
     {
@@ -147,7 +185,7 @@ public sealed class MainForm : Form
         var toolbar = new FlowLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 56,
+            Height = 64,
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false,
             BackColor = Color.FromArgb(11, 19, 43),
@@ -156,11 +194,17 @@ public sealed class MainForm : Form
         collapseButton.Width = 44;
         collapseButton.Padding = new Padding(4);
         collapseButton.AccessibleName = "Recolher ou abrir menu de contas";
+        activeAccountPicture.Location = new Point(4, 3);
+        activeAccountPicture.Margin = new Padding(0);
+        activeAccountCard.Controls.Add(activeAccountPicture);
+        activeAccountCard.Controls.Add(activeMarkerLabel);
+        activeAccountCard.Controls.Add(activeNameLabel);
+        activeAccountCard.Controls.Add(activeDetailsLabel);
         toolbar.Controls.Add(collapseButton);
+        toolbar.Controls.Add(activeAccountCard);
         toolbar.Controls.Add(installButton);
         toolbar.Controls.Add(reloadButton);
         toolbar.Controls.Add(clearCacheButton);
-        toolbar.Controls.Add(activeAccountPicture);
         toolbar.Controls.Add(statusLabel);
 
         var rightPanel = new Panel { Dock = DockStyle.Fill };
@@ -409,7 +453,15 @@ public sealed class MainForm : Form
                 browser.CoreWebView2.NewWindowRequested += (_, args) =>
                 {
                     args.Handled = true;
-                    browser.CoreWebView2.Navigate(args.Uri);
+                    OpenExternalLink(args.Uri);
+                };
+                browser.CoreWebView2.NavigationStarting += (_, args) =>
+                {
+                    if (!IsWhatsAppWebAddress(args.Uri))
+                    {
+                        args.Cancel = true;
+                        OpenExternalLink(args.Uri);
+                    }
                 };
                 browser.CoreWebView2.NavigationCompleted += async (_, args) =>
                 {
@@ -670,6 +722,10 @@ public sealed class MainForm : Form
         activeAccount = current;
         activeAccountPicture.Image?.Dispose();
         activeAccountPicture.Image = BuildAccountIcon(current);
+        activeNameLabel.Text = current.Name;
+        activeDetailsLabel.Text = current.UnreadCount > 0
+            ? $"{current.UnreadCount} não lidas  •  sessão ativa"
+            : "Conectado  •  sessão ativa";
         statusLabel.Text = current.UnreadCount > 0
             ? $"{current.Name}  •  {current.UnreadCount} não lidas  •  sessão independente"
             : $"{current.Name}  •  conectado  •  sessão independente";
@@ -677,6 +733,33 @@ public sealed class MainForm : Form
         Text = total > 0
             ? $"({total}) MODUX {AppVersion} — {current.Name}"
             : $"MODUX {AppVersion} — {current.Name}";
+    }
+
+    private static bool IsWhatsAppWebAddress(string? address)
+    {
+        if (!Uri.TryCreate(address, UriKind.Absolute, out var uri)) return true;
+        return uri.Scheme is "about" or "data" or "blob" ||
+               uri.Host.Equals("web.whatsapp.com", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void OpenExternalLink(string? address)
+    {
+        if (!Uri.TryCreate(address, UriKind.Absolute, out var uri)) return;
+        if (uri.Scheme is not ("http" or "https" or "mailto")) return;
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri.AbsoluteUri)
+            {
+                UseShellExecute = true
+            });
+            Log($"Link aberto externamente: {uri.Host}");
+        }
+        catch (Exception error)
+        {
+            Log($"Falha ao abrir link externo: {error.Message}");
+            MessageBox.Show("Não foi possível abrir o link no navegador padrão.", "MODUX",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
     }
 
     private void InitializeTaskbar()
@@ -712,7 +795,7 @@ public sealed class MainForm : Form
             using var background = new SolidBrush(Color.FromArgb(6, 182, 212));
             graphics.FillEllipse(background, 1, 1, 30, 30);
             var text = total > 99 ? "99+" : total.ToString();
-            using var font = new Font("Segoe UI", total > 99 ? 9f : 12f, FontStyle.Bold, GraphicsUnit.Pixel);
+            using var font = new Font("Segoe UI", total > 99 ? 10f : 14f, FontStyle.Bold, GraphicsUnit.Pixel);
             TextRenderer.DrawText(graphics, text, font, new Rectangle(1, 1, 30, 30), Color.White,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             taskbarOverlayIcon = badge.GetHicon();
