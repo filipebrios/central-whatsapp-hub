@@ -14,12 +14,17 @@ public sealed class MainForm : Form
         "CentralWhatsApp",
         "WebView2Prototype");
 
+    private const string WaSellerExtensionId = "illemhbijpiebjfilfmgebahaakajkpe";
     private const int ExpandedSidebarWidth = 245;
     private const int CollapsedSidebarWidth = 72;
     private readonly Panel sidebar = new();
     private readonly Label brand = new();
     private readonly System.Windows.Forms.Timer unreadTimer = new() { Interval = 5000 };
     private bool refreshingIndicators;
+    private bool exitRequested;
+    private bool trayNoticeShown;
+    private string? detectedWaSellerPath;
+    private readonly NotifyIcon trayIcon = new();
     private bool sidebarCollapsed;
 
     private readonly FlowLayoutPanel accountsPanel = new()
@@ -62,6 +67,7 @@ public sealed class MainForm : Form
         MinimumSize = new Size(1024, 640);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(17, 24, 39);
+        ConfigureTrayIcon();
 
         sidebar.Dock = DockStyle.Left;
         sidebar.Width = ExpandedSidebarWidth;
@@ -120,6 +126,7 @@ public sealed class MainForm : Form
             await Start();
             unreadTimer.Start();
         };
+        FormClosing += HandleFormClosing;
     }
 
     private static Button CreateToolbarButton(string text) => new()
@@ -133,11 +140,65 @@ public sealed class MainForm : Form
         Padding = new Padding(12, 4, 12, 4)
     };
 
+    private void ConfigureTrayIcon()
+    {
+        trayIcon.Text = "Central WhatsApp";
+        trayIcon.Icon = Icon;
+        trayIcon.Visible = true;
+        var menu = new ContextMenuStrip();
+        menu.Items.Add("Abrir Central WhatsApp", null, (_, _) => RestoreFromTray());
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("Encerrar", null, (_, _) =>
+        {
+            exitRequested = true;
+            trayIcon.Visible = false;
+            Close();
+        });
+        trayIcon.ContextMenuStrip = menu;
+        trayIcon.DoubleClick += (_, _) => RestoreFromTray();
+    }
+
+    private void HandleFormClosing(object? sender, FormClosingEventArgs e)
+    {
+        if (exitRequested || e.CloseReason == CloseReason.WindowsShutDown) return;
+        e.Cancel = true;
+        Hide();
+        ShowInTaskbar = false;
+        if (!trayNoticeShown)
+        {
+            trayNoticeShown = true;
+            trayIcon.BalloonTipTitle = "Central WhatsApp continua ativo";
+            trayIcon.BalloonTipText = "O programa ficou perto do relógio. Clique duas vezes no ícone para abrir.";
+            trayIcon.ShowBalloonTip(4000);
+        }
+    }
+
+    private void RestoreFromTray()
+    {
+        Show();
+        ShowInTaskbar = true;
+        WindowState = FormWindowState.Normal;
+        Activate();
+        BringToFront();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            unreadTimer.Stop();
+            trayIcon.Visible = false;
+            trayIcon.Dispose();
+        }
+        base.Dispose(disposing);
+    }
+
     private string AccountsFile => Path.Combine(appDataFolder, "accounts.json");
 
     private async Task Start()
     {
         Directory.CreateDirectory(appDataFolder);
+        detectedWaSellerPath = FindWaSellerFolder();
         LoadAccounts();
         RenderAccountButtons();
         if (accounts.Count > 0) await ActivateAccount(accounts[0]);
@@ -242,6 +303,7 @@ public sealed class MainForm : Form
                 };
                 var environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder, options);
                 await browser.EnsureCoreWebView2Async(environment);
+                await TryAutoInstallWaSeller(browser, account);
                 browser.CoreWebView2.Settings.AreDevToolsEnabled = true;
                 browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
                 browser.CoreWebView2.NewWindowRequested += (_, args) =>
@@ -544,6 +606,72 @@ public sealed class MainForm : Form
           return match ? Number(match[1]) : 0;
         })()
         """;
+
+    private string? FindWaSellerFolder()
+    {
+        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var browserRoots = new[]
+        {
+            Path.Combine(local, "Google", "Chrome", "User Data"),
+            Path.Combine(local, "Microsoft", "Edge", "User Data"),
+            Path.Combine(local, "BraveSoftware", "Brave-Browser", "User Data"),
+            Path.Combine(roaming, "Opera Software", "Opera Stable")
+        };
+
+        var candidates = new List<DirectoryInfo>();
+        foreach (var root in browserRoots.Where(Directory.Exists))
+        {
+            try
+            {
+                IEnumerable<string> profiles;
+                if (Path.GetFileName(root).Equals("Opera Stable", StringComparison.OrdinalIgnoreCase))
+                    profiles = new[] { root };
+                else
+                    profiles = Directory.EnumerateDirectories(root)
+                        .Where(path =>
+                        {
+                            var name = Path.GetFileName(path);
+                            return name.Equals("Default", StringComparison.OrdinalIgnoreCase) ||
+                                   name.StartsWith("Profile ", StringComparison.OrdinalIgnoreCase);
+                        });
+
+                foreach (var profile in profiles)
+                {
+                    var extensionRoot = Path.Combine(profile, "Extensions", WaSellerExtensionId);
+                    if (!Directory.Exists(extensionRoot)) continue;
+                    foreach (var version in Directory.EnumerateDirectories(extensionRoot))
+                        if (File.Exists(Path.Combine(version, "manifest.json")))
+                            candidates.Add(new DirectoryInfo(version));
+                }
+            }
+            catch { }
+        }
+
+        return candidates.OrderByDescending(item => item.LastWriteTimeUtc)
+            .Select(item => item.FullName).FirstOrDefault();
+    }
+
+    private async Task TryAutoInstallWaSeller(Microsoft.Web.WebView2.WinForms.WebView2 browser, AccountInfo account)
+    {
+        if (browser.CoreWebView2 is null || string.IsNullOrWhiteSpace(detectedWaSellerPath)) return;
+        try
+        {
+            var installed = await browser.CoreWebView2.Profile.GetBrowserExtensionsAsync();
+            if (installed.Any(extension => extension.Name.Contains("WaSeller", StringComparison.OrdinalIgnoreCase)))
+            {
+                statusLabel.Text = $"{account.Name} — WaSeller pronto";
+                return;
+            }
+
+            var extension = await browser.CoreWebView2.Profile.AddBrowserExtensionAsync(detectedWaSellerPath);
+            statusLabel.Text = $"{account.Name} — {extension.Name} instalado automaticamente";
+        }
+        catch
+        {
+            // A instalação manual continua disponível se o navegador bloquear esta cópia.
+        }
+    }
 
     private Microsoft.Web.WebView2.WinForms.WebView2? ActiveBrowser()
         => activeAccount is not null && browsers.TryGetValue(activeAccount.Id, out var browser) ? browser : null;
