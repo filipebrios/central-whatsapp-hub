@@ -64,7 +64,8 @@ Requisitos permanentes:
 - Repositório público: `filipebrios/central-whatsapp-hub`.
 - Branch de desenvolvimento e releases atuais: `codex/electron-windows-mvp`.
 - Pull request existente: PR #1, mantido como rascunho; não mesclar sem solicitação explícita.
-- Última release pública confirmada: `MODUX 1.4.0` para Windows. A 1.5.0 está em desenvolvimento e ainda não deve ser anunciada como publicada.
+- Última release pública confirmada: `MODUX 1.5.0` para Windows.
+- Instalador confirmado: `MODUX-Setup-1.5.0.exe` na release `modux-v1.5.0`.
 - Instalador confirmado: `MODUX-Setup-1.4.0.exe`.
 - A 1.4.0 foi compilada com sucesso pelo workflow Windows e publicada na release `modux-v1.4.0`.
 - A release 1.3.0 foi compilada a partir de `webview2-prototype/`, portanto continua exclusiva do Windows.
@@ -133,7 +134,7 @@ Antes de entregar uma versão:
 - O cartão “EM USO AGORA” passou a abrir um seletor visual com foto, nome, não lidas e marcação da conta ativa.
 - Criada tela de Preferências com tema claro/escuro/sistema, fonte, escala da interface e zoom do WhatsApp.
 - Preferências persistem em `preferences.json` sem alterar sessões, contas ou dados do WaSeller.
-- Estado: implementação em validação; instalador ainda não publicado.
+- Estado: compilação Windows concluída com sucesso e instalador publicado; aguardando teste funcional do usuário.
 
 ### 2026-09-23 — candidata MODUX 1.4.0
 
