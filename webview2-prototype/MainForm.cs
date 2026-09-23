@@ -25,6 +25,7 @@ public sealed class MainForm : Form
     private bool trayNoticeShown;
     private string? detectedWaSellerPath;
     private readonly NotifyIcon trayIcon = new();
+    private readonly Image? brandLogo;
     private bool sidebarCollapsed;
 
     private readonly FlowLayoutPanel accountsPanel = new()
@@ -61,17 +62,18 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "Central WhatsApp — WebView2 + WaSeller";
+        Text = "MODUX — WebView2 + WaSeller";
         Width = 1440;
         Height = 900;
         MinimumSize = new Size(1024, 640);
         StartPosition = FormStartPosition.CenterScreen;
-        BackColor = Color.FromArgb(17, 24, 39);
+        BackColor = Color.FromArgb(11, 19, 43);
+        brandLogo = LoadBrandLogo();
         ConfigureTrayIcon();
 
         sidebar.Dock = DockStyle.Left;
         sidebar.Width = ExpandedSidebarWidth;
-        sidebar.BackColor = Color.FromArgb(7, 13, 18);
+        sidebar.BackColor = Color.FromArgb(6, 12, 28);
         sidebar.Padding = new Padding(0, 10, 0, 0);
         brand.Dock = DockStyle.Top;
         brand.Height = 55;
@@ -97,7 +99,7 @@ public sealed class MainForm : Form
             Height = 56,
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false,
-            BackColor = Color.FromArgb(17, 24, 39),
+            BackColor = Color.FromArgb(11, 19, 43),
             Padding = new Padding(8, 4, 8, 4)
         };
         collapseButton.Width = 44;
@@ -133,7 +135,7 @@ public sealed class MainForm : Form
     {
         Text = text,
         AutoSize = true,
-        BackColor = Color.FromArgb(31, 41, 55),
+        BackColor = Color.FromArgb(29, 78, 216),
         ForeColor = Color.White,
         FlatStyle = FlatStyle.Flat,
         Margin = new Padding(8),
@@ -142,11 +144,11 @@ public sealed class MainForm : Form
 
     private void ConfigureTrayIcon()
     {
-        trayIcon.Text = "Central WhatsApp";
+        trayIcon.Text = "MODUX";
         trayIcon.Icon = Icon;
         trayIcon.Visible = true;
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Abrir Central WhatsApp", null, (_, _) => RestoreFromTray());
+        menu.Items.Add("Abrir MODUX", null, (_, _) => RestoreFromTray());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Encerrar", null, (_, _) =>
         {
@@ -167,7 +169,7 @@ public sealed class MainForm : Form
         if (!trayNoticeShown)
         {
             trayNoticeShown = true;
-            trayIcon.BalloonTipTitle = "Central WhatsApp continua ativo";
+            trayIcon.BalloonTipTitle = "MODUX continua ativo";
             trayIcon.BalloonTipText = "O programa ficou perto do relógio. Clique duas vezes no ícone para abrir.";
             trayIcon.ShowBalloonTip(4000);
         }
@@ -189,6 +191,7 @@ public sealed class MainForm : Form
             unreadTimer.Stop();
             trayIcon.Visible = false;
             trayIcon.Dispose();
+            brandLogo?.Dispose();
         }
         base.Dispose(disposing);
     }
@@ -264,7 +267,7 @@ public sealed class MainForm : Form
                 Tag = account,
                 Image = BuildAccountIcon(account)
             };
-            button.FlatAppearance.BorderColor = activeAccount?.Id == account.Id ? Color.FromArgb(34, 197, 94) : Color.FromArgb(31, 41, 55);
+            button.FlatAppearance.BorderColor = activeAccount?.Id == account.Id ? Color.FromArgb(6, 182, 212) : Color.FromArgb(29, 78, 216);
             button.Click += async (_, _) => await ActivateAccount(account);
             accountsPanel.Controls.Add(button);
         }
@@ -319,7 +322,7 @@ public sealed class MainForm : Form
             }
             catch (Exception error)
             {
-                MessageBox.Show($"Não foi possível abrir esta conta.\n\n{error.Message}", "Central WhatsApp", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"Não foi possível abrir esta conta.\n\n{error.Message}", "MODUX", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -351,7 +354,7 @@ public sealed class MainForm : Form
             var badgeText = account.UnreadCount > 99 ? "99+" : account.UnreadCount.ToString();
             var badgeWidth = account.UnreadCount > 99 ? 24 : 19;
             var badgeRect = new Rectangle(48 - badgeWidth, 0, badgeWidth, 19);
-            using var badgeBrush = new SolidBrush(Color.FromArgb(34, 197, 94));
+            using var badgeBrush = new SolidBrush(Color.FromArgb(6, 182, 212));
             graphics.FillEllipse(badgeBrush, badgeRect);
             using var font = new Font("Segoe UI", account.UnreadCount > 99 ? 7 : 8, FontStyle.Bold);
             TextRenderer.DrawText(graphics, badgeText, font, badgeRect, Color.White,
@@ -387,41 +390,32 @@ public sealed class MainForm : Form
         return bitmap;
     }
 
+    private static Image? LoadBrandLogo()
+    {
+        try
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "assets", "modux-icon.png");
+            return File.Exists(path) ? Image.FromFile(path) : null;
+        }
+        catch { return null; }
+    }
+
     private void DrawBrand(object? sender, PaintEventArgs e)
     {
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        var logoSize = 40;
-        var logoX = sidebarCollapsed ? (brand.Width - logoSize) / 2 : 12;
+        var logoSize = 43;
+        var logoX = sidebarCollapsed ? (brand.Width - logoSize) / 2 : 10;
         var logoY = (brand.Height - logoSize) / 2;
-        using var path = RoundedRectangle(new Rectangle(logoX, logoY, logoSize, logoSize), 11);
-        using var gradient = new LinearGradientBrush(
-            new Rectangle(logoX, logoY, logoSize, logoSize),
-            Color.FromArgb(16, 185, 129), Color.FromArgb(34, 197, 94), 45f);
-        e.Graphics.FillPath(gradient, path);
-
-        using var pen = new Pen(Color.White, 2.2f)
-        {
-            StartCap = LineCap.Round,
-            EndCap = LineCap.Round,
-            LineJoin = LineJoin.Round
-        };
-        e.Graphics.DrawEllipse(pen, logoX + 8, logoY + 9, 23, 18);
-        e.Graphics.DrawLine(pen, logoX + 11, logoY + 25, logoX + 8, logoY + 31);
-        e.Graphics.DrawLine(pen, logoX + 8, logoY + 31, logoX + 16, logoY + 27);
-        e.Graphics.FillEllipse(Brushes.White, logoX + 13, logoY + 17, 3, 3);
-        e.Graphics.FillEllipse(Brushes.White, logoX + 19, logoY + 17, 3, 3);
-        e.Graphics.FillEllipse(Brushes.White, logoX + 25, logoY + 17, 3, 3);
-        using var accent = new SolidBrush(Color.FromArgb(7, 13, 18));
-        e.Graphics.FillEllipse(accent, logoX + 28, logoY + 5, 9, 9);
-        e.Graphics.FillEllipse(Brushes.White, logoX + 31, logoY + 8, 3, 3);
+        if (brandLogo is not null)
+            e.Graphics.DrawImage(brandLogo, new Rectangle(logoX, logoY, logoSize, logoSize));
 
         if (!sidebarCollapsed)
         {
-            using var titleFont = new Font("Segoe UI", 11.5f, FontStyle.Bold);
+            using var titleFont = new Font("Segoe UI", 13f, FontStyle.Bold);
             using var subtitleFont = new Font("Segoe UI", 7.5f, FontStyle.Regular);
-            e.Graphics.DrawString("Central WhatsApp", titleFont, Brushes.White, logoX + 50, logoY + 4);
-            using var muted = new SolidBrush(Color.FromArgb(148, 163, 184));
-            e.Graphics.DrawString("suas contas em um só lugar", subtitleFont, muted, logoX + 51, logoY + 25);
+            e.Graphics.DrawString("MODUX", titleFont, Brushes.White, logoX + 53, logoY + 4);
+            using var cyan = new SolidBrush(Color.FromArgb(6, 182, 212));
+            e.Graphics.DrawString("GESTÃO MULTICONTAS", subtitleFont, cyan, logoX + 54, logoY + 27);
         }
     }
 
@@ -684,7 +678,7 @@ public sealed class MainForm : Form
             StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog,
             MaximizeBox = false, MinimizeBox = false,
-            BackColor = Color.FromArgb(17, 24, 39),
+            BackColor = Color.FromArgb(11, 19, 43),
             ForeColor = Color.White
         };
         var title = new Label
@@ -695,7 +689,7 @@ public sealed class MainForm : Form
         var list = new ListBox
         {
             Left = 20, Top = 52, Width = 465, Height = 210,
-            Font = new Font("Segoe UI", 10), BackColor = Color.FromArgb(7, 13, 18),
+            Font = new Font("Segoe UI", 10), BackColor = Color.FromArgb(6, 12, 28),
             ForeColor = Color.White, BorderStyle = BorderStyle.FixedSingle
         };
         var rename = new Button { Text = "Renomear", Left = 20, Top = 280, Width = 115, Height = 38 };
@@ -727,7 +721,7 @@ public sealed class MainForm : Form
         {
             if (list.SelectedItem is not AccountInfo selected) return;
             var confirmation = MessageBox.Show(
-                $"Remover “{selected.Name}” do Central WhatsApp?\n\nA conta sairá do menu. Os dados locais da sessão serão preservados como segurança.",
+                $"Remover “{selected.Name}” do MODUX?\n\nA conta sairá do menu. Os dados locais da sessão serão preservados como segurança.",
                 "Remover conta", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
             if (confirmation != DialogResult.Yes) return;
             if (browsers.Remove(selected.Id, out var removedBrowser))
@@ -807,7 +801,7 @@ public sealed class MainForm : Form
         var browser = ActiveBrowser();
         if (browser?.CoreWebView2 is null || activeAccount is null)
         {
-            MessageBox.Show("Aguarde a conta terminar de iniciar.", "Central WhatsApp");
+            MessageBox.Show("Aguarde a conta terminar de iniciar.", "MODUX");
             return;
         }
 
