@@ -1,5 +1,5 @@
 #define MyAppName "MODUX"
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.2.0"
 #define MyAppPublisher "MODUX"
 #define MyAppExeName "MODUX.exe"
 
@@ -31,10 +31,12 @@ Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortugue
 
 [Tasks]
 Name: "desktopicon"; Description: "Criar atalho na Área de Trabalho"; GroupDescription: "Atalhos:"; Flags: checkedonce
-Name: "autostart"; Description: "Iniciar o Central WhatsApp com o Windows"; GroupDescription: "Inicialização:"; Flags: checkedonce
+Name: "autostart"; Description: "Iniciar o MODUX com o Windows"; GroupDescription: "Inicialização:"; Flags: checkedonce
 
 [InstallDelete]
 Type: files; Name: "{app}\\CentralWhatsApp.WebView2.exe"
+Type: files; Name: "{autodesktop}\\Central WhatsApp.lnk"
+Type: files; Name: "{group}\\Central WhatsApp.lnk"
 
 [Files]
 Source: "publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -44,6 +46,7 @@ Name: "{group}\Central WhatsApp"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\Central WhatsApp"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Registry]
+Root: HKCU; Subkey: "Software\\Microsoft\\Windows\\CurrentVersion\\Run"; ValueType: none; ValueName: "Central WhatsApp"; Flags: deletevalue uninsdeletevalue
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "MODUX"; ValueData: """{app}\{#MyAppExeName}"" --autostart"; Flags: uninsdeletevalue; Tasks: autostart
 
 [Run]
