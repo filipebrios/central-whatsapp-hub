@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   windows:
@@ -42,6 +42,21 @@ jobs:
         shell: pwsh
         working-directory: webview2-prototype
         run: '& "${{ steps.inno.outputs.compiler }}" "CentralWhatsApp.iss"'
+
+      - name: Publish direct installer download
+        shell: pwsh
+        working-directory: webview2-prototype
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "central-whatsapp-v0.7.0"
+          $installer = "installer-output/Central-WhatsApp-Setup-0.7.0.exe"
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag $installer --title "Central WhatsApp 0.7.0" --notes "Instalador automático do Central WhatsApp para Windows." --prerelease --target codex/electron-windows-mvp
+          } else {
+            gh release upload $tag $installer --clobber
+          }
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
