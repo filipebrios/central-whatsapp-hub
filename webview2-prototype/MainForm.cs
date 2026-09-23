@@ -74,7 +74,7 @@ public sealed class MainForm : Form
 
     private static string AppVersion => Assembly.GetExecutingAssembly().GetName().Version is { } version
         ? $"{version.Major}.{version.Minor}.{version.Build}"
-        : "1.5.1";
+        : "1.5.2";
 
     private readonly FlowLayoutPanel accountsPanel = new()
     {
@@ -252,15 +252,28 @@ public sealed class MainForm : Form
         installButton.Click += InstallExtension;
         reloadButton.Click += (_, _) => ActiveBrowser()?.CoreWebView2?.Reload();
         clearCacheButton.Click += ClearCache;
-        unreadTimer.Tick += async (_, _) => await RefreshUnreadCounts();
+        unreadTimer.Tick += async (_, _) =>
+        {
+            try { await RefreshUnreadCounts(); }
+            catch (Exception error) { Log($"Falha não fatal ao atualizar contadores: {error}"); }
+        };
         Shown += async (_, _) =>
         {
-            await Start();
-            // O botão da janela precisa existir na barra do Windows antes de receber o selo.
-            await Task.Delay(750);
-            InitializeTaskbar();
-            UpdateTaskbarBadge();
-            unreadTimer.Start();
+            try
+            {
+                await Start();
+                // O botão da janela precisa existir na barra do Windows antes de receber o selo.
+                await Task.Delay(750);
+                InitializeTaskbar();
+                UpdateTaskbarBadge();
+                unreadTimer.Start();
+            }
+            catch (Exception error)
+            {
+                Log($"Falha durante a inicialização: {error}");
+                MessageBox.Show("O MODUX encontrou um problema ao iniciar. Consulte o arquivo modux.log.",
+                    "MODUX", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         };
         Activated += (_, _) => UpdateTaskbarBadge();
         FormClosing += HandleFormClosing;
@@ -458,7 +471,7 @@ public sealed class MainForm : Form
             Font = CreateInterfaceFont(8f, FontStyle.Bold),
             Margin = new Padding(8, 4, 8, 7)
         });
-        foreach (var account in accounts)
+        foreach (var account in accounts.ToArray())
         {
             var countText = account.UnreadCount > 0 ? $"   •   {account.UnreadCount} não lidas" : "   •   sem novas mensagens";
             var item = new ToolStripMenuItem($"{account.Name}{countText}", BuildAccountIcon(account))
@@ -492,7 +505,7 @@ public sealed class MainForm : Form
     private void RenderAccountButtons()
     {
         accountsPanel.Controls.Clear();
-        foreach (var account in accounts)
+        foreach (var account in accounts.ToArray())
         {
             var button = new Button
             {
@@ -524,7 +537,7 @@ public sealed class MainForm : Form
         activeAccount = account;
         RenderAccountButtons();
 
-        foreach (var existing in browsers.Values) existing.Visible = false;
+        foreach (var existing in browsers.Values.ToArray()) existing.Visible = false;
 
         if (!browsers.TryGetValue(account.Id, out var browser))
         {
@@ -787,7 +800,9 @@ public sealed class MainForm : Form
         var changed = false;
         try
         {
-            foreach (var pair in browsers)
+            // ExecuteScriptAsync devolve o controle ao formulário. Uma conta pode ser aberta ou
+            // removida durante essa espera, então percorremos uma fotografia estável do dicionário.
+            foreach (var pair in browsers.ToArray())
             {
                 if (pair.Value.IsDisposed || pair.Value.CoreWebView2 is null) continue;
                 try
@@ -907,7 +922,7 @@ public sealed class MainForm : Form
             button.BackColor = Color.FromArgb(29, 78, 216);
             button.ForeColor = Color.White;
         }
-        foreach (var browser in browsers.Values)
+        foreach (var browser in browsers.Values.ToArray())
             browser.ZoomFactor = preferences.WhatsAppZoom / 100d;
 
         brand.Invalidate();
@@ -1220,7 +1235,7 @@ public sealed class MainForm : Form
         {
             Directory.CreateDirectory(appDataFolder);
             File.WriteAllText(CacheFlagFile, DateTime.Now.ToString("O"));
-            foreach (var browser in browsers.Values)
+            foreach (var browser in browsers.Values.ToArray())
             {
                 if (browser.CoreWebView2 is not null)
                     await browser.CoreWebView2.Profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.DiskCache);

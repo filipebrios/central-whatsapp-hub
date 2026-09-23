@@ -13,7 +13,7 @@
     <Description>Sistema de Gestão Multicontas Corporativo</Description>
     <AssemblyTitle>MODUX</AssemblyTitle>
     <ApplicationIcon>assets\\modux.ico</ApplicationIcon>
-    <Version>1.5.1</Version>
+    <Version>1.5.2</Version>
   </PropertyGroup>
 
   <ItemGroup>

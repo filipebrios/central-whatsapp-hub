@@ -64,7 +64,7 @@ Requisitos permanentes:
 - Repositório público: `filipebrios/central-whatsapp-hub`.
 - Branch de desenvolvimento e releases atuais: `codex/electron-windows-mvp`.
 - Pull request existente: PR #1, mantido como rascunho; não mesclar sem solicitação explícita.
-- Última release pública confirmada: `MODUX 1.5.1` para Windows.
+- Última release pública confirmada: `MODUX 1.5.1` para Windows. A correção 1.5.2 está em validação.
 - Instalador confirmado: `MODUX-Setup-1.5.1.exe` na release `modux-v1.5.1`.
 - Página pública oficial de downloads: `https://modux-downloads.filipebrios.chatgpt.site`.
 - A 1.4.0 foi compilada com sucesso pelo workflow Windows e publicada na release `modux-v1.4.0`.
@@ -128,6 +128,13 @@ Antes de entregar uma versão:
 - WaSeller, quando aplicável, permanece limitado à conta escolhida.
 
 ## Registro de mudanças
+
+### 2026-09-23 — candidata MODUX 1.5.2
+
+- Identificada pela captura do usuário a exceção `Collection was modified; enumeration operation may not execute` ao alternar contas.
+- A causa foi a alteração do dicionário de navegadores durante leituras assíncronas dos contadores.
+- As enumerações de navegadores e contas agora trabalham sobre cópias estáveis; atualização periódica e inicialização também registram falhas sem derrubar o aplicativo.
+- Estado: correção em validação; instalador ainda não publicado.
 
 ### 2026-09-23 — candidata MODUX 1.5.1
 
