@@ -11,6 +11,11 @@ namespace CentralWhatsApp.WebView2;
 public sealed class MainForm : Form
 {
     private sealed record AccountInfo(string Id, string Name, string? AvatarData = null, int UnreadCount = 0);
+    private sealed record UserPreferences(
+        string Theme = "Sistema",
+        string FontFamily = "Segoe UI",
+        int InterfaceSize = 100,
+        int WhatsAppZoom = 100);
 
     [ComImport, Guid("56FDF344-FD6D-11d0-958A-006097C9A090")]
     private class TaskbarListCom { }
@@ -51,6 +56,8 @@ public sealed class MainForm : Form
     private const int CollapsedSidebarWidth = 72;
     private readonly Panel sidebar = new();
     private readonly Label brand = new();
+    private readonly FlowLayoutPanel toolbar = new();
+    private readonly Panel sidebarBottom = new();
     private readonly System.Windows.Forms.Timer unreadTimer = new() { Interval = 5000 };
     private bool refreshingIndicators;
     private bool exitRequested;
@@ -63,10 +70,11 @@ public sealed class MainForm : Form
     private IntPtr taskbarOverlayIcon;
     private string? lastNotifiedAccountId;
     private bool sidebarCollapsed;
+    private UserPreferences preferences = new();
 
     private static string AppVersion => Assembly.GetExecutingAssembly().GetName().Version is { } version
         ? $"{version.Major}.{version.Minor}.{version.Build}"
-        : "1.2.0";
+        : "1.5.0";
 
     private readonly FlowLayoutPanel accountsPanel = new()
     {
@@ -85,6 +93,7 @@ public sealed class MainForm : Form
 
     private readonly Button addAccountButton = CreateToolbarButton("+ Adicionar conta");
     private readonly Button manageAccountsButton = CreateToolbarButton("⚙ Gerenciar contas");
+    private readonly Button preferencesButton = CreateToolbarButton("◈ Preferências");
     private readonly Button collapseButton = CreateToolbarButton("◀");
     private readonly Button installButton = CreateToolbarButton("Instalar WaSeller nesta conta");
     private readonly Button reloadButton = CreateToolbarButton("Recarregar");
@@ -135,6 +144,18 @@ public sealed class MainForm : Form
         Width = 245,
         Height = 13
     };
+    private readonly Label activeChevronLabel = new()
+    {
+        Text = "⌄",
+        ForeColor = Color.FromArgb(6, 182, 212),
+        Font = new Font("Segoe UI", 12f, FontStyle.Bold),
+        Left = 286,
+        Top = 15,
+        Width = 18,
+        Height = 24,
+        TextAlign = ContentAlignment.MiddleCenter,
+        BackColor = Color.Transparent
+    };
     private readonly Label statusLabel = new()
     {
         Text = "Iniciando…",
@@ -171,26 +192,28 @@ public sealed class MainForm : Form
         brand.Font = new Font("Segoe UI", 12, FontStyle.Bold);
         brand.TextAlign = ContentAlignment.MiddleLeft;
         brand.Paint += DrawBrand;
-        var sidebarBottom = new Panel { Dock = DockStyle.Bottom, Height = 112, Padding = new Padding(10, 4, 10, 8) };
+        sidebarBottom.Dock = DockStyle.Bottom;
+        sidebarBottom.Height = 160;
+        sidebarBottom.Padding = new Padding(10, 4, 10, 8);
         manageAccountsButton.Dock = DockStyle.Top;
         manageAccountsButton.Height = 42;
+        preferencesButton.Dock = DockStyle.Top;
+        preferencesButton.Height = 42;
         addAccountButton.Dock = DockStyle.Bottom;
         addAccountButton.Height = 42;
+        sidebarBottom.Controls.Add(preferencesButton);
         sidebarBottom.Controls.Add(manageAccountsButton);
         sidebarBottom.Controls.Add(addAccountButton);
         sidebar.Controls.Add(accountsPanel);
         sidebar.Controls.Add(sidebarBottom);
         sidebar.Controls.Add(brand);
 
-        var toolbar = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            Height = 64,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
-            BackColor = Color.FromArgb(11, 19, 43),
-            Padding = new Padding(8, 4, 8, 4)
-        };
+        toolbar.Dock = DockStyle.Top;
+        toolbar.Height = 64;
+        toolbar.FlowDirection = FlowDirection.LeftToRight;
+        toolbar.WrapContents = false;
+        toolbar.BackColor = Color.FromArgb(11, 19, 43);
+        toolbar.Padding = new Padding(8, 4, 8, 4);
         collapseButton.Width = 44;
         collapseButton.Padding = new Padding(4);
         collapseButton.AccessibleName = "Recolher ou abrir menu de contas";
@@ -200,6 +223,7 @@ public sealed class MainForm : Form
         activeAccountCard.Controls.Add(activeMarkerLabel);
         activeAccountCard.Controls.Add(activeNameLabel);
         activeAccountCard.Controls.Add(activeDetailsLabel);
+        activeAccountCard.Controls.Add(activeChevronLabel);
         toolbar.Controls.Add(collapseButton);
         toolbar.Controls.Add(activeAccountCard);
         toolbar.Controls.Add(installButton);
@@ -215,7 +239,15 @@ public sealed class MainForm : Form
         Controls.Add(sidebar);
 
         collapseButton.Click += (_, _) => ToggleSidebar();
+        activeAccountCard.Cursor = Cursors.Hand;
+        foreach (Control control in activeAccountCard.Controls)
+        {
+            control.Cursor = Cursors.Hand;
+            control.Click += ShowAccountSwitcher;
+        }
+        activeAccountCard.Click += ShowAccountSwitcher;
         manageAccountsButton.Click += ManageAccounts;
+        preferencesButton.Click += ShowPreferences;
         addAccountButton.Click += AddAccount;
         installButton.Click += InstallExtension;
         reloadButton.Click += (_, _) => ActiveBrowser()?.CoreWebView2?.Reload();
@@ -308,6 +340,7 @@ public sealed class MainForm : Form
     }
 
     private string AccountsFile => Path.Combine(appDataFolder, "accounts.json");
+    private string PreferencesFile => Path.Combine(appDataFolder, "preferences.json");
     private string CacheFlagFile => Path.Combine(appDataFolder, "clear-cache.flag");
     private string LogFile => Path.Combine(appDataFolder, "modux.log");
 
@@ -324,6 +357,8 @@ public sealed class MainForm : Form
         detectedWaSellerPath = FindWaSellerFolder();
         Log(detectedWaSellerPath is null ? "WaSeller não encontrado nos navegadores." : "WaSeller localizado no computador.");
         LoadAccounts();
+        LoadPreferences();
+        ApplyPreferences();
         RenderAccountButtons();
         if (accounts.Count > 0) await ActivateAccount(accounts[0]);
         Log("Inicialização concluída.");
@@ -366,6 +401,22 @@ public sealed class MainForm : Form
         File.WriteAllText(AccountsFile, JsonSerializer.Serialize(accounts, new JsonSerializerOptions { WriteIndented = true }));
     }
 
+    private void LoadPreferences()
+    {
+        try
+        {
+            if (File.Exists(PreferencesFile))
+                preferences = JsonSerializer.Deserialize<UserPreferences>(File.ReadAllText(PreferencesFile)) ?? new();
+        }
+        catch (Exception error) { Log($"Preferências inválidas; usando padrão: {error.Message}"); }
+    }
+
+    private void SavePreferences()
+    {
+        Directory.CreateDirectory(appDataFolder);
+        File.WriteAllText(PreferencesFile, JsonSerializer.Serialize(preferences, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
     private void ToggleSidebar()
     {
         sidebarCollapsed = !sidebarCollapsed;
@@ -373,8 +424,58 @@ public sealed class MainForm : Form
         brand.Invalidate();
         addAccountButton.Text = sidebarCollapsed ? "+" : "+ Adicionar conta";
         manageAccountsButton.Text = sidebarCollapsed ? "⚙" : "⚙ Gerenciar contas";
+        preferencesButton.Text = sidebarCollapsed ? "◈" : "◈ Preferências";
         collapseButton.Text = sidebarCollapsed ? "☰" : "◀";
         RenderAccountButtons();
+    }
+
+    private async void ShowAccountSwitcher(object? sender, EventArgs e)
+    {
+        if (accounts.Count == 0) return;
+        var menu = new ContextMenuStrip
+        {
+            ShowImageMargin = true,
+            BackColor = IsLightTheme() ? Color.White : Color.FromArgb(16, 29, 58),
+            ForeColor = IsLightTheme() ? Color.FromArgb(11, 19, 43) : Color.White,
+            Font = CreateInterfaceFont(10f),
+            Padding = new Padding(6),
+            AutoSize = true
+        };
+        menu.Items.Add(new ToolStripLabel("ESCOLHA O WHATSAPP")
+        {
+            ForeColor = Color.FromArgb(6, 182, 212),
+            Font = CreateInterfaceFont(8f, FontStyle.Bold),
+            Margin = new Padding(8, 4, 8, 7)
+        });
+        foreach (var account in accounts)
+        {
+            var countText = account.UnreadCount > 0 ? $"   •   {account.UnreadCount} não lidas" : "   •   sem novas mensagens";
+            var item = new ToolStripMenuItem($"{account.Name}{countText}", BuildAccountIcon(account))
+            {
+                Tag = account,
+                Checked = activeAccount?.Id == account.Id,
+                CheckOnClick = false,
+                AutoSize = false,
+                Width = 350,
+                Height = 54,
+                ImageScaling = ToolStripItemImageScaling.None,
+                BackColor = activeAccount?.Id == account.Id
+                    ? (IsLightTheme() ? Color.FromArgb(224, 242, 254) : Color.FromArgb(25, 45, 70))
+                    : menu.BackColor,
+                ForeColor = menu.ForeColor
+            };
+            item.Click += async (_, _) =>
+            {
+                menu.Close();
+                if (item.Tag is AccountInfo selected) await ActivateAccount(selected);
+            };
+            menu.Items.Add(item);
+        }
+        menu.Items.Add(new ToolStripSeparator());
+        var manage = menu.Items.Add("Gerenciar contas…");
+        manage.Click += ManageAccounts;
+        menu.Show(activeAccountCard, new Point(0, activeAccountCard.Height + 2));
+        await Task.CompletedTask;
     }
 
     private void RenderAccountButtons()
@@ -392,8 +493,11 @@ public sealed class MainForm : Form
                 TextImageRelation = sidebarCollapsed ? TextImageRelation.Overlay : TextImageRelation.ImageBeforeText,
                 Padding = sidebarCollapsed ? new Padding(0) : new Padding(8, 0, 8, 0),
                 FlatStyle = FlatStyle.Flat,
-                ForeColor = Color.White,
-                BackColor = activeAccount?.Id == account.Id ? Color.FromArgb(25, 45, 55) : Color.FromArgb(13, 22, 29),
+                Font = CreateInterfaceFont(9f, FontStyle.Bold),
+                ForeColor = IsLightTheme() ? Color.FromArgb(11, 19, 43) : Color.White,
+                BackColor = activeAccount?.Id == account.Id
+                    ? (IsLightTheme() ? Color.FromArgb(224, 242, 254) : Color.FromArgb(25, 45, 55))
+                    : (IsLightTheme() ? Color.White : Color.FromArgb(13, 22, 29)),
                 Margin = new Padding(0, 0, 0, 8),
                 Tag = account,
                 Image = BuildAccountIcon(account)
@@ -437,6 +541,7 @@ public sealed class MainForm : Form
                 };
                 var environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder, options);
                 await browser.EnsureCoreWebView2Async(environment);
+                browser.ZoomFactor = preferences.WhatsAppZoom / 100d;
                 browser.CoreWebView2.IsMuted = false;
                 browser.CoreWebView2.PermissionRequested += (_, args) =>
                 {
@@ -581,9 +686,10 @@ public sealed class MainForm : Form
 
         if (!sidebarCollapsed)
         {
-            using var titleFont = new Font("Segoe UI", 13f, FontStyle.Bold);
-            using var subtitleFont = new Font("Segoe UI", 7.5f, FontStyle.Regular);
-            e.Graphics.DrawString("MODUX", titleFont, Brushes.White, logoX + 53, logoY + 4);
+            using var titleFont = CreateInterfaceFont(13f, FontStyle.Bold);
+            using var subtitleFont = CreateInterfaceFont(7.5f, FontStyle.Regular);
+            using var titleBrush = new SolidBrush(IsLightTheme() ? Color.FromArgb(11, 19, 43) : Color.White);
+            e.Graphics.DrawString("MODUX", titleFont, titleBrush, logoX + 53, logoY + 4);
             using var cyan = new SolidBrush(Color.FromArgb(6, 182, 212));
             e.Graphics.DrawString($"GESTÃO MULTICONTAS  •  v{AppVersion}", subtitleFont, cyan, logoX + 54, logoY + 27);
         }
@@ -733,6 +839,165 @@ public sealed class MainForm : Form
         Text = total > 0
             ? $"({total}) MODUX {AppVersion} — {current.Name}"
             : $"MODUX {AppVersion} — {current.Name}";
+    }
+
+    private Font CreateInterfaceFont(float baseSize, FontStyle style = FontStyle.Regular)
+    {
+        var family = FontFamily.Families.Any(item => item.Name.Equals(preferences.FontFamily, StringComparison.OrdinalIgnoreCase))
+            ? preferences.FontFamily
+            : "Segoe UI";
+        return new Font(family, baseSize * preferences.InterfaceSize / 100f, style);
+    }
+
+    private bool IsLightTheme()
+    {
+        if (preferences.Theme.Equals("Claro", StringComparison.OrdinalIgnoreCase)) return true;
+        if (preferences.Theme.Equals("Escuro", StringComparison.OrdinalIgnoreCase)) return false;
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            return Convert.ToInt32(key?.GetValue("AppsUseLightTheme", 0)) != 0;
+        }
+        catch { return false; }
+    }
+
+    private void ApplyPreferences()
+    {
+        var light = IsLightTheme();
+        var chrome = light ? Color.FromArgb(241, 245, 249) : Color.FromArgb(11, 19, 43);
+        var sidebarColor = light ? Color.FromArgb(226, 232, 240) : Color.FromArgb(6, 12, 28);
+        var card = light ? Color.White : Color.FromArgb(16, 29, 58);
+        var primaryText = light ? Color.FromArgb(11, 19, 43) : Color.White;
+        var secondaryText = light ? Color.FromArgb(71, 85, 105) : Color.FromArgb(156, 163, 175);
+
+        BackColor = chrome;
+        toolbar.BackColor = chrome;
+        sidebar.BackColor = sidebarColor;
+        sidebarBottom.BackColor = sidebarColor;
+        accountsPanel.BackColor = sidebarColor;
+        activeAccountCard.BackColor = card;
+        activeNameLabel.ForeColor = primaryText;
+        activeDetailsLabel.ForeColor = secondaryText;
+        statusLabel.ForeColor = secondaryText;
+        activeMarkerLabel.ForeColor = Color.FromArgb(6, 182, 212);
+        activeChevronLabel.ForeColor = Color.FromArgb(6, 182, 212);
+
+        Font = CreateInterfaceFont(9f);
+        activeMarkerLabel.Font = CreateInterfaceFont(7f, FontStyle.Bold);
+        activeNameLabel.Font = CreateInterfaceFont(10f, FontStyle.Bold);
+        activeDetailsLabel.Font = CreateInterfaceFont(7.5f);
+        statusLabel.Font = CreateInterfaceFont(9f);
+        activeChevronLabel.Font = CreateInterfaceFont(12f, FontStyle.Bold);
+
+        foreach (var button in new[] { collapseButton, installButton, reloadButton, clearCacheButton, addAccountButton, manageAccountsButton, preferencesButton })
+        {
+            button.Font = CreateInterfaceFont(9f, FontStyle.Bold);
+            button.BackColor = Color.FromArgb(29, 78, 216);
+            button.ForeColor = Color.White;
+        }
+        foreach (var browser in browsers.Values)
+            browser.ZoomFactor = preferences.WhatsAppZoom / 100d;
+
+        brand.Invalidate();
+        RenderAccountButtons();
+        UpdateActiveAccountHeader();
+    }
+
+    private void ShowPreferences(object? sender, EventArgs e)
+    {
+        using var dialog = new Form
+        {
+            Text = "Preferências do MODUX",
+            Width = 520,
+            Height = 470,
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false,
+            MinimizeBox = false,
+            BackColor = IsLightTheme() ? Color.FromArgb(248, 250, 252) : Color.FromArgb(11, 19, 43),
+            ForeColor = IsLightTheme() ? Color.FromArgb(11, 19, 43) : Color.White,
+            Font = CreateInterfaceFont(9f)
+        };
+        var title = new Label
+        {
+            Text = "Aparência e leitura",
+            Left = 24, Top = 20, Width = 430, Height = 30,
+            Font = CreateInterfaceFont(14f, FontStyle.Bold), ForeColor = dialog.ForeColor
+        };
+        var description = new Label
+        {
+            Text = "Personalize o MODUX sem alterar suas contas ou sessões.",
+            Left = 24, Top = 52, Width = 440, Height = 25, ForeColor = IsLightTheme() ? Color.DimGray : Color.Silver
+        };
+        var themeLabel = new Label { Text = "Tema", Left = 24, Top = 96, Width = 180, Height = 24 };
+        var theme = new ComboBox
+        {
+            Left = 230, Top = 92, Width = 245, DropDownStyle = ComboBoxStyle.DropDownList
+        };
+        theme.Items.AddRange(["Sistema", "Claro", "Escuro"]);
+        theme.SelectedItem = preferences.Theme;
+
+        var fontLabel = new Label { Text = "Fonte da interface", Left = 24, Top = 145, Width = 180, Height = 24 };
+        var font = new ComboBox
+        {
+            Left = 230, Top = 141, Width = 245, DropDownStyle = ComboBoxStyle.DropDownList
+        };
+        var recommendedFonts = new[] { "Segoe UI", "Inter", "Arial", "Tahoma", "Verdana", "Trebuchet MS" }
+            .Where(name => FontFamily.Families.Any(item => item.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            .Distinct().ToArray();
+        font.Items.AddRange(recommendedFonts);
+        font.SelectedItem = recommendedFonts.Contains(preferences.FontFamily) ? preferences.FontFamily : "Segoe UI";
+
+        var sizeLabel = new Label { Text = "Tamanho da interface", Left = 24, Top = 194, Width = 180, Height = 24 };
+        var size = new ComboBox
+        {
+            Left = 230, Top = 190, Width = 245, DropDownStyle = ComboBoxStyle.DropDownList
+        };
+        size.Items.AddRange(["Compacto — 90%", "Padrão — 100%", "Confortável — 110%", "Grande — 125%"]);
+        size.SelectedIndex = preferences.InterfaceSize switch { 90 => 0, 110 => 2, 125 => 3, _ => 1 };
+
+        var zoomLabel = new Label { Text = "Zoom do WhatsApp", Left = 24, Top = 243, Width = 180, Height = 24 };
+        var zoomValue = new Label
+        {
+            Text = $"{preferences.WhatsAppZoom}%", Left = 417, Top = 243, Width = 58, Height = 24,
+            TextAlign = ContentAlignment.MiddleRight
+        };
+        var zoom = new TrackBar
+        {
+            Left = 224, Top = 232, Width = 190, Minimum = 80, Maximum = 150,
+            TickFrequency = 10, Value = Math.Clamp(preferences.WhatsAppZoom, 80, 150)
+        };
+        zoom.ValueChanged += (_, _) => zoomValue.Text = $"{zoom.Value}%";
+
+        var note = new Label
+        {
+            Text = "O tema e a fonte alteram as áreas do MODUX. O zoom controla o conteúdo do WhatsApp em todas as contas.",
+            Left = 24, Top = 292, Width = 450, Height = 48,
+            ForeColor = IsLightTheme() ? Color.DimGray : Color.Silver
+        };
+        var restore = new Button { Text = "Restaurar padrões", Left = 24, Top = 365, Width = 145, Height = 38 };
+        var cancel = new Button { Text = "Cancelar", Left = 274, Top = 365, Width = 95, Height = 38, DialogResult = DialogResult.Cancel };
+        var save = new Button { Text = "Salvar", Left = 379, Top = 365, Width = 96, Height = 38, DialogResult = DialogResult.OK };
+        restore.Click += (_, _) =>
+        {
+            theme.SelectedItem = "Sistema";
+            font.SelectedItem = "Segoe UI";
+            size.SelectedIndex = 1;
+            zoom.Value = 100;
+        };
+        dialog.Controls.AddRange([title, description, themeLabel, theme, fontLabel, font, sizeLabel, size,
+            zoomLabel, zoom, zoomValue, note, restore, cancel, save]);
+        dialog.AcceptButton = save;
+        dialog.CancelButton = cancel;
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        var scale = size.SelectedIndex switch { 0 => 90, 2 => 110, 3 => 125, _ => 100 };
+        preferences = new UserPreferences(theme.SelectedItem?.ToString() ?? "Sistema",
+            font.SelectedItem?.ToString() ?? "Segoe UI", scale, zoom.Value);
+        SavePreferences();
+        ApplyPreferences();
+        Log($"Preferências salvas: tema={preferences.Theme}, fonte={preferences.FontFamily}, interface={preferences.InterfaceSize}, zoom={preferences.WhatsAppZoom}.");
     }
 
     private static bool IsWhatsAppWebAddress(string? address)
