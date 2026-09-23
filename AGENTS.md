@@ -64,9 +64,9 @@ Requisitos permanentes:
 - Repositório público: `filipebrios/central-whatsapp-hub`.
 - Branch de desenvolvimento e releases atuais: `codex/electron-windows-mvp`.
 - Pull request existente: PR #1, mantido como rascunho; não mesclar sem solicitação explícita.
-- Última release pública confirmada: `MODUX 1.3.0`.
-- Candidata em preparação: `MODUX 1.4.0` para Windows, baseada diretamente na 1.3.0.
-- A 1.4.0 só pode ser marcada como publicada após o workflow concluir e o instalador ser confirmado na release.
+- Última release pública confirmada: `MODUX 1.4.0` para Windows.
+- Instalador confirmado: `MODUX-Setup-1.4.0.exe`.
+- A 1.4.0 foi compilada com sucesso pelo workflow Windows e publicada na release `modux-v1.4.0`.
 - A release 1.3.0 foi compilada a partir de `webview2-prototype/`, portanto continua exclusiva do Windows.
 - Por decisão do usuário, qualquer versão externa atribuída ao Manus deve ser ignorada. A continuidade parte da release 1.3.0.
 - Existem alterações locais ainda não publicadas iniciando a migração Electron. Elas não são uma release e não devem ser confundidas com a versão instalada.
@@ -96,13 +96,12 @@ Requisitos permanentes:
 
 ## Pendências priorizadas
 
-1. Compilar e validar a candidata 1.4.0 no Windows, preservando contas e sessões.
-2. Confirmar que links das conversas abrem externamente e não substituem o WhatsApp.
-3. Confirmar visualmente o cartão da conta ativa e o badge total na barra de tarefas.
-4. Concluir a base Electron e gerar instaladores reais para Windows, macOS e Linux.
-5. No macOS usar Dock badge; no Linux usar a integração disponível no ambiente.
-6. Testar WhatsApp Web e WaSeller em cada plataforma antes da publicação.
-7. Criar migração segura dos dados da versão WebView2 para a futura versão Electron, quando tecnicamente possível.
+1. Testar em uso real no Windows se links das conversas abrem externamente e não substituem o WhatsApp.
+2. Confirmar visualmente o cartão da conta ativa e o badge total na barra de tarefas.
+3. Concluir a base Electron e gerar instaladores reais para Windows, macOS e Linux.
+4. No macOS usar Dock badge; no Linux usar a integração disponível no ambiente.
+5. Testar WhatsApp Web e WaSeller em cada plataforma antes da publicação.
+6. Criar migração segura dos dados da versão WebView2 para a futura versão Electron, quando tecnicamente possível.
 
 ## Política de versões e publicação
 
@@ -136,7 +135,7 @@ Antes de entregar uma versão:
 - Criado cartão permanente “EM USO AGORA” com foto, nome e estado da conta ativa.
 - Links externos passam a abrir no navegador padrão e não substituem o WhatsApp Web.
 - Versão, instalador e workflow atualizados para 1.4.0.
-- Estado: aguardando compilação bem-sucedida e confirmação do asset da release.
+- Estado: workflow concluído com sucesso e instalador publicado; aguardando teste funcional do usuário no Windows.
 
 ### 2026-09-23 — organização do contexto
 
