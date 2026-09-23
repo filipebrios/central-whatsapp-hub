@@ -13,11 +13,14 @@
     <Description>Sistema de Gestão Multicontas Corporativo</Description>
     <AssemblyTitle>MODUX</AssemblyTitle>
     <ApplicationIcon>assets\\modux.ico</ApplicationIcon>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
     <Content Include="assets\\modux-icon.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="assets\\modux.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
