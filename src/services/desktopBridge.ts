@@ -1,13 +1,44 @@
 import type { Account } from "@/features/central-whatsapp/types";
 
-// Contrato único para a futura integração com IPC, WebContentsView e sessões Electron.
+type Bounds = { x: number; y: number; width: number; height: number };
+type DesktopApi = {
+  isDesktop: true;
+  addAccount: (account: Account) => Promise<boolean>;
+  removeAccount: (accountId: string) => Promise<void>;
+  selectAccount: (accountId: string) => Promise<boolean>;
+  reloadAccount: (accountId: string) => Promise<void>;
+  connectAccount: (accountId: string) => Promise<boolean>;
+  disconnectAccount: (accountId: string) => Promise<boolean>;
+  installExtension: (accountId: string) => Promise<{ canceled: boolean; id?: string; name?: string; version?: string }>;
+  setWhatsAppVisible: (visible: boolean) => Promise<boolean>;
+  setWhatsAppBounds: (bounds: Bounds) => Promise<void>;
+  showNotification: (title: string, body: string) => Promise<void>;
+  updateUnreadCount: (count: number) => Promise<void>;
+  onProfile: (callback: (payload: { accountId: string; profileName?: string; phoneNumber?: string; photoUrl?: string }) => void) => () => void;
+  onUnread: (callback: (payload: { accountId: string; count: number }) => void) => () => void;
+};
+
+declare global {
+  interface Window {
+    centralDesktop?: DesktopApi;
+  }
+}
+
+const api = () => window.centralDesktop;
+
 export const desktopBridge = {
-  addAccount: (account: Account) => console.info("[desktopBridge] Conta adicionada", account.id),
-  removeAccount: (accountId: string) => console.info("[desktopBridge] Conta removida", accountId),
-  selectAccount: (accountId: string) => console.info("[desktopBridge] Conta selecionada", accountId),
-  reloadAccount: (accountId: string) => console.info("[desktopBridge] Conta recarregada", accountId),
-  connectAccount: (accountId: string) => console.info("[desktopBridge] Conta conectada", accountId),
-  disconnectAccount: (accountId: string) => console.info("[desktopBridge] Conta desconectada", accountId),
-  showNotification: (title: string, body: string) => console.info("[desktopBridge] Notificação", title, body),
-  updateUnreadCount: (count: number) => console.info("[desktopBridge] Não lidas", count),
+  isDesktop: Boolean(typeof window !== "undefined" && window.centralDesktop?.isDesktop),
+  addAccount: (account: Account) => api()?.addAccount(account) ?? console.info("[desktopBridge] Conta adicionada", account.id),
+  removeAccount: (accountId: string) => api()?.removeAccount(accountId) ?? console.info("[desktopBridge] Conta removida", accountId),
+  selectAccount: (accountId: string) => api()?.selectAccount(accountId) ?? console.info("[desktopBridge] Conta selecionada", accountId),
+  reloadAccount: (accountId: string) => api()?.reloadAccount(accountId) ?? console.info("[desktopBridge] Conta recarregada", accountId),
+  connectAccount: (accountId: string) => api()?.connectAccount(accountId) ?? console.info("[desktopBridge] Conta conectada", accountId),
+  disconnectAccount: (accountId: string) => api()?.disconnectAccount(accountId) ?? console.info("[desktopBridge] Conta desconectada", accountId),
+  installExtension: (accountId: string) => api()?.installExtension(accountId),
+  setWhatsAppVisible: (visible: boolean) => api()?.setWhatsAppVisible(visible),
+  setWhatsAppBounds: (bounds: Bounds) => api()?.setWhatsAppBounds(bounds),
+  showNotification: (title: string, body: string) => api()?.showNotification(title, body) ?? console.info("[desktopBridge] Notificação", title, body),
+  updateUnreadCount: (count: number) => api()?.updateUnreadCount(count) ?? console.info("[desktopBridge] Não lidas", count),
+  onProfile: (callback: (payload: { accountId: string; profileName?: string; phoneNumber?: string; photoUrl?: string }) => void) => api()?.onProfile(callback) ?? (() => undefined),
+  onUnread: (callback: (payload: { accountId: string; count: number }) => void) => api()?.onUnread(callback) ?? (() => undefined),
 };
