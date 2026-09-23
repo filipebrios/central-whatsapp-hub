@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Drawing.Drawing2D;
 using System.Media;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -10,6 +11,35 @@ namespace CentralWhatsApp.WebView2;
 public sealed class MainForm : Form
 {
     private sealed record AccountInfo(string Id, string Name, string? AvatarData = null, int UnreadCount = 0);
+
+    [ComImport, Guid("56FDF342-FD6D-11d0-958A-006097C9A090")]
+    private class TaskbarListCom { }
+
+    [ComImport, Guid("EA1AFB91-9E28-4B86-90E9-9E9F8A5EEA84"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface ITaskbarList3
+    {
+        [PreserveSig] int HrInit();
+        [PreserveSig] int AddTab(IntPtr hwnd);
+        [PreserveSig] int DeleteTab(IntPtr hwnd);
+        [PreserveSig] int ActivateTab(IntPtr hwnd);
+        [PreserveSig] int SetActiveAlt(IntPtr hwnd);
+        [PreserveSig] int MarkFullscreenWindow(IntPtr hwnd, [MarshalAs(UnmanagedType.Bool)] bool fullscreen);
+        [PreserveSig] int SetProgressValue(IntPtr hwnd, ulong completed, ulong total);
+        [PreserveSig] int SetProgressState(IntPtr hwnd, int flags);
+        [PreserveSig] int RegisterTab(IntPtr tab, IntPtr mdi);
+        [PreserveSig] int UnregisterTab(IntPtr tab);
+        [PreserveSig] int SetTabOrder(IntPtr tab, IntPtr insertBefore);
+        [PreserveSig] int SetTabActive(IntPtr tab, IntPtr mdi, uint reserved);
+        [PreserveSig] int ThumbBarAddButtons(IntPtr hwnd, uint count, IntPtr buttons);
+        [PreserveSig] int ThumbBarUpdateButtons(IntPtr hwnd, uint count, IntPtr buttons);
+        [PreserveSig] int ThumbBarSetImageList(IntPtr hwnd, IntPtr imageList);
+        [PreserveSig] int SetOverlayIcon(IntPtr hwnd, IntPtr icon, [MarshalAs(UnmanagedType.LPWStr)] string description);
+        [PreserveSig] int SetThumbnailTooltip(IntPtr hwnd, [MarshalAs(UnmanagedType.LPWStr)] string tooltip);
+        [PreserveSig] int SetThumbnailClip(IntPtr hwnd, IntPtr clip);
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool DestroyIcon(IntPtr handle);
 
     private readonly string appDataFolder = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -29,6 +59,9 @@ public sealed class MainForm : Form
     private readonly NotifyIcon trayIcon = new();
     private readonly Image? brandLogo;
     private readonly HashSet<string> notificationBaselines = [];
+    private ITaskbarList3? taskbar;
+    private IntPtr taskbarOverlayIcon;
+    private string? lastNotifiedAccountId;
     private bool sidebarCollapsed;
 
     private static string AppVersion => Assembly.GetExecutingAssembly().GetName().Version is { } version
@@ -56,6 +89,14 @@ public sealed class MainForm : Form
     private readonly Button installButton = CreateToolbarButton("Instalar WaSeller nesta conta");
     private readonly Button reloadButton = CreateToolbarButton("Recarregar");
     private readonly Button clearCacheButton = CreateToolbarButton("Limpar cache");
+    private readonly PictureBox activeAccountPicture = new()
+    {
+        Width = 42,
+        Height = 42,
+        SizeMode = PictureBoxSizeMode.CenterImage,
+        Margin = new Padding(12, 3, 4, 3),
+        BackColor = Color.Transparent
+    };
     private readonly Label statusLabel = new()
     {
         Text = "Iniciando…",
@@ -119,6 +160,7 @@ public sealed class MainForm : Form
         toolbar.Controls.Add(installButton);
         toolbar.Controls.Add(reloadButton);
         toolbar.Controls.Add(clearCacheButton);
+        toolbar.Controls.Add(activeAccountPicture);
         toolbar.Controls.Add(statusLabel);
 
         var rightPanel = new Panel { Dock = DockStyle.Fill };
@@ -141,6 +183,7 @@ public sealed class MainForm : Form
             unreadTimer.Start();
         };
         FormClosing += HandleFormClosing;
+        HandleCreated += (_, _) => InitializeTaskbar();
     }
 
     private static Button CreateToolbarButton(string text) => new()
@@ -170,6 +213,13 @@ public sealed class MainForm : Form
         });
         trayIcon.ContextMenuStrip = menu;
         trayIcon.DoubleClick += (_, _) => RestoreFromTray();
+        trayIcon.BalloonTipClicked += async (_, _) =>
+        {
+            RestoreFromTray();
+            if (lastNotifiedAccountId is not null &&
+                accounts.FirstOrDefault(item => item.Id == lastNotifiedAccountId) is { } account)
+                await ActivateAccount(account);
+        };
     }
 
     private void HandleFormClosing(object? sender, FormClosingEventArgs e)
@@ -204,6 +254,11 @@ public sealed class MainForm : Form
             trayIcon.Visible = false;
             trayIcon.Dispose();
             brandLogo?.Dispose();
+            activeAccountPicture.Image?.Dispose();
+            if (taskbar is not null && IsHandleCreated)
+                taskbar.SetOverlayIcon(Handle, IntPtr.Zero, string.Empty);
+            if (taskbarOverlayIcon != IntPtr.Zero)
+                DestroyIcon(taskbarOverlayIcon);
         }
         base.Dispose(disposing);
     }
@@ -370,7 +425,7 @@ public sealed class MainForm : Form
 
         browser.Visible = true;
         browser.BringToFront();
-        statusLabel.Text = $"{account.Name} — sessão independente";
+        UpdateActiveAccountHeader();
         _ = CaptureAvatarWithRetries(account.Id, browser);
     }
 
@@ -545,7 +600,11 @@ public sealed class MainForm : Form
                 if (index < 0) return;
                 accounts[index] = accounts[index] with { AvatarData = data };
                 SaveAccounts();
-                if (!IsDisposed) BeginInvoke(RenderAccountButtons);
+                if (!IsDisposed) BeginInvoke(() =>
+                {
+                    RenderAccountButtons();
+                    UpdateActiveAccountHeader();
+                });
                 return;
             }
             catch { }
@@ -578,6 +637,7 @@ public sealed class MainForm : Form
                         if (count > previous)
                         {
                             SystemSounds.Asterisk.Play();
+                            lastNotifiedAccountId = pair.Key;
                             var accountName = accounts[index].Name;
                             trayIcon.BalloonTipTitle = $"Nova mensagem — {accountName}";
                             trayIcon.BalloonTipText = count == 1
@@ -593,9 +653,72 @@ public sealed class MainForm : Form
                 }
                 catch { }
             }
-            if (changed && !IsDisposed) RenderAccountButtons();
+            if (changed && !IsDisposed)
+            {
+                RenderAccountButtons();
+                UpdateActiveAccountHeader();
+                UpdateTaskbarBadge();
+            }
         }
         finally { refreshingIndicators = false; }
+    }
+
+    private void UpdateActiveAccountHeader()
+    {
+        if (activeAccount is null) return;
+        var current = accounts.FirstOrDefault(item => item.Id == activeAccount.Id) ?? activeAccount;
+        activeAccount = current;
+        activeAccountPicture.Image?.Dispose();
+        activeAccountPicture.Image = BuildAccountIcon(current);
+        statusLabel.Text = current.UnreadCount > 0
+            ? $"{current.Name}  •  {current.UnreadCount} não lidas  •  sessão independente"
+            : $"{current.Name}  •  conectado  •  sessão independente";
+        var total = accounts.Sum(item => item.UnreadCount);
+        Text = total > 0
+            ? $"({total}) MODUX {AppVersion} — {current.Name}"
+            : $"MODUX {AppVersion} — {current.Name}";
+    }
+
+    private void InitializeTaskbar()
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) return;
+        try
+        {
+            taskbar = (ITaskbarList3)new TaskbarListCom();
+            taskbar.HrInit();
+            UpdateTaskbarBadge();
+        }
+        catch (Exception error) { Log($"Falha ao iniciar contador da barra de tarefas: {error.Message}"); }
+    }
+
+    private void UpdateTaskbarBadge()
+    {
+        if (taskbar is null || !IsHandleCreated) return;
+        try
+        {
+            var total = accounts.Sum(item => item.UnreadCount);
+            if (taskbarOverlayIcon != IntPtr.Zero)
+            {
+                taskbar.SetOverlayIcon(Handle, IntPtr.Zero, string.Empty);
+                DestroyIcon(taskbarOverlayIcon);
+                taskbarOverlayIcon = IntPtr.Zero;
+            }
+            if (total <= 0) return;
+
+            using var badge = new Bitmap(32, 32);
+            using var graphics = Graphics.FromImage(badge);
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            graphics.Clear(Color.Transparent);
+            using var background = new SolidBrush(Color.FromArgb(6, 182, 212));
+            graphics.FillEllipse(background, 1, 1, 30, 30);
+            var text = total > 99 ? "99+" : total.ToString();
+            using var font = new Font("Segoe UI", total > 99 ? 9f : 12f, FontStyle.Bold, GraphicsUnit.Pixel);
+            TextRenderer.DrawText(graphics, text, font, new Rectangle(1, 1, 30, 30), Color.White,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            taskbarOverlayIcon = badge.GetHicon();
+            taskbar.SetOverlayIcon(Handle, taskbarOverlayIcon, $"{total} mensagens não lidas");
+        }
+        catch (Exception error) { Log($"Falha ao atualizar contador da barra de tarefas: {error.Message}"); }
     }
 
     private const string ProfileInfoScript = """
