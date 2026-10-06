@@ -64,8 +64,8 @@ Requisitos permanentes:
 - Repositório público: `filipebrios/central-whatsapp-hub`.
 - Branch de desenvolvimento e releases atuais: `codex/electron-windows-mvp`.
 - Pull request existente: PR #1, mantido como rascunho; não mesclar sem solicitação explícita.
-- Última release pública confirmada: `MODUX 1.6.0` para Windows (integração Criatta; teste real pendente).
-- Instalador confirmado: `MODUX-Setup-1.6.0.exe` na release `modux-v1.6.0`.
+- Última release pública confirmada: `MODUX 1.6.1` para Windows (conta explícita da Criatta; teste real pendente).
+- Instalador confirmado: `MODUX-Setup-1.6.1.exe` na release `modux-v1.6.1`.
 - Página pública oficial de downloads: `https://modux-downloads.filipebrios.chatgpt.site`.
 - A 1.4.0 foi compilada com sucesso pelo workflow Windows e publicada na release `modux-v1.4.0`.
 - A release 1.3.0 foi compilada a partir de `webview2-prototype/`, portanto continua exclusiva do Windows.
@@ -207,4 +207,4 @@ Antes de entregar uma versão:
 - Seleção não usa conta ativa/primeira. Sem vínculo válido, botão fica desabilitado até escolher a conta. Rótulo e botão mostram a conta escolhida.
 - Novo criatta-account-v2.txt exige confirmar o vínculo na primeira utilização após atualizar; preferência antiga preservada, mas não reutilizada. Sessões/contas não são apagadas.
 - Abertura a frio com rascunho não carrega primeiro a conta da empresa. Navegar para o rascunho ainda pode recarregar a página do WhatsApp; nenhuma nova instância nem envio automático foi adicionado.
-- Testes de seleção cobrem vínculo ausente, vazio, removido, válido e reordenação. Estado: testes de protocolo/seleção, compilação Windows e instalador concluídos no workflow 37487645902; uso real pendente.
+- Testes de seleção cobrem vínculo ausente, vazio, removido, válido e reordenação. Estado: testes de protocolo/seleção, compilação Windows e instalador concluídos nos workflows 37487645902 e 37488050185; MODUX-Setup-1.6.1.exe publicado na release modux-v1.6.1. Uso real pendente.
