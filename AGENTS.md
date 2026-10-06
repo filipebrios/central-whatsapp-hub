@@ -97,6 +97,8 @@ Requisitos permanentes:
 
 ## Pendências priorizadas
 
+- Integração Criatta 1.6.0: validar no Windows abertura a frio, da bandeja e com sessão ativa, escolha de conta e rascunho. Não anunciar teste funcional completo antes da validação do usuário.
+
 1. Testar em uso real no Windows se links das conversas abrem externamente e não substituem o WhatsApp.
 2. Confirmar visualmente o cartão da conta ativa e o badge total na barra de tarefas.
 3. Concluir a base Electron e gerar instaladores reais para Windows, macOS e Linux.
@@ -191,3 +193,10 @@ Antes de entregar uma versão:
 
 - Renomeação de Central WhatsApp para MODUX.
 - Aplicação inicial da marca e criação do instalador automático.
+
+
+### 2026-10-06 — integração Criatta (candidata 1.6.0)
+
+- Instalador registra modux://compose por usuário. Parser aceita somente source=criatta, telefone brasileiro e texto limitado; não abre URLs arbitrárias nem envia mensagens.
+- Pipe local CurrentUserOnly encaminha o link à instância existente; inicialização guarda os rascunhos até carregar contas. Prévia pede conta e confirmação, lembra a última escolha em criatta-account.txt. Sessões existentes são preservadas.
+- Testes de protocolo em tests/ComposeRequest; workflow compila WinForms e instalador Windows. Publicação 1.6.0 só após merge na branch de releases; aguardando CI e validação real.

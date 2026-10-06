@@ -1,5 +1,5 @@
 #define MyAppName "MODUX"
-#define MyAppVersion "1.5.2"
+#define MyAppVersion "1.6.0"
 #define MyAppPublisher "MODUX"
 #define MyAppExeName "MODUX.exe"
 
@@ -46,8 +46,12 @@ Name: "{group}\Central WhatsApp"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\Central WhatsApp"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Registry]
+Root: HKCU; Subkey: "Software\Classes\modux"; ValueType: string; ValueData: "URL:MODUX Compose"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\modux"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKCU; Subkey: "Software\Classes\modux\shell\open\command"; ValueType: string; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
 Root: HKCU; Subkey: "Software\\Microsoft\\Windows\\CurrentVersion\\Run"; ValueType: none; ValueName: "Central WhatsApp"; Flags: deletevalue uninsdeletevalue
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "MODUX"; ValueData: """{app}\{#MyAppExeName}"" --autostart"; Flags: uninsdeletevalue; Tasks: autostart
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Abrir o MODUX"; Flags: nowait postinstall skipifsilent
+
