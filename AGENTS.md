@@ -64,8 +64,8 @@ Requisitos permanentes:
 - Repositório público: `filipebrios/central-whatsapp-hub`.
 - Branch de desenvolvimento e releases atuais: `codex/electron-windows-mvp`.
 - Pull request existente: PR #1, mantido como rascunho; não mesclar sem solicitação explícita.
-- Última release pública confirmada: `MODUX 1.5.2` para Windows.
-- Instalador confirmado: `MODUX-Setup-1.5.2.exe` na release `modux-v1.5.2`.
+- Última release pública confirmada: `MODUX 1.6.0` para Windows (integração Criatta; teste real pendente).
+- Instalador confirmado: `MODUX-Setup-1.6.0.exe` na release `modux-v1.6.0`.
 - Página pública oficial de downloads: `https://modux-downloads.filipebrios.chatgpt.site`.
 - A 1.4.0 foi compilada com sucesso pelo workflow Windows e publicada na release `modux-v1.4.0`.
 - A release 1.3.0 foi compilada a partir de `webview2-prototype/`, portanto continua exclusiva do Windows.
@@ -195,8 +195,8 @@ Antes de entregar uma versão:
 - Aplicação inicial da marca e criação do instalador automático.
 
 
-### 2026-10-06 — integração Criatta (candidata 1.6.0)
+### 2026-10-06 — integração Criatta (MODUX 1.6.0)
 
 - Instalador registra modux://compose por usuário. Parser aceita somente source=criatta, telefone brasileiro e texto limitado; não abre URLs arbitrárias nem envia mensagens.
 - Pipe local CurrentUserOnly encaminha o link à instância existente; inicialização guarda os rascunhos até carregar contas. Prévia pede conta e confirmação, lembra a última escolha em criatta-account.txt. Sessões existentes são preservadas.
-- Testes de protocolo em tests/ComposeRequest; workflow compila WinForms e instalador Windows. Publicação 1.6.0 só após merge na branch de releases; aguardando CI e validação real.
+- Testes de protocolo em tests/ComposeRequest; workflow compila WinForms e instalador Windows. Workflows #41 e #42 compilaram aplicativo e instalador com sucesso; release modux-v1.6.0 publicada com MODUX-Setup-1.6.0.exe. Criatta 1.6.1 publicada. Aguardando validação real no Windows com as contas do usuário.
