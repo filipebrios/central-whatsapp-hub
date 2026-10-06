@@ -5,6 +5,7 @@ on:
     branches:
       - codex/electron-windows-mvp
       - feature/criatta-modux-bridge
+      - feature/criatta-account-binding
     paths:
       - "webview2-prototype/**"
       - "tests/ComposeRequest/**"
@@ -55,11 +56,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "modux-v1.6.0"
-          $installer = "installer-output/MODUX-Setup-1.6.0.exe"
+          $tag = "modux-v1.6.1"
+          $installer = "installer-output/MODUX-Setup-1.6.1.exe"
           gh release view $tag 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag $installer --title "MODUX 1.6.0" --notes "Integração com Criatta: abre rascunhos pelo protocolo modux, permite revisar destinatário e escolher conta antes de abrir a conversa. Envio manual no WhatsApp." --prerelease --target ${{ github.sha }}
+            gh release create $tag $installer --title "MODUX 1.6.1" --notes "Correção da conta Criatta: exige vínculo explícito, sem usar automaticamente a conta ativa ou a primeira. Preserva sessões. Abertura do rascunho pode recarregar WhatsApp; envio continua manual. Validação real pelo usuário pendente." --prerelease --target ${{ github.sha }}
           } else {
             Write-Host "Release existente preservada; instalador deste build disponível nos artifacts."
           }
@@ -67,7 +68,7 @@ jobs:
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: MODUX-Setup-1.6.0
-          path: webview2-prototype/installer-output/MODUX-Setup-1.6.0.exe
+          name: MODUX-Setup-1.6.1
+          path: webview2-prototype/installer-output/MODUX-Setup-1.6.1.exe
           if-no-files-found: error
 

@@ -5,5 +5,5 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
-  <ItemGroup><Compile Include="../../webview2-prototype/ComposeRequest.cs" Link="ComposeRequest.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../webview2-prototype/ComposeRequest.cs" Link="ComposeRequest.cs" /><Compile Include="../../webview2-prototype/ComposeAccountSelection.cs" Link="ComposeAccountSelection.cs" /></ItemGroup>
 </Project>

@@ -1,5 +1,5 @@
 #define MyAppName "MODUX"
-#define MyAppVersion "1.6.0"
+#define MyAppVersion "1.6.1"
 #define MyAppPublisher "MODUX"
 #define MyAppExeName "MODUX.exe"
 
