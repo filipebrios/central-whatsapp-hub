@@ -207,4 +207,4 @@ Antes de entregar uma versão:
 - Seleção não usa conta ativa/primeira. Sem vínculo válido, botão fica desabilitado até escolher a conta. Rótulo e botão mostram a conta escolhida.
 - Novo criatta-account-v2.txt exige confirmar o vínculo na primeira utilização após atualizar; preferência antiga preservada, mas não reutilizada. Sessões/contas não são apagadas.
 - Abertura a frio com rascunho não carrega primeiro a conta da empresa. Navegar para o rascunho ainda pode recarregar a página do WhatsApp; nenhuma nova instância nem envio automático foi adicionado.
-- Testes de seleção cobrem vínculo ausente, vazio, removido, válido e reordenação. Estado: código preparado; compilação e uso real pendentes.
+- Testes de seleção cobrem vínculo ausente, vazio, removido, válido e reordenação. Estado: testes de protocolo/seleção, compilação Windows e instalador concluídos no workflow 37487645902; uso real pendente.
