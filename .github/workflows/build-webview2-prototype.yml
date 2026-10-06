@@ -4,8 +4,10 @@ on:
   push:
     branches:
       - codex/electron-windows-mvp
+      - feature/criatta-modux-bridge
     paths:
       - "webview2-prototype/**"
+      - "tests/ComposeRequest/**"
       - ".github/workflows/build-webview2-prototype.yml"
   workflow_dispatch:
 
@@ -20,6 +22,9 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
+
+      - name: Verify compose protocol
+        run: dotnet run --project tests/ComposeRequest/ComposeRequest.csproj
 
       - name: Publish MODUX
         shell: pwsh
@@ -44,23 +49,25 @@ jobs:
         run: '& "${{ steps.inno.outputs.compiler }}" "CentralWhatsApp.iss"'
 
       - name: Publish direct installer download
+        if: github.ref == 'refs/heads/codex/electron-windows-mvp'
         shell: pwsh
         working-directory: webview2-prototype
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "modux-v1.5.2"
-          $installer = "installer-output/MODUX-Setup-1.5.2.exe"
+          $tag = "modux-v1.6.0"
+          $installer = "installer-output/MODUX-Setup-1.6.0.exe"
           gh release view $tag 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag $installer --title "MODUX 1.5.2" --notes "Corrige a falha Collection was modified ao alternar contas enquanto os contadores são atualizados em segundo plano." --prerelease --target codex/electron-windows-mvp
+            gh release create $tag $installer --title "MODUX 1.6.0" --notes "Integração com Criatta: abre rascunhos pelo protocolo modux, permite revisar destinatário e escolher conta antes de abrir a conversa. Envio manual no WhatsApp." --prerelease --target ${{ github.sha }}
           } else {
-            gh release upload $tag $installer --clobber
+            Write-Host "Release existente preservada; instalador deste build disponível nos artifacts."
           }
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: MODUX-Setup-1.5.2
-          path: webview2-prototype/installer-output/MODUX-Setup-1.5.2.exe
+          name: MODUX-Setup-1.6.0
+          path: webview2-prototype/installer-output/MODUX-Setup-1.6.0.exe
           if-no-files-found: error
+

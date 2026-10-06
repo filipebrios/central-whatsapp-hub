@@ -70,6 +70,9 @@ public sealed class MainForm : Form
     private IntPtr taskbarOverlayIcon;
     private string? lastNotifiedAccountId;
     private bool sidebarCollapsed;
+    private bool composeReady;
+    private bool handlingCompose;
+    private readonly Queue<ComposeRequest> composeRequests = new();
     private UserPreferences preferences = new();
 
     private static string AppVersion => Assembly.GetExecutingAssembly().GetName().Version is { } version
@@ -262,6 +265,8 @@ public sealed class MainForm : Form
             try
             {
                 await Start();
+                composeReady = true;
+                await DrainComposeRequests();
                 // O botão da janela precisa existir na barra do Windows antes de receber o selo.
                 await Task.Delay(750);
                 InitializeTaskbar();
@@ -361,6 +366,68 @@ public sealed class MainForm : Form
                 DestroyIcon(taskbarOverlayIcon);
         }
         base.Dispose(disposing);
+    }
+
+    internal void QueueCompose(ComposeRequest request)
+    {
+        if (composeRequests.Count >= 10) return;
+        composeRequests.Enqueue(request);
+        if (composeReady) _ = DrainComposeRequests();
+    }
+
+    private async Task DrainComposeRequests()
+    {
+        if (!composeReady || handlingCompose) return;
+        handlingCompose = true;
+        try
+        {
+            while (composeRequests.TryDequeue(out var request))
+            {
+                RestoreFromTray();
+                if (accounts.Count == 0)
+                {
+                    MessageBox.Show("Adicione uma conta do WhatsApp ao MODUX antes de abrir a mensagem.", "Criatta · MODUX");
+                    continue;
+                }
+                var preferencePath = Path.Combine(appDataFolder, "criatta-account.txt");
+                string? preferred = null;
+                try { if (File.Exists(preferencePath)) preferred = File.ReadAllText(preferencePath); } catch { }
+                using var preview = new Form { Text = "Criatta · Revisar mensagem", Width = 620, Height = 560,
+                    StartPosition = FormStartPosition.CenterParent, MinimizeBox = false, MaximizeBox = false };
+                var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18), ColumnCount = 1, RowCount = 5 };
+                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+                layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+                var description = new Label { Text = "Confira a conta e a mensagem. O envio será feito por você no WhatsApp.", Dock = DockStyle.Fill };
+                var accountBox = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList, DisplayMember = "Name" };
+                foreach (var account in accounts.ToArray()) accountBox.Items.Add(account);
+                accountBox.SelectedItem = accounts.FirstOrDefault(a => a.Id == preferred) ?? activeAccount ?? accounts[0];
+                var recipient = new Label { Text = "Destinatário: +" + request.Phone, Dock = DockStyle.Fill };
+                var text = new TextBox { Text = request.Text, Multiline = true, ReadOnly = true,
+                    ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill };
+                var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
+                var open = new Button { Text = "Abrir conversa", AutoSize = true, DialogResult = DialogResult.OK };
+                var cancel = new Button { Text = "Cancelar", AutoSize = true, DialogResult = DialogResult.Cancel };
+                actions.Controls.Add(open); actions.Controls.Add(cancel);
+                layout.Controls.Add(description); layout.Controls.Add(accountBox); layout.Controls.Add(recipient);
+                layout.Controls.Add(text); layout.Controls.Add(actions);
+                preview.Controls.Add(layout); preview.CancelButton = cancel;
+                if (preview.ShowDialog(this) != DialogResult.OK || accountBox.SelectedItem is not AccountInfo selected) continue;
+                await ActivateAccount(selected);
+                if (!browsers.TryGetValue(selected.Id, out var browser) || browser.CoreWebView2 is null) continue;
+                try { File.WriteAllText(preferencePath, selected.Id); } catch { }
+                browser.CoreWebView2.Navigate(request.WhatsAppUrl);
+                statusLabel.Text = "Mensagem preparada. Confira a conversa e clique em Enviar no WhatsApp.";
+            }
+        }
+        catch (Exception error)
+        {
+            Log("Falha ao preparar mensagem da Criatta: " + error.GetType().Name);
+            MessageBox.Show("Não foi possível preparar a mensagem. Tente novamente pela Criatta.", "MODUX");
+        }
+        finally { handlingCompose = false; }
     }
 
     private string AccountsFile => Path.Combine(appDataFolder, "accounts.json");
@@ -1507,3 +1574,4 @@ public sealed class MainForm : Form
     }
 
 }
+
