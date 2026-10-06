@@ -389,29 +389,41 @@ public sealed class MainForm : Form
                     MessageBox.Show("Adicione uma conta do WhatsApp ao MODUX antes de abrir a mensagem.", "Criatta · MODUX");
                     continue;
                 }
-                var preferencePath = Path.Combine(appDataFolder, "criatta-account.txt");
+                var preferencePath = Path.Combine(appDataFolder, "criatta-account-v2.txt");
                 string? preferred = null;
                 try { if (File.Exists(preferencePath)) preferred = File.ReadAllText(preferencePath); } catch { }
                 using var preview = new Form { Text = "Criatta · Revisar mensagem", Width = 620, Height = 560,
                     StartPosition = FormStartPosition.CenterParent, MinimizeBox = false, MaximizeBox = false };
-                var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18), ColumnCount = 1, RowCount = 5 };
+                var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18), ColumnCount = 1, RowCount = 6 };
                 layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
                 layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
                 layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
                 layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
                 layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
-                var description = new Label { Text = "Confira a conta e a mensagem. O envio será feito por você no WhatsApp.", Dock = DockStyle.Fill };
+                var description = new Label { Text = "Escolha o WhatsApp da Criatta. Esta conta ficará vinculada aos próximos rascunhos.", Dock = DockStyle.Fill };
                 var accountBox = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList, DisplayMember = "Name" };
                 foreach (var account in accounts.ToArray()) accountBox.Items.Add(account);
-                accountBox.SelectedItem = accounts.FirstOrDefault(a => a.Id == preferred) ?? activeAccount ?? accounts[0];
+                var selectedId = ComposeAccountSelection.Resolve(preferred, accounts.Select(a => a.Id));
+                accountBox.SelectedIndex = -1;
+                if (selectedId is not null)
+                    accountBox.SelectedItem = accounts.First(a => a.Id == selectedId);
+                var accountLabel = new Label { Text = "Conta da Criatta (obrigatório):", Dock = DockStyle.Fill };
                 var recipient = new Label { Text = "Destinatário: +" + request.Phone, Dock = DockStyle.Fill };
                 var text = new TextBox { Text = request.Text, Multiline = true, ReadOnly = true,
                     ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill };
                 var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
-                var open = new Button { Text = "Abrir conversa", AutoSize = true, DialogResult = DialogResult.OK };
+                var open = new Button { Text = "Selecione a conta", AutoSize = true, Enabled = false, DialogResult = DialogResult.OK };
                 var cancel = new Button { Text = "Cancelar", AutoSize = true, DialogResult = DialogResult.Cancel };
+                void UpdateComposeAccount()
+                {
+                    open.Enabled = accountBox.SelectedItem is AccountInfo;
+                    open.Text = accountBox.SelectedItem is AccountInfo choice ? $"Preparar em {choice.Name}" : "Selecione a conta";
+                }
+                accountBox.SelectedIndexChanged += (_, _) => UpdateComposeAccount();
+                UpdateComposeAccount();
                 actions.Controls.Add(open); actions.Controls.Add(cancel);
-                layout.Controls.Add(description); layout.Controls.Add(accountBox); layout.Controls.Add(recipient);
+                layout.Controls.Add(description); layout.Controls.Add(accountLabel); layout.Controls.Add(accountBox); layout.Controls.Add(recipient);
                 layout.Controls.Add(text); layout.Controls.Add(actions);
                 preview.Controls.Add(layout); preview.CancelButton = cancel;
                 if (preview.ShowDialog(this) != DialogResult.OK || accountBox.SelectedItem is not AccountInfo selected) continue;
@@ -419,7 +431,7 @@ public sealed class MainForm : Form
                 if (!browsers.TryGetValue(selected.Id, out var browser) || browser.CoreWebView2 is null) continue;
                 try { File.WriteAllText(preferencePath, selected.Id); } catch { }
                 browser.CoreWebView2.Navigate(request.WhatsAppUrl);
-                statusLabel.Text = "Mensagem preparada. Confira a conversa e clique em Enviar no WhatsApp.";
+                statusLabel.Text = $"{selected.Name} — abrindo o rascunho. O WhatsApp pode recarregar; o envio é manual.";
             }
         }
         catch (Exception error)
@@ -451,7 +463,7 @@ public sealed class MainForm : Form
         LoadPreferences();
         ApplyPreferences();
         RenderAccountButtons();
-        if (accounts.Count > 0) await ActivateAccount(accounts[0]);
+        if (accounts.Count > 0 && composeRequests.Count == 0) await ActivateAccount(accounts[0]);
         Log("Inicialização concluída.");
     }
 

@@ -15,3 +15,11 @@ foreach (var invalid in new[] {
     "modux://compose?source=criatta&phone=5535992576972&text=" })
     Check(ComposeRequest.Parse(invalid) is null, "Rejected malformed or unsafe input: " + invalid[..Math.Min(80, invalid.Length)]);
 Console.WriteLine("MODUX protocol checks passed.");
+
+var ids = new[] { "company", "criatta" };
+Check(ComposeAccountSelection.Resolve(null, ids) is null, "First use requires explicit account selection");
+Check(ComposeAccountSelection.Resolve("", ids) is null, "Empty preference does not select first account");
+Check(ComposeAccountSelection.Resolve("removed", ids) is null, "Removed account requires a new selection");
+Check(ComposeAccountSelection.Resolve("criatta", ids) == "criatta", "Explicit Criatta binding is preserved");
+Check(ComposeAccountSelection.Resolve("criatta", ids.Reverse()) == "criatta", "Account reordering does not change binding");
+Console.WriteLine("MODUX account selection checks passed.");

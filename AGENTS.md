@@ -97,7 +97,7 @@ Requisitos permanentes:
 
 ## Pendências priorizadas
 
-- Integração Criatta 1.6.0: validar no Windows abertura a frio, da bandeja e com sessão ativa, escolha de conta e rascunho. Não anunciar teste funcional completo antes da validação do usuário.
+- Usuário reportou em 06/10 que o rascunho recarrega o WhatsApp na mesma janela e aparece na conta da empresa. A seleção 1.6.0 podia usar conta ativa/primeira. Candidata 1.6.1 exige vínculo explícito e ignora a preferência antiga; validar escolha Criatta, abertura a frio/bandeja e envio manual no Windows.
 
 1. Testar em uso real no Windows se links das conversas abrem externamente e não substituem o WhatsApp.
 2. Confirmar visualmente o cartão da conta ativa e o badge total na barra de tarefas.
@@ -200,3 +200,11 @@ Antes de entregar uma versão:
 - Instalador registra modux://compose por usuário. Parser aceita somente source=criatta, telefone brasileiro e texto limitado; não abre URLs arbitrárias nem envia mensagens.
 - Pipe local CurrentUserOnly encaminha o link à instância existente; inicialização guarda os rascunhos até carregar contas. Prévia pede conta e confirmação, lembra a última escolha em criatta-account.txt. Sessões existentes são preservadas.
 - Testes de protocolo em tests/ComposeRequest; workflow compila WinForms e instalador Windows. Workflows #41 e #42 compilaram aplicativo e instalador com sucesso; release modux-v1.6.0 publicada com MODUX-Setup-1.6.0.exe. Criatta 1.6.1 publicada. Aguardando validação real no Windows com as contas do usuário.
+
+
+### 2026-10-06 — candidata MODUX 1.6.1: conta explícita da Criatta
+
+- Seleção não usa conta ativa/primeira. Sem vínculo válido, botão fica desabilitado até escolher a conta. Rótulo e botão mostram a conta escolhida.
+- Novo criatta-account-v2.txt exige confirmar o vínculo na primeira utilização após atualizar; preferência antiga preservada, mas não reutilizada. Sessões/contas não são apagadas.
+- Abertura a frio com rascunho não carrega primeiro a conta da empresa. Navegar para o rascunho ainda pode recarregar a página do WhatsApp; nenhuma nova instância nem envio automático foi adicionado.
+- Testes de seleção cobrem vínculo ausente, vazio, removido, válido e reordenação. Estado: testes de protocolo/seleção, compilação Windows e instalador concluídos no workflow 37487645902; uso real pendente.
