@@ -138,6 +138,15 @@ Antes de entregar uma versão:
 - GitHub Actions run #38968209127 concluiu com sucesso em 16/10/2026: testes ComposeRequest, compilação .NET, Inno Setup, artefato e release beta (modux-v1.7.0-beta1). Instalador: MODUX-Setup-1.7.0.exe. **Validação real de sessões e WaSeller no Windows ainda pendente.**
 - Falha do CRM WaSeller ainda pendente de diagnóstico.
 
+### MODUX 1.7.1 — senha por código de recuperação (16/10/2026)
+
+- `AgendaPasswordDialog.cs` adiciona definição/recuperação de senha diretamente no MODUX por OTP enviado ao e-mail (Supabase Auth `/recover`, `/verify` tipo `recovery`, `/user`).
+- Exige que **Authentication → Emails → Reset Password** contenha `{{ .Token }}` para o usuário receber o código; não requer site `localhost:3000`.
+- Senha, código e token ficam apenas na memória do aplicativo e são enviados diretamente ao Supabase por HTTPS. Não precisam ser compartilhados com a equipe de desenvolvimento.
+- Windows: GitHub Actions run **38971710042** concluiu com sucesso (testes, compilação e instalador Inno Setup), release beta `modux-v1.7.1-beta1` publicada com `MODUX-Setup-1.7.1.exe`.
+- **Teste funcional no computador do usuário e recuperação efetiva de senha ainda pendentes**. Não presumir que SMTP/OTP funciona antes de validar.
+- Sessões existentes do WhatsApp, WaSeller, Google Agenda e CRM não foram alteradas.
+
 ## Registro de mudanças
 
 ### 2026-09-23 — candidata MODUX 1.5.2
