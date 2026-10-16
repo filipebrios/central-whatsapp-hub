@@ -129,6 +129,15 @@ Antes de entregar uma versão:
 - Limpeza de cache preserva login.
 - WaSeller, quando aplicável, permanece limitado à conta escolhida.
 
+## MODUX 1.7.0 — Agenda São Bento (candidata, 16/10/2026)
+
+- Atalho verde Agenda São Bento abaixo dos WhatsApps, com menu recolhível. Não criar abas horizontais.
+- Painel Agenda com login Supabase Auth, RLS e consulta/cadastro inicial de serviços.
+- Não alterar sessões WhatsApp/WaSeller, nem ligar automações de envio.
+- Usuário administrador ainda precisa ser convidado/vinculado no Supabase antes do login.
+- Integração em desenvolvimento: requer build Windows e validação real.
+- Falha do CRM WaSeller ainda pendente de diagnóstico.
+
 ## Registro de mudanças
 
 ### 2026-09-23 — candidata MODUX 1.5.2
