@@ -135,7 +135,7 @@ Antes de entregar uma versão:
 - Painel Agenda com login Supabase Auth, RLS e consulta/cadastro inicial de serviços.
 - Não alterar sessões WhatsApp/WaSeller, nem ligar automações de envio.
 - Usuário administrador ainda precisa ser convidado/vinculado no Supabase antes do login.
-- Integração em desenvolvimento: requer build Windows e validação real.
+- GitHub Actions run #38968209127 concluiu com sucesso em 16/10/2026: testes ComposeRequest, compilação .NET, Inno Setup, artefato e release beta (modux-v1.7.0-beta1). Instalador: MODUX-Setup-1.7.0.exe. **Validação real de sessões e WaSeller no Windows ainda pendente.**
 - Falha do CRM WaSeller ainda pendente de diagnóstico.
 
 ## Registro de mudanças
