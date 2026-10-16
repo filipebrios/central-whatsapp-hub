@@ -1,0 +1,68 @@
+name: MODUX 1.7 Agenda - instalador candidato
+
+on:
+  push:
+    branches:
+      - feature/modux-agenda-sidebar-v17
+    paths:
+      - "webview2-prototype/AgendaPanel.cs"
+      - "webview2-prototype/AgendaSidebar.cs"
+      - "modux-agenda/**"
+      - ".github/workflows/build-modux-agenda-17.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Encaixar Agenda sem alterar sessoes existentes
+        run: python modux-agenda/apply_sidebar.py
+
+      - name: Testar protocolo de mensagens MODUX
+        run: dotnet run --project tests/ComposeRequest/ComposeRequest.csproj
+
+      - name: Compilar aplicativo Windows
+        shell: pwsh
+        run: dotnet publish webview2-prototype/CentralWhatsApp.WebView2.csproj -c Release -r win-x64 --self-contained true -o webview2-prototype/publish
+
+      - name: Preparar Inno Setup
+        shell: pwsh
+        run: |
+          $compiler = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $compiler)) { choco install innosetup --no-progress -y }
+          if (-not (Test-Path $compiler)) { throw "Inno Setup nao encontrado" }
+
+      - name: Gerar instalador
+        shell: pwsh
+        working-directory: webview2-prototype
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "CentralWhatsApp.iss"'
+
+      - name: Disponibilizar artefato de testes
+        uses: actions/upload-artifact@v4
+        with:
+          name: MODUX-Setup-1.7.0-Agenda-Candidata
+          path: webview2-prototype/installer-output/MODUX-Setup-1.7.0.exe
+          if-no-files-found: error
+
+      - name: Publicar release de teste separada
+        if: github.ref == 'refs/heads/feature/modux-agenda-sidebar-v17'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "modux-v1.7.0-beta1"
+          $asset = "webview2-prototype/installer-output/MODUX-Setup-1.7.0.exe"
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag $asset --target ${{ github.sha }} --title "MODUX 1.7 Agenda (beta)" --notes "Candidata Windows com botao verde Agenda Sao Bento abaixo das contas WhatsApp. Login Supabase requer convite de usuario e vinculo a agenda_members. Ainda sem sincronizacao WhatsApp/Google Agenda. WaSeller e CRM precisam de teste real. Mantem a versao 1.6.1 disponivel." --prerelease
+          } else {
+            Write-Host "Release beta existente preservada. Novo instalador disponivel nos artefatos do workflow."
+          }
