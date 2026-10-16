@@ -63,7 +63,17 @@ internal sealed class AgendaPanel : UserControl
             AutoSize = true, ForeColor = Color.FromArgb(71, 85, 105),
             Margin = new Padding(5, 0, 5, 18)
         });
-        card.Controls.Add(email); card.Controls.Add(password); card.Controls.Add(signIn);
+        var recoverButton = MakeButton("Definir ou recuperar senha");
+        recoverButton.BackColor = Color.White;
+        recoverButton.ForeColor = Color.FromArgb(0, 103, 44);
+        recoverButton.FlatAppearance.BorderColor = Color.FromArgb(0, 103, 44);
+        recoverButton.Click += (_, _) =>
+        {
+            using var recovery = new AgendaPasswordDialog(email.Text);
+            recovery.ShowDialog(this);
+        };
+        card.Controls.Add(email); card.Controls.Add(password);
+        card.Controls.Add(signIn); card.Controls.Add(recoverButton);
         card.Controls.Add(new Label
         {
             Text = "É necessário convidar a conta no Supabase Auth e vinculá-la à São Bento.",
