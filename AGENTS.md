@@ -129,6 +129,15 @@ Antes de entregar uma versão:
 - Limpeza de cache preserva login.
 - WaSeller, quando aplicável, permanece limitado à conta escolhida.
 
+## Próxima release consolidada: MODUX 1.9.0 (escopo registrado em 20/10/2026)
+
+- **Fonte do escopo**: https://github.com/filipebrios/central-whatsapp-hub/issues/5
+- Pedido explícito do usuário: **não gerar novos instaladores a cada pequena alteração**. Desenvolver e testar internamente as etapas, entregando um único instalador consolidado ao final, quando integradas.
+- Google iCal atual = **somente leitura**; em 1.9.0 priorizar OAuth 2.0 oficial Google Calendar API para editar eventos do Google sem duplicar registros do Supabase, incluindo IDs/etags, recorrências e conflitos.
+- Incluir operação completa, cores por serviço, sessões multicliente e painel de pendências, com ações do WaSeller submetidas ao usuário, **sem declarar envios autônomos fora do expediente com PC desligado**.
+- Por último redesenhar visual do **aplicativo inteiro** com inspiração Apple, espaço, cantos arredondados, tipografia licenciada Windows, ícones consistentes, preservando WebView2 e todas as sessões atuais.
+- Release 1.9.0 ainda é **planejamento**, sem integração Google API, build nem instalador publicados. Validação por etapa é interna; validação geral com usuário só após integração.
+
 ## MODUX 1.7.0 — Agenda São Bento (candidata, 16/10/2026)
 
 - Atalho verde Agenda São Bento abaixo dos WhatsApps, com menu recolhível. Não criar abas horizontais.
