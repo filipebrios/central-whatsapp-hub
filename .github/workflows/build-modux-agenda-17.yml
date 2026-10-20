@@ -1,4 +1,4 @@
-name: MODUX 1.7 Agenda - instalador candidato
+name: MODUX 1.8 Agenda - instalador candidato
 
 on:
   push:
@@ -8,6 +8,8 @@ on:
       - "webview2-prototype/AgendaPanel.cs"
       - "webview2-prototype/AgendaSidebar.cs"
       - "webview2-prototype/AgendaPasswordDialog.cs"
+      - "webview2-prototype/AgendaMonthView.cs"
+      - "webview2-prototype/AgendaAppointmentDialog.cs"
       - "modux-agenda/**"
       - ".github/workflows/build-modux-agenda-17.yml"
   workflow_dispatch:
@@ -49,8 +51,8 @@ jobs:
       - name: Disponibilizar artefato de testes
         uses: actions/upload-artifact@v4
         with:
-          name: MODUX-Setup-1.7.1-Agenda-Candidata
-          path: webview2-prototype/installer-output/MODUX-Setup-1.7.1.exe
+          name: MODUX-Setup-1.8.0-Agenda-Candidata
+          path: webview2-prototype/installer-output/MODUX-Setup-1.8.0.exe
           if-no-files-found: error
 
       - name: Publicar release de teste separada
@@ -59,11 +61,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "modux-v1.7.1-beta1"
-          $asset = "webview2-prototype/installer-output/MODUX-Setup-1.7.1.exe"
+          $tag = "modux-v1.8.0-beta1"
+          $asset = "webview2-prototype/installer-output/MODUX-Setup-1.8.0.exe"
           gh release view $tag 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag $asset --target ${{ github.sha }} --title "MODUX 1.7 Agenda (beta)" --notes "Windows 1.7.1 beta com Agenda Sao Bento e redefinicao de senha via codigo do email de recuperacao. Requer modelo de email Recovery com variavel Token. Preserva sessoes. Sem sincronizacao WhatsApp/Google Agenda. WaSeller e CRM precisam de testes reais." --prerelease
+            gh release create $tag $asset --target ${{ github.sha }} --title "MODUX 1.7 Agenda (beta)" --notes "Windows 1.8.0 beta: calendario mensal com filtro por dia e cadastro PF/PJ com multiplos servicos, duracao, equipe e email opcional. Permanece sem sincronizacao com WhatsApp ou Google Agenda e sem importacao automatica; conserva sessoes. Testes manuais e CRM WaSeller pendentes." --prerelease
           } else {
             Write-Host "Release beta existente preservada. Novo instalador disponivel nos artefatos do workflow."
           }
