@@ -163,7 +163,7 @@ Antes de entregar uma versão:
 - Botão **Conectar Google Agenda** no módulo Agenda, com campo oculto para inserir a URL; atualização ao login, ao mudar período e a cada 15 minutos enquanto painel estiver ativo e PC ligado.
 - Sem OAuth e sem sincronização bidirecional; alterações no Google ficam apenas no Google. A assinatura privada é específica de um calendário e não deve ser publicada. A revogação é realizada no próprio Google Agenda.
 - WaSeller no MODUX continua dependente do computador ligado; respostas fora de expediente quando PC desligado exigem resposta de ausência no aplicativo Android ou serviço oficial em nuvem. Nenhum novo envio automático implementado.
-- Workflow Windows #39435255215 em compilação; versão `1.8.1-beta1`. Verificar compilação, release e validação real antes de declarar a entrega.
+- Correção de compatibilidade do Ical.Net 5.2.3 concluída e GitHub Actions run **#39436070492** finalizado com sucesso: testes ComposeRequest, compilação .NET Windows, Inno Setup e release `modux-v1.8.1-beta1` com asset `MODUX-Setup-1.8.1.exe`. **Assinatura iCal e comportamento com eventos reais ainda pendentes de teste no Windows do usuário.**
 
 ## Registro de mudanças
 
