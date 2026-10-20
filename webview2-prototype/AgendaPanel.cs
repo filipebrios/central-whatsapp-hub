@@ -23,6 +23,10 @@ internal sealed class AgendaPanel : UserControl
     private readonly Button signOut = MakeButton("Sair");
     private readonly Button refresh = MakeButton("Atualizar");
     private readonly Button add = MakeButton("+ Novo agendamento");
+    private readonly AgendaMonthView calendar = new();
+    private readonly List<string[]> cachedRows = [];
+    private DateOnly? filterDate;
+    private bool suspendRefresh;
     private readonly Label status = new() { Dock = DockStyle.Bottom, Height = 54, AutoEllipsis = true, ForeColor = Color.FromArgb(59, 74, 92), Padding = new Padding(12, 9, 12, 0) };
     private readonly DateTimePicker startDate = new() { Format = DateTimePickerFormat.Short, Value = DateTime.Today, Width = 125 };
     private readonly ComboBox period = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 105 };
@@ -87,8 +91,8 @@ internal sealed class AgendaPanel : UserControl
             if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; await Login(); }
         };
 
-        period.Items.AddRange(["Hoje", "7 dias", "30 dias"]);
-        period.SelectedIndex = 1;
+        period.Items.AddRange(["Hoje", "7 dias", "Mês"]);
+        period.SelectedIndex = 2;
         var bar = new FlowLayoutPanel
         {
             Dock = DockStyle.Top, Height = 65, WrapContents = false,
@@ -104,10 +108,32 @@ internal sealed class AgendaPanel : UserControl
         })
             grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = name, FillWeight = weight });
         grid.ColumnHeadersHeight = 36; grid.RowTemplate.Height = 34;
-        appointmentsPane.Controls.Add(grid); appointmentsPane.Controls.Add(bar);
-        refresh.Click += async (_, _) => await LoadAppointments();
-        startDate.ValueChanged += async (_, _) => { if (companyId is not null) await LoadAppointments(); };
-        period.SelectedIndexChanged += async (_, _) => { if (companyId is not null) await LoadAppointments(); };
+        appointmentsPane.Controls.Add(grid);
+        appointmentsPane.Controls.Add(calendar);
+        appointmentsPane.Controls.Add(bar);
+        calendar.DateSelected += selected =>
+        {
+            filterDate = selected;
+            ShowCachedRows();
+        };
+        calendar.MonthChanged += month =>
+        {
+            suspendRefresh = true;
+            period.SelectedIndex = 2;
+            startDate.Value = month.ToDateTime(TimeOnly.MinValue);
+            suspendRefresh = false;
+            filterDate = null;
+            _ = LoadAppointments();
+        };
+        refresh.Click += async (_, _) => { filterDate = null; await LoadAppointments(); };
+        startDate.ValueChanged += async (_, _) =>
+        {
+            if (companyId is not null && !suspendRefresh) { filterDate = null; await LoadAppointments(); }
+        };
+        period.SelectedIndexChanged += async (_, _) =>
+        {
+            if (companyId is not null && !suspendRefresh) { filterDate = null; await LoadAppointments(); }
+        };
         add.Click += async (_, _) => await CreateAppointment();
         signOut.Click += (_, _) => Logout();
         Controls.Add(loginPane); Controls.Add(appointmentsPane); Controls.Add(status);
@@ -170,7 +196,9 @@ internal sealed class AgendaPanel : UserControl
     {
         accessToken = refreshToken = companyId = currentUserId = null;
         password.Clear();
-        grid.Rows.Clear(); appointmentsPane.Visible = false; loginPane.Visible = true;
+        grid.Rows.Clear(); cachedRows.Clear(); calendar.SetEntries([]);
+        filterDate = null;
+        appointmentsPane.Visible = false; loginPane.Visible = true;
     }
     private async Task<bool> RenewToken()
     {
@@ -222,9 +250,15 @@ internal sealed class AgendaPanel : UserControl
         SetBusy(true);
         try
         {
-            var first = DateOnly.FromDateTime(startDate.Value);
-            var days = period.SelectedIndex switch { 0 => 1, 2 => 30, _ => 7 };
-            var last = first.AddDays(days - 1);
+            var chosen = DateOnly.FromDateTime(startDate.Value);
+            var first = period.SelectedIndex == 2
+                ? new DateOnly(chosen.Year, chosen.Month, 1) : chosen;
+            var last = period.SelectedIndex switch
+            {
+                0 => first,
+                1 => first.AddDays(6),
+                _ => first.AddMonths(1).AddDays(-1)
+            };
             var query = "rest/v1/agenda_appointments?select=id,client,phone,primary_service,date,time,status,address" +
                 "&company_id=eq." + Uri.EscapeDataString(companyId) + "&deleted_at=is.null" +
                 $"&date=gte.{first:yyyy-MM-dd}&date=lte.{last:yyyy-MM-dd}" +
@@ -232,101 +266,92 @@ internal sealed class AgendaPanel : UserControl
             using var response = await Authorized(HttpMethod.Get, query);
             RequireSuccess(response);
             using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-            grid.Rows.Clear();
+            cachedRows.Clear();
+            var calendarRows = new List<AgendaCalendarEntry>();
             foreach (var appointment in doc.RootElement.EnumerateArray())
             {
                 static string Read(JsonElement item, string key) =>
-                    item.TryGetProperty(key, out var v) && v.ValueKind != JsonValueKind.Null ? v.ToString() : "";
+                    item.TryGetProperty(key, out var value) && value.ValueKind != JsonValueKind.Null
+                        ? value.ToString() : "";
+                var date = Read(appointment, "date");
                 var time = Read(appointment, "time");
                 if (time.Length > 5) time = time[..5];
-                grid.Rows.Add(Read(appointment, "date"), time, Read(appointment, "client"),
-                    Read(appointment, "primary_service"), Read(appointment, "status"),
-                    Read(appointment, "phone"), Read(appointment, "address"));
+                var clientName = Read(appointment, "client");
+                var service = Read(appointment, "primary_service");
+                var statusName = Read(appointment, "status");
+                cachedRows.Add([date, time, clientName, service, statusName,
+                    Read(appointment, "phone"), Read(appointment, "address")]);
+                if (DateOnly.TryParseExact(date, "yyyy-MM-dd",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var parsed))
+                    calendarRows.Add(new AgendaCalendarEntry(parsed, time, clientName, service, statusName));
             }
-            Status($"{doc.RootElement.GetArrayLength()} agendamentos • {first:dd/MM} a {last:dd/MM}. " +
-                "Os dados da extensão antiga ainda não foram importados.");
+            calendar.SetEntries(calendarRows);
+            ShowCachedRows();
+            Status($"{cachedRows.Count} agendamentos • {first:dd/MM} a {last:dd/MM}. " +
+                "Clique num dia do calendário para filtrar. Agenda do Google ainda não sincronizada.");
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
-        { Status("Não foi possível atualizar: " + e.Message); }
+        catch (Exception error) when (error is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
+        { Status("Não foi possível atualizar: " + error.Message); }
         finally { SetBusy(false); }
     }
+
+    private void ShowCachedRows()
+    {
+        grid.Rows.Clear();
+        foreach (var record in cachedRows)
+        {
+            if (filterDate is not null && record[0] != filterDate.Value.ToString("yyyy-MM-dd"))
+                continue;
+            var index = grid.Rows.Add(record);
+            var state = record[4];
+            if (state is "cancelado" or "cancelar")
+                grid.Rows[index].DefaultCellStyle.ForeColor = Color.FromArgb(164, 42, 42);
+            else if (state is "confirmado")
+                grid.Rows[index].DefaultCellStyle.ForeColor = Color.FromArgb(0, 103, 44);
+            else if (state is "revisao" or "reagendar")
+                grid.Rows[index].DefaultCellStyle.BackColor = Color.FromArgb(255, 249, 223);
+        }
+    }
+
     private async Task CreateAppointment()
     {
         if (busy || companyId is null) return;
-        using var dialog = new Form
-        {
-            Text = "Novo agendamento • São Bento", Width = 565, Height = 565,
-            StartPosition = FormStartPosition.CenterParent,
-            BackColor = Color.White, Font = new Font("Segoe UI", 10)
-        };
-        var rows = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 8, AutoScroll = true,
-            Padding = new Padding(14)
-        };
-        rows.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
-        rows.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        var client = new TextBox { Dock = DockStyle.Top };
-        var phone = new TextBox { Dock = DockStyle.Top };
-        var emailAddress = new TextBox { Dock = DockStyle.Top };
-        var address = new TextBox { Dock = DockStyle.Top };
-        var service = new TextBox { Dock = DockStyle.Top };
-        var date = new DateTimePicker { Dock = DockStyle.Top, Format = DateTimePickerFormat.Short };
-        var time = new DateTimePicker
-        { Dock = DockStyle.Top, Format = DateTimePickerFormat.Custom, CustomFormat = "HH:mm", ShowUpDown = true };
-        var notes = new TextBox { Dock = DockStyle.Top, Multiline = true, Height = 65 };
-        var items = new (string Label, Control Input)[]
-        {
-            ("Cliente *", client), ("Telefone *", phone), ("E-mail *", emailAddress),
-            ("Endereço *", address), ("Serviço *", service), ("Data", date), ("Hora", time),
-            ("Observações", notes)
-        };
-        for (var i = 0; i < items.Length; i++)
-        {
-            rows.RowStyles.Add(new RowStyle(SizeType.Absolute, i == 7 ? 85 : 48));
-            rows.Controls.Add(new Label { Text = items[i].Label, Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleLeft }, 0, i);
-            rows.Controls.Add(items[i].Input, 1, i);
-        }
-        var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 53,
-            FlowDirection = FlowDirection.RightToLeft };
-        var save = MakeButton("Salvar agendamento");
-        var cancel = MakeButton("Cancelar");
-        save.Click += (_, _) =>
-        {
-            if (new[] { client, phone, emailAddress, address, service }.Any(x => string.IsNullOrWhiteSpace(x.Text)))
-            { MessageBox.Show(dialog, "Preencha os campos obrigatórios.", "Agenda São Bento"); return; }
-            if (!emailAddress.Text.Contains('@'))
-            { MessageBox.Show(dialog, "Confira o e-mail informado.", "Agenda São Bento"); return; }
-            dialog.DialogResult = DialogResult.OK;
-        };
-        cancel.Click += (_, _) => dialog.DialogResult = DialogResult.Cancel;
-        buttons.Controls.Add(save); buttons.Controls.Add(cancel);
-        dialog.Controls.Add(rows); dialog.Controls.Add(buttons);
-        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        using var dialog = new AgendaAppointmentDialog(calendar.SelectedDate);
+        if (dialog.ShowDialog(this) != DialogResult.OK || dialog.Result is not { } value) return;
         SetBusy(true);
+        var saved = false;
         try
         {
             using var response = await Authorized(HttpMethod.Post, "rest/v1/agenda_appointments", new
             {
-                company_id = companyId,
-                kind = "pf",
-                client = client.Text.Trim(), responsible = "",
-                phone = phone.Text.Trim(), email = emailAddress.Text.Trim(),
-                address = address.Text.Trim(), service_ids = Array.Empty<string>(),
-                primary_service = service.Text.Trim(),
-                date = date.Value.ToString("yyyy-MM-dd"), time = time.Value.ToString("HH:mm:ss"),
-                duration = 60, status = "agendado", technician = "", notes = notes.Text.Trim(),
+                company_id = companyId, kind = value.Kind, client = value.Client,
+                responsible = value.Responsible, phone = value.Phone, email = value.Email,
+                address = value.Address, service_ids = value.ServiceIds,
+                primary_service = value.PrimaryService, date = value.Date,
+                time = value.Time, duration = value.Duration,
+                status = "agendado", technician = value.Technician, notes = value.Notes,
                 source = "modux", created_by = currentUserId, updated_by = currentUserId
             });
             RequireSuccess(response);
-            Status("Agendamento salvo na nuvem. Google Agenda e WhatsApp ainda não foram sincronizados.");
+            saved = true;
+            Status("Agendamento salvo na nuvem. Nenhum WhatsApp ou evento Google foi enviado.");
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
-        { Status("Não foi possível salvar: " + e.Message); }
+        catch (Exception error) when (error is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
+        { Status("Não foi possível salvar: " + error.Message); }
         finally { SetBusy(false); }
-        await LoadAppointments();
+        if (saved)
+        {
+            filterDate = null;
+            var date = DateOnly.ParseExact(value.Date, "yyyy-MM-dd",
+                System.Globalization.CultureInfo.InvariantCulture);
+            if (calendar.DisplayedMonth.Month != date.Month ||
+                calendar.DisplayedMonth.Year != date.Year)
+                calendar.SetMonth(date);
+            else await LoadAppointments();
+        }
     }
+
     protected override void Dispose(bool disposing)
     {
         if (disposing) http.Dispose();
