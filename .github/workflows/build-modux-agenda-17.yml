@@ -1,4 +1,4 @@
-name: MODUX 1.8 Agenda - instalador candidato
+name: MODUX 1.8.1 Agenda Google - instalador candidato
 
 on:
   push:
@@ -10,6 +10,8 @@ on:
       - "webview2-prototype/AgendaPasswordDialog.cs"
       - "webview2-prototype/AgendaMonthView.cs"
       - "webview2-prototype/AgendaAppointmentDialog.cs"
+      - "webview2-prototype/GoogleCalendarFeed.cs"
+      - "webview2-prototype/CentralWhatsApp.WebView2.csproj"
       - "modux-agenda/**"
       - ".github/workflows/build-modux-agenda-17.yml"
   workflow_dispatch:
@@ -51,8 +53,8 @@ jobs:
       - name: Disponibilizar artefato de testes
         uses: actions/upload-artifact@v4
         with:
-          name: MODUX-Setup-1.8.0-Agenda-Candidata
-          path: webview2-prototype/installer-output/MODUX-Setup-1.8.0.exe
+          name: MODUX-Setup-1.8.1-Agenda-Candidata
+          path: webview2-prototype/installer-output/MODUX-Setup-1.8.1.exe
           if-no-files-found: error
 
       - name: Publicar release de teste separada
@@ -61,11 +63,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "modux-v1.8.0-beta1"
-          $asset = "webview2-prototype/installer-output/MODUX-Setup-1.8.0.exe"
+          $tag = "modux-v1.8.1-beta1"
+          $asset = "webview2-prototype/installer-output/MODUX-Setup-1.8.1.exe"
           gh release view $tag 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag $asset --target ${{ github.sha }} --title "MODUX 1.7 Agenda (beta)" --notes "Windows 1.8.0 beta: calendario mensal com filtro por dia e cadastro PF/PJ com multiplos servicos, duracao, equipe e email opcional. Permanece sem sincronizacao com WhatsApp ou Google Agenda e sem importacao automatica; conserva sessoes. Testes manuais e CRM WaSeller pendentes." --prerelease
+            gh release create $tag $asset --target ${{ github.sha }} --title "MODUX 1.7 Agenda (beta)" --notes "Windows 1.8.1 beta: conexao read-only do Google Agenda por assinatura privada iCal local protegida por DPAPI, sem copiar ao banco ou alterar eventos. Mantem calendario e cadastro PF/PJ; sem envios WhatsApp ou sincronizacao bidirecional. Requer teste real." --prerelease
           } else {
             Write-Host "Release beta existente preservada. Novo instalador disponivel nos artefatos do workflow."
           }
