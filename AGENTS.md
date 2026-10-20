@@ -147,6 +147,15 @@ Antes de entregar uma versão:
 - **Teste funcional no computador do usuário e recuperação efetiva de senha ainda pendentes**. Não presumir que SMTP/OTP funciona antes de validar.
 - Sessões existentes do WhatsApp, WaSeller, Google Agenda e CRM não foram alteradas.
 
+### MODUX 1.8.0 — agenda mensal e formulário ampliado (20/10/2026)
+
+- Acrescentado `AgendaMonthView.cs`: calendário mensal clicável, navegação entre meses e prévia de até duas visitas por dia. Não modifica compromissos; lê dados autorizados por RLS.
+- `AgendaPanel.cs`: consulta por Hoje/7 dias/Mês, filtragem por clique no dia, coloração de situações e abertura de novo cadastro no dia selecionado. Mantém acesso Supabase Auth.
+- `AgendaAppointmentDialog.cs`: PF/PJ, cliente, responsável, WhatsApp, endereço, e-mail opcional, múltiplos serviços ou serviço customizado, data, hora, duração padrão de 60 min, técnico e observações. Salva dados no Supabase sem disparar WhatsApp nem criar evento no Google.
+- A tabela `agenda_service_types` ainda está vazia: catálogo do formulário é local nesta candidata, sem sincronização de configuração entre usuários. Próxima etapa é transferir os serviços para o banco.
+- Google Calendar não é sincronizado, compromissos da extensão antiga não foram importados, e CRM WaSeller segue pendente. Não substituir versão 1.7.1 estável sem testar a beta no Windows.
+- Workflow Windows `build-modux-agenda-17.yml` passou a gerar `MODUX-Setup-1.8.0.exe`; **compilação e testes ainda em andamento** na execução #39433058396.
+
 ## Registro de mudanças
 
 ### 2026-09-23 — candidata MODUX 1.5.2
