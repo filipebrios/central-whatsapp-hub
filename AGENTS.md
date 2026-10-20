@@ -172,7 +172,7 @@ Antes de entregar uma versão:
 - Acrescenta cores locais auxiliares para descupinização, reservatório, caixa de gordura, sanitização e capina química. Essas cores são propostas e poderão ser configuradas posteriormente.
 - `AgendaMonthView.cs` exibe faixa individual colorida por compromisso, suporte a mais de um serviço no dia, tooltip e legenda. `AgendaPanel.cs` mostra o serviço inferido na tabela com célula colorida, em vez de identificar tudo como apenas “Google Agenda”.
 - **A fonte iCal não garante trazer cor individual de evento do Google**: a paleta é inferida dos serviços e aplicada só ao MODUX; a cor do Google original nunca é alterada. Os eventos existentes são apenas lidos, sem salvar ou duplicar no Supabase.
-- Novos testes de classificação e dos hexadecimais em `tests/AgendaServiceColors/`. Workflow #39440133345 em execução; compilação/publicação/validação visual ainda pendentes.
+- Testes automatizados de classificação e hexadecimais em `tests/AgendaServiceColors/` **passaram**. GitHub Actions **#39440133345** concluído com sucesso em 20/10/2026: testes, compilação Windows, Inno Setup e release beta `modux-v1.8.2-beta1` com `MODUX-Setup-1.8.2.exe`. **Teste visual e conferência da classificação com eventos reais ainda pendentes.**
 
 ## Registro de mudanças
 
