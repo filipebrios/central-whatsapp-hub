@@ -156,6 +156,15 @@ Antes de entregar uma versão:
 - Google Calendar não é sincronizado, compromissos da extensão antiga não foram importados, e CRM WaSeller segue pendente. Não substituir versão 1.7.1 estável sem testar a beta no Windows.
 - GitHub Actions run **#39433058396** concluída com sucesso em 20/10/2026: teste ComposeRequest, compilação .NET, instalador Inno Setup, artefato e release beta `modux-v1.8.0-beta1` com `MODUX-Setup-1.8.0.exe`. **Validação visual e teste dos novos formulários no Windows ainda pendentes.**
 
+### MODUX 1.8.1 — leitura Google Agenda por endereço secreto iCal (20/10/2026)
+
+- `GoogleCalendarFeed.cs`: assinatura **somente leitura** de um endereço secreto HTTPS do Google Agenda fornecido pelo usuário diretamente no MODUX; validado host Google, URL cifrada localmente com DPAPI de usuário Windows. Não salvar nem copiar URL ao GitHub, Supabase, logs ou chat.
+- Eventos existentes, incluindo recorrências, são expandidos via Ical.Net e mostrados no mesmo calendário e tabela, diferenciados pela situação `Google • leitura`, sem criar/importar registros no Supabase nem duplicar automaticamente.
+- Botão **Conectar Google Agenda** no módulo Agenda, com campo oculto para inserir a URL; atualização ao login, ao mudar período e a cada 15 minutos enquanto painel estiver ativo e PC ligado.
+- Sem OAuth e sem sincronização bidirecional; alterações no Google ficam apenas no Google. A assinatura privada é específica de um calendário e não deve ser publicada. A revogação é realizada no próprio Google Agenda.
+- WaSeller no MODUX continua dependente do computador ligado; respostas fora de expediente quando PC desligado exigem resposta de ausência no aplicativo Android ou serviço oficial em nuvem. Nenhum novo envio automático implementado.
+- Workflow Windows #39435255215 em compilação; versão `1.8.1-beta1`. Verificar compilação, release e validação real antes de declarar a entrega.
+
 ## Registro de mudanças
 
 ### 2026-09-23 — candidata MODUX 1.5.2
