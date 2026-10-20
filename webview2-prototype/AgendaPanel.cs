@@ -25,11 +25,15 @@ internal sealed class AgendaPanel : UserControl
     private readonly Button add = MakeButton("+ Novo agendamento");
     private readonly AgendaMonthView calendar = new();
     private readonly GoogleCalendarFeed googleFeed = new();
+    private readonly GoogleDesktopOAuth googleOAuth = new();
+    private readonly GoogleCalendarApi googleApi;
+    private readonly Button googleApiButton = MakeButton("Google (editar)");
+    private readonly Button googleNewButton = MakeButton("+ Evento Google");
     private readonly Button googleButton = MakeButton("Conectar Google Agenda");
     private readonly System.Windows.Forms.Timer googleRefreshTimer = new() { Interval = 15 * 60 * 1000 };
     private int googleEventCount;
     private int supabaseEventCount;
-    private readonly List<(string[] Values, AgendaServiceCategory Category)> cachedRows = [];
+    private readonly List<(string[] Values, AgendaServiceCategory Category, GoogleEventSnapshot? Google)> cachedRows = [];
     private DateOnly? filterDate;
     private bool suspendRefresh;
     private readonly Label status = new() { Dock = DockStyle.Bottom, Height = 54, AutoEllipsis = true, ForeColor = Color.FromArgb(59, 74, 92), Padding = new Padding(12, 9, 12, 0) };
@@ -54,6 +58,7 @@ internal sealed class AgendaPanel : UserControl
 
     internal AgendaPanel()
     {
+        googleApi = new GoogleCalendarApi(googleOAuth);
         Dock = DockStyle.Fill;
         BackColor = Color.FromArgb(248, 250, 252);
         Font = new Font("Segoe UI", 10);
@@ -116,11 +121,27 @@ internal sealed class AgendaPanel : UserControl
                 await LoadAppointments();
             }
         };
-        bar.Controls.Add(refresh); bar.Controls.Add(add); bar.Controls.Add(googleButton); bar.Controls.Add(signOut);
+        add.Text = "+ Agendamento local";
+        googleApiButton.BackColor = Color.FromArgb(3, 91, 54);
+        googleApiButton.Click += async (_, _) =>
+        {
+            if (busy) return;
+            using var manager = new GoogleCalendarManageDialog(googleOAuth, googleApi);
+            manager.ShowDialog(this);
+            if (!manager.Changed) return;
+            UpdateGoogleLabel();
+            await LoadAppointments();
+        };
+        googleNewButton.BackColor = Color.FromArgb(7, 106, 63);
+        googleNewButton.Click += async (_, _) => await CreateGoogleEvent();
+        bar.Controls.Add(refresh); bar.Controls.Add(add);
+        bar.Controls.Add(googleNewButton);
+        bar.Controls.Add(googleApiButton);
+        bar.Controls.Add(googleButton); bar.Controls.Add(signOut);
         UpdateGoogleLabel();
         googleRefreshTimer.Tick += async (_, _) =>
         {
-            if (companyId is not null && appointmentsPane.Visible && !busy && googleFeed.HasUrl)
+            if (companyId is not null && appointmentsPane.Visible && !busy && (googleFeed.HasUrl || googleOAuth.CalendarId is not null))
                 await LoadAppointments();
         };
         googleRefreshTimer.Start();
@@ -131,6 +152,11 @@ internal sealed class AgendaPanel : UserControl
         })
             grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = name, FillWeight = weight });
         grid.ColumnHeadersHeight = 36; grid.RowTemplate.Height = 34;
+        grid.CellDoubleClick += async (_, e) =>
+        {
+            if (e.RowIndex >= 0 && !busy)
+                await EditSelectedGoogleEvent(e.RowIndex);
+        };
         appointmentsPane.Controls.Add(grid);
         appointmentsPane.Controls.Add(calendar);
         appointmentsPane.Controls.Add(bar);
@@ -168,6 +194,8 @@ internal sealed class AgendaPanel : UserControl
     {
         busy = value;
         signIn.Enabled = refresh.Enabled = add.Enabled = signOut.Enabled = !value;
+        googleButton.Enabled = googleApiButton.Enabled = !value;
+        googleNewButton.Enabled = !value && googleOAuth.CalendarId is not null;
     }
     private static StringContent Json(object body) =>
         new(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
@@ -315,7 +343,7 @@ internal sealed class AgendaPanel : UserControl
                 var category = AgendaServiceColors.FromServiceIds(ids, service, statusName);
                 cachedRows.Add((
                     [date, time, clientName, service, statusName,
-                        Read(appointment, "phone"), Read(appointment, "address")], category));
+                        Read(appointment, "phone"), Read(appointment, "address")], category, null));
                 supabaseEventCount++;
                 if (DateOnly.TryParseExact(date, "yyyy-MM-dd",
                     System.Globalization.CultureInfo.InvariantCulture,
@@ -324,7 +352,31 @@ internal sealed class AgendaPanel : UserControl
             }
             // O Google é uma fonte de leitura: não copia os eventos ao Supabase,
             // não cria serviços novos e não dispara nenhum lembrete.
-            if (googleFeed.HasUrl)
+            if (googleOAuth.CalendarId is not null)
+            {
+                try
+                {
+                    var googleEvents = await googleApi.Events(first, last);
+                    foreach (var item in googleEvents)
+                    {
+                        var category = AgendaServiceColors.Classify(item.Title, item.Description);
+                        cachedRows.Add(([
+                            item.Date.ToString("yyyy-MM-dd"), item.Time,
+                            item.Title, category.Label, "Google • editável", "",
+                            item.Location
+                        ], category, item));
+                        calendarRows.Add(new AgendaCalendarEntry(item.Date, item.Time,
+                            item.Title, category.Label, "google", category));
+                        googleEventCount++;
+                    }
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or
+                    HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+                {
+                    googleWarning = "Google API: " + ex.Message;
+                }
+            }
+            else if (googleFeed.HasUrl)
             {
                 try
                 {
@@ -336,7 +388,7 @@ internal sealed class AgendaPanel : UserControl
                             item.Date.ToString("yyyy-MM-dd"), item.Time,
                             item.Title, category.Label, "Google • leitura", "",
                             item.Location
-                        ], category));
+                        ], category, null));
                         calendarRows.Add(new AgendaCalendarEntry(item.Date, item.Time,
                             item.Title, category.Label, "google", category));
                         googleEventCount++;
@@ -344,8 +396,7 @@ internal sealed class AgendaPanel : UserControl
                 }
                 catch (Exception)
                 {
-                    // Nunca apresentar em mensagem de erro o endereço secreto nem o token iCal.
-                    googleWarning = "Não foi possível ler o Google Agenda. Revise o link secreto e a conexão.";
+                    googleWarning = "Não foi possível ler o Google iCal. Revise o link privado e a conexão.";
                 }
             }
             cachedRows.Sort((left, right) =>
@@ -354,7 +405,9 @@ internal sealed class AgendaPanel : UserControl
             calendar.SetEntries(calendarRows);
             ShowCachedRows();
             Status($"{supabaseEventCount} locais + {googleEventCount} Google • {first:dd/MM} a {last:dd/MM}. " +
-                (googleWarning ?? "Somente leitura do Google, sem duplicar nem enviar WhatsApp."));
+                (googleWarning ?? (googleOAuth.CalendarId is null
+                    ? "Google iCal: leitura apenas; sem duplicar nem enviar WhatsApp."
+                    : "Google API conectada. Duplo clique em evento do Google para editar.")));
         }
         catch (Exception error) when (error is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
         { Status("Não foi possível atualizar: " + error.Message); }
@@ -363,24 +416,31 @@ internal sealed class AgendaPanel : UserControl
 
     private void UpdateGoogleLabel()
     {
-        googleButton.Text = googleFeed.HasUrl ? "Google conectado ✓" : "Conectar Google Agenda";
+        googleButton.Text = googleFeed.HasUrl ? "iCal conectado ✓" : "Google iCal";
+        googleApiButton.Text = googleOAuth.CalendarId is not null
+            ? "Google: " + (googleOAuth.CalendarName ?? "Conectado") : "Google (editar)";
+        googleNewButton.Enabled = googleOAuth.CalendarId is not null;
     }
 
     private void ShowCachedRows()
     {
         grid.Rows.Clear();
-        foreach (var (record, category) in cachedRows)
+        foreach (var (record, category, google) in cachedRows)
         {
             if (filterDate is not null && record[0] != filterDate.Value.ToString("yyyy-MM-dd"))
                 continue;
             var index = grid.Rows.Add(record);
+            grid.Rows[index].Tag = google;
+            grid.Rows[index].Cells[2].ToolTipText = google is not null
+                ? "Duplo clique para editar diretamente no Google"
+                : "Agendamento local ou iCal somente leitura";
             var state = record[4];
             var serviceCell = grid.Rows[index].Cells[3];
             serviceCell.Style.BackColor = category.Color;
             serviceCell.Style.ForeColor = category.TextColor;
             serviceCell.ToolTipText = category.Label + " • " + category.GoogleColorName
                 + (state == "Google • leitura" ? " (classificado pelo texto do evento)" : "");
-            if (state == "Google • leitura")
+            if (state is "Google • leitura" or "Google • editável")
                 grid.Rows[index].DefaultCellStyle.BackColor = Color.FromArgb(229, 241, 255);
             else if (state is "cancelado" or "cancelar")
                 grid.Rows[index].DefaultCellStyle.ForeColor = Color.FromArgb(164, 42, 42);
@@ -389,6 +449,66 @@ internal sealed class AgendaPanel : UserControl
             else if (state is "revisao" or "reagendar")
                 grid.Rows[index].DefaultCellStyle.BackColor = Color.FromArgb(255, 249, 223);
         }
+    }
+
+    private async Task EditSelectedGoogleEvent(int rowIndex)
+    {
+        if (busy || googleOAuth.CalendarId is null || rowIndex >= grid.Rows.Count) return;
+        if (grid.Rows[rowIndex].Tag is not GoogleEventSnapshot google)
+        {
+            Status("Esse compromisso ainda não é editável no Google. Eventos iCal são apenas leitura.");
+            return;
+        }
+        using var editor = new GoogleCalendarEventDialog(google, google.Date);
+        if (editor.ShowDialog(this) != DialogResult.OK) return;
+        SetBusy(true);
+        try
+        {
+            if (editor.Action == GoogleEventUserAction.Save && editor.Draft is { } draft)
+            {
+                await googleApi.Update(google, draft);
+                Status("Compromisso atualizado no Google Agenda.");
+            }
+            else if (editor.Action == GoogleEventUserAction.Delete)
+            {
+                await googleApi.Delete(google);
+                Status("Compromisso excluído do Google Agenda.");
+            }
+        }
+        catch (Exception error) when (error is InvalidOperationException or
+            HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            MessageBox.Show(this, error.Message, "Google Agenda", MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+        finally { SetBusy(false); }
+        await LoadAppointments();
+    }
+
+    private async Task CreateGoogleEvent()
+    {
+        if (busy || googleOAuth.CalendarId is null)
+        {
+            Status("Autorize primeiro uma agenda Google com permissão de edição.");
+            return;
+        }
+        using var editor = new GoogleCalendarEventDialog(null, calendar.SelectedDate);
+        if (editor.ShowDialog(this) != DialogResult.OK ||
+            editor.Action != GoogleEventUserAction.Save || editor.Draft is not { } draft) return;
+        SetBusy(true);
+        try
+        {
+            await googleApi.Create(draft);
+            Status("Compromisso criado no Google Agenda. Nenhuma mensagem WhatsApp foi enviada.");
+        }
+        catch (Exception error) when (error is InvalidOperationException or
+            HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            MessageBox.Show(this, error.Message, "Google Agenda", MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+        finally { SetBusy(false); }
+        await LoadAppointments();
     }
 
     private async Task CreateAppointment()
@@ -436,6 +556,8 @@ internal sealed class AgendaPanel : UserControl
             googleRefreshTimer.Stop();
             googleRefreshTimer.Dispose();
             googleFeed.Dispose();
+            googleApi.Dispose();
+            googleOAuth.Dispose();
             http.Dispose();
         }
         base.Dispose(disposing);
