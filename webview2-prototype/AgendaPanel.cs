@@ -333,11 +333,10 @@ internal sealed class AgendaPanel : UserControl
                         googleEventCount++;
                     }
                 }
-                catch (Exception error) when (error is InvalidOperationException or
-                    HttpRequestException or TaskCanceledException or FormatException or
-                    IOException or Ical.Net.DataTypes.EvaluationOutOfRangeException)
+                catch (Exception)
                 {
-                    googleWarning = "Google Agenda não atualizado. " + error.Message;
+                    // Nunca apresentar em mensagem de erro o endereço secreto nem o token iCal.
+                    googleWarning = "Não foi possível ler o Google Agenda. Revise o link secreto e a conexão.";
                 }
             }
             cachedRows.Sort((left, right) =>
