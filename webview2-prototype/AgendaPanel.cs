@@ -29,7 +29,7 @@ internal sealed class AgendaPanel : UserControl
     private readonly System.Windows.Forms.Timer googleRefreshTimer = new() { Interval = 15 * 60 * 1000 };
     private int googleEventCount;
     private int supabaseEventCount;
-    private readonly List<string[]> cachedRows = [];
+    private readonly List<(string[] Values, AgendaServiceCategory Category)> cachedRows = [];
     private DateOnly? filterDate;
     private bool suspendRefresh;
     private readonly Label status = new() { Dock = DockStyle.Bottom, Height = 54, AutoEllipsis = true, ForeColor = Color.FromArgb(59, 74, 92), Padding = new Padding(12, 9, 12, 0) };
@@ -283,7 +283,7 @@ internal sealed class AgendaPanel : UserControl
                 1 => first.AddDays(6),
                 _ => first.AddMonths(1).AddDays(-1)
             };
-            var query = "rest/v1/agenda_appointments?select=id,client,phone,primary_service,date,time,status,address" +
+            var query = "rest/v1/agenda_appointments?select=id,client,phone,primary_service,service_ids,date,time,status,address" +
                 "&company_id=eq." + Uri.EscapeDataString(companyId) + "&deleted_at=is.null" +
                 $"&date=gte.{first:yyyy-MM-dd}&date=lte.{last:yyyy-MM-dd}" +
                 "&order=date.asc,time.asc&limit=500";
@@ -306,13 +306,21 @@ internal sealed class AgendaPanel : UserControl
                 var clientName = Read(appointment, "client");
                 var service = Read(appointment, "primary_service");
                 var statusName = Read(appointment, "status");
-                cachedRows.Add([date, time, clientName, service, statusName,
-                    Read(appointment, "phone"), Read(appointment, "address")]);
+                var ids = appointment.TryGetProperty("service_ids", out var services)
+                    && services.ValueKind == JsonValueKind.Array
+                        ? services.EnumerateArray()
+                            .Where(x => x.ValueKind == JsonValueKind.String)
+                            .Select(x => x.GetString() ?? "")
+                        : Enumerable.Empty<string>();
+                var category = AgendaServiceColors.FromServiceIds(ids, service, statusName);
+                cachedRows.Add((
+                    [date, time, clientName, service, statusName,
+                        Read(appointment, "phone"), Read(appointment, "address")], category));
                 supabaseEventCount++;
                 if (DateOnly.TryParseExact(date, "yyyy-MM-dd",
                     System.Globalization.CultureInfo.InvariantCulture,
                     System.Globalization.DateTimeStyles.None, out var parsed))
-                    calendarRows.Add(new AgendaCalendarEntry(parsed, time, clientName, service, statusName));
+                    calendarRows.Add(new AgendaCalendarEntry(parsed, time, clientName, service, statusName, category));
             }
             // O Google é uma fonte de leitura: não copia os eventos ao Supabase,
             // não cria serviços novos e não dispara nenhum lembrete.
@@ -323,13 +331,14 @@ internal sealed class AgendaPanel : UserControl
                     var googleEvents = await googleFeed.Read(first, last);
                     foreach (var item in googleEvents)
                     {
-                        cachedRows.Add([
+                        var category = AgendaServiceColors.Classify(item.Title, item.Description);
+                        cachedRows.Add(([
                             item.Date.ToString("yyyy-MM-dd"), item.Time,
-                            item.Title, "Google Agenda", "Google • leitura", "",
+                            item.Title, category.Label, "Google • leitura", "",
                             item.Location
-                        ]);
+                        ], category));
                         calendarRows.Add(new AgendaCalendarEntry(item.Date, item.Time,
-                            item.Title, "Google Agenda", "google"));
+                            item.Title, category.Label, "google", category));
                         googleEventCount++;
                     }
                 }
@@ -340,7 +349,8 @@ internal sealed class AgendaPanel : UserControl
                 }
             }
             cachedRows.Sort((left, right) =>
-                string.CompareOrdinal(left[0] + left[1], right[0] + right[1]));
+                string.CompareOrdinal(left.Values[0] + left.Values[1],
+                    right.Values[0] + right.Values[1]));
             calendar.SetEntries(calendarRows);
             ShowCachedRows();
             Status($"{supabaseEventCount} locais + {googleEventCount} Google • {first:dd/MM} a {last:dd/MM}. " +
@@ -359,12 +369,17 @@ internal sealed class AgendaPanel : UserControl
     private void ShowCachedRows()
     {
         grid.Rows.Clear();
-        foreach (var record in cachedRows)
+        foreach (var (record, category) in cachedRows)
         {
             if (filterDate is not null && record[0] != filterDate.Value.ToString("yyyy-MM-dd"))
                 continue;
             var index = grid.Rows.Add(record);
             var state = record[4];
+            var serviceCell = grid.Rows[index].Cells[3];
+            serviceCell.Style.BackColor = category.Color;
+            serviceCell.Style.ForeColor = category.TextColor;
+            serviceCell.ToolTipText = category.Label + " • " + category.GoogleColorName
+                + (state == "Google • leitura" ? " (classificado pelo texto do evento)" : "");
             if (state == "Google • leitura")
                 grid.Rows[index].DefaultCellStyle.BackColor = Color.FromArgb(229, 241, 255);
             else if (state is "cancelado" or "cancelar")
