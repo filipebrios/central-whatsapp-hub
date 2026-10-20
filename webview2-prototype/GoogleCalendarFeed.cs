@@ -114,7 +114,7 @@ internal sealed class GoogleCalendarFeed : IDisposable
         var results = new List<GoogleCalendarOccurrence>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         // O Ical.Net expande recorrências, EXDATE e exceções do Google.
-        foreach (var occurrence in calendar.GetOccurrences<CalendarEvent>(Zone, from)
+        foreach (var occurrence in calendar.GetOccurrences(Zone, from)
                      .TakeWhileBefore(to))
         {
             if (occurrence.Source is not CalendarEvent e) continue;
