@@ -138,6 +138,16 @@ Antes de entregar uma versão:
 - Por último redesenhar visual do **aplicativo inteiro** com inspiração Apple, espaço, cantos arredondados, tipografia licenciada Windows, ícones consistentes, preservando WebView2 e todas as sessões atuais.
 - Release 1.9.0 ainda é **planejamento**, sem integração Google API, build nem instalador publicados. Validação por etapa é interna; validação geral com usuário só após integração.
 
+### MODUX 1.9.0 — execução iniciada em branch isolada (20/10/2026)
+
+- Branch `feature/modux-1.9-consolidated`, exclusiva para a próxima release consolidada, derivada da versão com leitura iCal e cores. **Não usar fluxo da 1.8.2 para publicar versões intermediárias**.
+- `GoogleDesktopOAuth.cs`: fluxo Google OAuth 2.0 para aplicativo de computador, PKCE, state e callback de loopback no navegador padrão; importa JSON do Google Cloud selecionado pelo usuário, guarda credenciais/tokens cifrados com DPAPI CurrentUser no Windows. Nunca pedir senhas, arquivo JSON ou tokens no chat.
+- `GoogleCalendarApi.cs`: leitura oficial de calendários com permissão writer/owner e eventos; criação/edição via PATCH protegido por ETag/If-Match, conferindo antes se houve alteração de terceiros; exclusão só após confirmação explícita; sem envio silencioso de WhatsApp e sem notificações intencionais a convidados; Google pode ter comportamentos próprios de notificação.
+- `GoogleCalendarManageDialog.cs`, `GoogleCalendarEventDialog.cs`, `AgendaPanel.cs`: conexão e escolha da agenda; edição pelo duplo clique nos eventos obtidos da API; botão de criação no Google; o iCal mantém modo somente leitura. Modificação de evento recorrente deve ser feita somente na instância selecionada e multi-dia permanece bloqueado até suporte seguro.
+- `tests/GoogleCalendarCore`: valida parsing de eventos, fuso, duração e JSON de atualização, **sem chamar o Google real**.
+- `.github/workflows/validate-modux-19.yml`: faz testes e `dotnet build` Windows mas **não gera instalador nem release**. Checar sempre conclusão da execução mais recente, porque o usuário quer somente um instalador consolidado no final.
+- **Estado: implementação parcial em testes internos, ainda NÃO autorizada em uma conta Google real.** OAuth Desktop exige que o responsável configure credenciais no Google Cloud e autorize o acesso. Não declarar sincronização bidirecional entregue. Pendentes reconciliação Supabase ↔ Google, edição operativa completa, regras de recorrência, fila de mensagens e redesign Apple-like.
+
 ## MODUX 1.7.0 — Agenda São Bento (candidata, 16/10/2026)
 
 - Atalho verde Agenda São Bento abaixo dos WhatsApps, com menu recolhível. Não criar abas horizontais.
