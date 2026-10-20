@@ -135,7 +135,8 @@ internal sealed class GoogleDesktopOAuth : IDisposable
         {
             throw new InvalidOperationException("O tempo de autorização do Google expirou.");
         }
-        finally { listener.Stop(); }
+        // HttpListener fica ativo até concluir a resposta ao navegador. O using
+        // o encerra com segurança ao término da autorização.
         var receivedState = callback.Request.QueryString["state"];
         var code = callback.Request.QueryString["code"];
         var valid = callback.Request.RemoteEndPoint?.Address is { } address &&
