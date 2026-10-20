@@ -62,10 +62,10 @@ Requisitos permanentes:
 ## Estado atual confirmado
 
 - Repositório público: `filipebrios/central-whatsapp-hub`.
-- Branch de desenvolvimento e releases atuais: `codex/electron-windows-mvp`.
+- Branch WebView2 com Agenda em manutenção: `feature/modux-agenda-sidebar-v17` (base `codex/electron-windows-mvp`); base Electron continua separada.
 - Pull request existente: PR #1, mantido como rascunho; não mesclar sem solicitação explícita.
-- Última release pública confirmada: `MODUX 1.6.1` para Windows (conta explícita da Criatta; teste real pendente).
-- Instalador confirmado: `MODUX-Setup-1.6.1.exe` na release `modux-v1.6.1`.
+- Última release beta Windows **validada visualmente pelo usuário**: `MODUX 1.8.1`, com Google iCal em leitura, ~220 eventos de outubro mostrados no MODUX em 20/10/2026. Não equivale a testes automáticos de cor nem sincronização bidirecional.
+- Último instalador beta testado visualmente: `MODUX-Setup-1.8.1.exe` na release `modux-v1.8.1-beta1` (Windows x64).
 - Página pública oficial de downloads: `https://modux-downloads.filipebrios.chatgpt.site`.
 - A 1.4.0 foi compilada com sucesso pelo workflow Windows e publicada na release `modux-v1.4.0`.
 - A release 1.3.0 foi compilada a partir de `webview2-prototype/`, portanto continua exclusiva do Windows.
@@ -163,7 +163,16 @@ Antes de entregar uma versão:
 - Botão **Conectar Google Agenda** no módulo Agenda, com campo oculto para inserir a URL; atualização ao login, ao mudar período e a cada 15 minutos enquanto painel estiver ativo e PC ligado.
 - Sem OAuth e sem sincronização bidirecional; alterações no Google ficam apenas no Google. A assinatura privada é específica de um calendário e não deve ser publicada. A revogação é realizada no próprio Google Agenda.
 - WaSeller no MODUX continua dependente do computador ligado; respostas fora de expediente quando PC desligado exigem resposta de ausência no aplicativo Android ou serviço oficial em nuvem. Nenhum novo envio automático implementado.
-- Correção de compatibilidade do Ical.Net 5.2.3 concluída e GitHub Actions run **#39436070492** finalizado com sucesso: testes ComposeRequest, compilação .NET Windows, Inno Setup e release `modux-v1.8.1-beta1` com asset `MODUX-Setup-1.8.1.exe`. **Assinatura iCal e comportamento com eventos reais ainda pendentes de teste no Windows do usuário.**
+- Correção de compatibilidade do Ical.Net 5.2.3 concluída e GitHub Actions run **#39436070492** finalizado com sucesso: testes ComposeRequest, compilação .NET Windows, Inno Setup e release `modux-v1.8.1-beta1` com asset `MODUX-Setup-1.8.1.exe`. **Usuário confirmou visualmente leitura bem-sucedida dos eventos de outubro em 20/10/2026**. Google continua somente leitura.
+
+### MODUX 1.8.2 — cores de serviços (20/10/2026, candidata)
+
+- `AgendaServiceColors.cs`: classificação determinística por nomes de serviço, descrição do evento ou ID de serviço já registrado no Supabase. Prioridade explícita para cancelado/reagendar. Compromissos desconhecidos permanecem cinza; nunca atribuir cores inventadas aos não reconhecidos.
+- Preserva paleta definida pela São Bento: Desinsetização Cobalto `#039BE5`; Desratização Mirtilo `#3F51B5`; Orçamento Banana `#F6BF26`; Confirmar Manjericão `#0B8043`; Cancelado/reagendar Tomate `#D50000`; Internos/curso Abóbora `#F4511E`.
+- Acrescenta cores locais auxiliares para descupinização, reservatório, caixa de gordura, sanitização e capina química. Essas cores são propostas e poderão ser configuradas posteriormente.
+- `AgendaMonthView.cs` exibe faixa individual colorida por compromisso, suporte a mais de um serviço no dia, tooltip e legenda. `AgendaPanel.cs` mostra o serviço inferido na tabela com célula colorida, em vez de identificar tudo como apenas “Google Agenda”.
+- **A fonte iCal não garante trazer cor individual de evento do Google**: a paleta é inferida dos serviços e aplicada só ao MODUX; a cor do Google original nunca é alterada. Os eventos existentes são apenas lidos, sem salvar ou duplicar no Supabase.
+- Novos testes de classificação e dos hexadecimais em `tests/AgendaServiceColors/`. Workflow #39440133345 em execução; compilação/publicação/validação visual ainda pendentes.
 
 ## Registro de mudanças
 
