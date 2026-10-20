@@ -106,15 +106,15 @@ internal sealed class GoogleCalendarFeed : IDisposable
     {
         var calendar = Calendar.Load(ics) ??
             throw new InvalidOperationException("Calendário Google inválido.");
-        var from = new CalDateTime(first.Year, first.Month, first.Day, 0, 0, 0, LocalTimezone)
-            .ToZonedDateTime(LocalTimezone);
+        var from = new LocalDateTime(first.Year, first.Month, first.Day, 0, 0)
+            .InZoneLeniently(Zone).ToInstant();
         var exclusive = last.AddDays(1);
-        var to = new CalDateTime(exclusive.Year, exclusive.Month, exclusive.Day, 0, 0, 0, LocalTimezone)
-            .ToZonedDateTime(LocalTimezone).ToInstant();
+        var to = new LocalDateTime(exclusive.Year, exclusive.Month, exclusive.Day, 0, 0)
+            .InZoneLeniently(Zone).ToInstant();
         var results = new List<GoogleCalendarOccurrence>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         // O Ical.Net expande recorrências, EXDATE e exceções do Google.
-        foreach (var occurrence in calendar.GetOccurrences<CalendarEvent>(from)
+        foreach (var occurrence in calendar.GetOccurrences<CalendarEvent>(Zone, from)
                      .TakeWhileBefore(to))
         {
             if (occurrence.Source is not CalendarEvent e) continue;
