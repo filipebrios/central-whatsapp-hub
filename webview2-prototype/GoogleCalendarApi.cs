@@ -144,6 +144,8 @@ internal sealed class GoogleCalendarApi : IDisposable
     {
         if (string.IsNullOrWhiteSpace(original.ETag))
             throw new InvalidOperationException("A versão do evento é desconhecida. Atualize a agenda.");
+        if (original.SpansMultipleDays || original.Duration > 1440)
+            throw new InvalidOperationException("Eventos que duram mais de um dia ainda devem ser editados diretamente no Google Agenda.");
         var current = await Event(original.Id, ct);
         if (current.ETag != original.ETag)
             throw new InvalidOperationException(
@@ -188,6 +190,8 @@ internal sealed record GoogleEventSnapshot(
     string Location, DateOnly Date, string Time, bool AllDay,
     int Duration, string? ColorId, string? RecurringEventId)
 {
+    internal bool SpansMultipleDays { get; init; }
+
     internal static GoogleEventSnapshot? Parse(JsonElement e)
     {
         if (!e.TryGetProperty("id", out var id) ||
@@ -202,9 +206,15 @@ internal sealed record GoogleEventSnapshot(
         if (allDay)
         {
             if (!DateOnly.TryParse(d.GetString(), out var date)) return null;
+            var multiDay = end.TryGetProperty("date", out var endDay) &&
+                DateOnly.TryParse(endDay.GetString(), out var endsOn) &&
+                endsOn > date.AddDays(1);
             return new GoogleEventSnapshot(eid, Get(e, "etag"), Get(e, "summary"),
                 Get(e, "description"), Get(e, "location"), date, "Dia todo",
-                true, 1440, Get(e, "colorId"), Get(e, "recurringEventId"));
+                true, 1440, Get(e, "colorId"), Get(e, "recurringEventId"))
+            {
+                SpansMultipleDays = multiDay
+            };
         }
         if (!DateTimeOffset.TryParse(Get(start, "dateTime"), out var begin) ||
             !DateTimeOffset.TryParse(Get(end, "dateTime"), out var finish))
