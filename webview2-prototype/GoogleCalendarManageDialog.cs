@@ -167,6 +167,7 @@ internal sealed class GoogleCalendarManageDialog : Form
                 var current = oauth.CalendarId;
                 var index = choices.ToList().FindIndex(c => c.Id == current);
                 calendars.SelectedIndex = index >= 0 ? index : 0;
+                RefreshStatus();
             }
             else state.Text = "Sua conta não apresenta calendários com permissão para editar.";
         }
