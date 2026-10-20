@@ -1,4 +1,4 @@
-name: MODUX 1.8.1 Agenda Google - instalador candidato
+name: MODUX 1.8.2 Agenda colorida - instalador candidato
 
 on:
   push:
@@ -11,6 +11,8 @@ on:
       - "webview2-prototype/AgendaMonthView.cs"
       - "webview2-prototype/AgendaAppointmentDialog.cs"
       - "webview2-prototype/GoogleCalendarFeed.cs"
+      - "webview2-prototype/AgendaServiceColors.cs"
+      - "tests/AgendaServiceColors/**"
       - "webview2-prototype/CentralWhatsApp.WebView2.csproj"
       - "modux-agenda/**"
       - ".github/workflows/build-modux-agenda-17.yml"
@@ -34,6 +36,9 @@ jobs:
       - name: Testar protocolo de mensagens MODUX
         run: dotnet run --project tests/ComposeRequest/ComposeRequest.csproj
 
+      - name: Testar classificacao e cores dos servicos
+        run: dotnet run --project tests/AgendaServiceColors/AgendaServiceColors.csproj -c Release
+
       - name: Compilar aplicativo Windows
         shell: pwsh
         run: dotnet publish webview2-prototype/CentralWhatsApp.WebView2.csproj -c Release -r win-x64 --self-contained true -o webview2-prototype/publish
@@ -53,8 +58,8 @@ jobs:
       - name: Disponibilizar artefato de testes
         uses: actions/upload-artifact@v4
         with:
-          name: MODUX-Setup-1.8.1-Agenda-Candidata
-          path: webview2-prototype/installer-output/MODUX-Setup-1.8.1.exe
+          name: MODUX-Setup-1.8.2-Agenda-Candidata
+          path: webview2-prototype/installer-output/MODUX-Setup-1.8.2.exe
           if-no-files-found: error
 
       - name: Publicar release de teste separada
@@ -63,11 +68,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "modux-v1.8.1-beta1"
-          $asset = "webview2-prototype/installer-output/MODUX-Setup-1.8.1.exe"
+          $tag = "modux-v1.8.2-beta1"
+          $asset = "webview2-prototype/installer-output/MODUX-Setup-1.8.2.exe"
           gh release view $tag 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag $asset --target ${{ github.sha }} --title "MODUX 1.7 Agenda (beta)" --notes "Windows 1.8.1 beta: conexao read-only do Google Agenda por assinatura privada iCal local protegida por DPAPI, sem copiar ao banco ou alterar eventos. Mantem calendario e cadastro PF/PJ; sem envios WhatsApp ou sincronizacao bidirecional. Requer teste real." --prerelease
+            gh release create $tag $asset --target ${{ github.sha }} --title "MODUX 1.7 Agenda (beta)" --notes "MODUX 1.8.2 beta Windows: faixas de cor por compromisso e legenda dos servicos Sao Bento; classificacao por titulo, descricao ou tipo de servico, sem mudar a cor original no Google. Leitura privada de Google iCal, sem alterar eventos nem disparar WhatsApp. Testar visualizacao real." --prerelease
           } else {
             Write-Host "Release beta existente preservada. Novo instalador disponivel nos artefatos do workflow."
           }
