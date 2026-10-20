@@ -2,7 +2,7 @@ using System.Globalization;
 
 namespace CentralWhatsApp.WebView2;
 
-internal sealed record AgendaCalendarEntry(DateOnly Date, string Time, string Client, string Service, string Status);
+internal sealed record AgendaCalendarEntry(DateOnly Date, string Time, string Client, string Service, string Status, AgendaServiceCategory Category);
 
 /// <summary>Calendário mensal local, alimentado somente com eventos autorizados pelo Supabase.</summary>
 internal sealed class AgendaMonthView : UserControl
@@ -13,6 +13,13 @@ internal sealed class AgendaMonthView : UserControl
     private readonly Button previous = Button("‹");
     private readonly Button next = Button("›");
     private readonly Button current = Button("Hoje");
+    private readonly ToolTip eventTip = new() { ShowAlways = true, AutoPopDelay = 14000 };
+    private readonly FlowLayoutPanel legend = new()
+    {
+        Dock = DockStyle.Top, Height = 32, WrapContents = false,
+        AutoScroll = true, BackColor = Color.White,
+        Padding = new Padding(8, 4, 5, 0)
+    };
     private List<AgendaCalendarEntry> entries = [];
     private DateOnly selectedDate = DateOnly.FromDateTime(DateTime.Today);
     private DateOnly displayedMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
@@ -25,7 +32,7 @@ internal sealed class AgendaMonthView : UserControl
     internal AgendaMonthView()
     {
         Dock = DockStyle.Top;
-        Height = 364;
+        Height = 430;
         BackColor = Color.White;
         days.Padding = new Padding(1);
         for (var i = 0; i < 7; i++)
@@ -48,7 +55,35 @@ internal sealed class AgendaMonthView : UserControl
             SetMonth(new DateOnly(today.Year, today.Month, 1));
             DateSelected?.Invoke(today);
         };
-        Controls.Add(days); Controls.Add(header);
+        foreach (var category in new[]
+        {
+            AgendaServiceColors.Desinsetizacao, AgendaServiceColors.Desratizacao,
+            AgendaServiceColors.Orcamento, AgendaServiceColors.Confirmar,
+            AgendaServiceColors.Cancelado, AgendaServiceColors.Interno,
+            AgendaServiceColors.NaoClassificado
+        })
+        {
+            var name = new Label
+            {
+                AutoSize = true, Text = "■ " + category.Label,
+                Font = new Font("Segoe UI", 8f, FontStyle.Regular),
+                ForeColor = category.Color == AgendaServiceColors.NaoClassificado.Color
+                    ? Color.FromArgb(70, 78, 88) : category.Color,
+                Margin = new Padding(2, 1, 10, 1)
+            };
+            legend.Controls.Add(name);
+            eventTip.SetToolTip(name, category.Label + " • " + category.GoogleColorName);
+        }
+        var more = new Button
+        {
+            Text = "Ver todas", AutoSize = true, Height = 21,
+            BackColor = Color.White, ForeColor = Color.FromArgb(0, 103, 44),
+            FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 8f),
+            Padding = new Padding(4, 0, 4, 0), Margin = new Padding(0, 0, 0, 0)
+        };
+        more.Click += (_, _) => ShowLegend();
+        legend.Controls.Add(more);
+        Controls.Add(days); Controls.Add(legend); Controls.Add(header);
         Render();
     }
 
@@ -117,37 +152,128 @@ internal sealed class AgendaMonthView : UserControl
                 var date = firstVisible.AddDays(i);
                 byDay.TryGetValue(date, out var dayEntries);
                 var count = dayEntries?.Count ?? 0;
-                var preview = count == 0 ? "" :
-                    "\n" + string.Join("\n", dayEntries!.Take(2)
-                        .Select(x => $"{x.Time} {Truncate(x.Client, 13)}"));
-                if (count > 2) preview += $"\n+{count - 2} outros";
-                var button = new Button
+                var dateCell = new TableLayoutPanel
                 {
-                    Dock = DockStyle.Fill, TextAlign = ContentAlignment.TopLeft,
-                    Text = $"{date.Day}{(date == today ? " •" : "")}{preview}",
-                    FlatStyle = FlatStyle.Flat,
-                    Padding = new Padding(5, 4, 2, 2),
-                    Margin = Padding.Empty,
-                    Font = new Font("Segoe UI", 8f),
-                    UseVisualStyleBackColor = false,
+                    Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4,
+                    Margin = Padding.Empty, Padding = new Padding(2),
                     BackColor = date == selectedDate
                         ? Color.FromArgb(210, 238, 215)
-                        : date.Month == displayedMonth.Month ? Color.White : Color.FromArgb(244, 246, 245),
-                    ForeColor = date.Month == displayedMonth.Month ? Color.FromArgb(15, 31, 20) : Color.Gray,
+                        : date.Month == displayedMonth.Month
+                            ? Color.White : Color.FromArgb(244, 246, 245),
+                    Cursor = Cursors.Hand,
                     AccessibleName = $"{date:dd/MM/yyyy} • {count} agendamentos"
                 };
-                button.FlatAppearance.BorderSize = date == selectedDate ? 2 : 0;
-                button.FlatAppearance.BorderColor = Color.FromArgb(0, 103, 44);
-                button.Click += (_, _) =>
+                dateCell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+                dateCell.RowStyles.Add(new RowStyle(SizeType.Absolute, 20f));
+                dateCell.RowStyles.Add(new RowStyle(SizeType.Absolute, 17f));
+                dateCell.RowStyles.Add(new RowStyle(SizeType.Absolute, 17f));
+                dateCell.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+                var title = new Label
                 {
-                    SelectDate(date);
-                    DateSelected?.Invoke(date);
+                    Dock = DockStyle.Fill, Margin = Padding.Empty,
+                    Font = new Font("Segoe UI", 8.5f,
+                        date == today ? FontStyle.Bold : FontStyle.Regular),
+                    ForeColor = date == today ? Color.FromArgb(0, 103, 44)
+                        : date.Month == displayedMonth.Month ? Color.FromArgb(15, 31, 20) : Color.Gray,
+                    Text = $"{date.Day}{(date == today ? " •" : "")}",
+                    Cursor = Cursors.Hand,
+                    TextAlign = ContentAlignment.MiddleLeft
                 };
-                days.Controls.Add(button, i % 7, 1 + i / 7);
+                dateCell.Controls.Add(title, 0, 0);
+
+                // Cada compromisso recebe a sua própria faixa de cor.
+                // Uma célula inteira colorida não representaria serviços diferentes no mesmo dia.
+                if (dayEntries is { Count: > 0 })
+                {
+                    for (var entryIndex = 0; entryIndex < Math.Min(2, count); entryIndex++)
+                    {
+                        var entry = dayEntries[entryIndex];
+                        var chip = new Label
+                        {
+                            Dock = DockStyle.Fill, Height = 17, Margin = new Padding(0, 1, 1, 0),
+                            Text = $"{entry.Time}  {entry.Client}",
+                            Font = new Font("Segoe UI", 7.5f, FontStyle.Regular),
+                            BackColor = entry.Category.Color,
+                            ForeColor = entry.Category.TextColor,
+                            AutoEllipsis = true,
+                            TextAlign = ContentAlignment.MiddleLeft,
+                            Padding = new Padding(3, 0, 2, 0),
+                            Cursor = Cursors.Hand
+                        };
+                        eventTip.SetToolTip(chip,
+                            $"{entry.Time} • {entry.Client}\n{entry.Category.Label} | {entry.Service}\n{entry.Status}");
+                        chip.Click += (_, _) => SelectAndNotify(date);
+                        dateCell.Controls.Add(chip, 0, entryIndex + 1);
+                    }
+                    if (count > 2)
+                    {
+                        var extra = new Label
+                        {
+                            Dock = DockStyle.Fill, Text = $"+{count - 2} outros",
+                            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+                            ForeColor = Color.FromArgb(68, 85, 99), Margin = Padding.Empty,
+                            Cursor = Cursors.Hand
+                        };
+                        eventTip.SetToolTip(extra, string.Join("\n",
+                            dayEntries.Skip(2).Take(12).Select(entry =>
+                                $"{entry.Time} {entry.Client} • {entry.Category.Label}")));
+                        extra.Click += (_, _) => SelectAndNotify(date);
+                        dateCell.Controls.Add(extra, 0, 3);
+                    }
+                }
+                title.Click += (_, _) => SelectAndNotify(date);
+                dateCell.Click += (_, _) => SelectAndNotify(date);
+                days.Controls.Add(dateCell, i % 7, 1 + i / 7);
             }
         }
         finally { days.ResumeLayout(); }
     }
-    private static string Truncate(string value, int count) =>
-        value.Length <= count ? value : value[..(count - 1)] + "…";
+    private void SelectAndNotify(DateOnly date)
+    {
+        SelectDate(date);
+        DateSelected?.Invoke(date);
+    }
+
+    private void ShowLegend()
+    {
+        using var form = new Form
+        {
+            Text = "Cores dos serviços • São Bento",
+            Width = 410, Height = 515,
+            StartPosition = FormStartPosition.CenterParent,
+            Font = new Font("Segoe UI", 10), BackColor = Color.White
+        };
+        var container = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown,
+            WrapContents = false, AutoScroll = true,
+            Padding = new Padding(18)
+        };
+        foreach (var category in AgendaServiceColors.Legend)
+        {
+            var item = new Label
+            {
+                AutoSize = false, Width = 350, Height = 29,
+                BackColor = category.Color, ForeColor = category.TextColor,
+                Padding = new Padding(9, 4, 3, 2),
+                Text = category.Label + "  (" + category.GoogleColorName + ")",
+                Margin = new Padding(3, 2, 3, 4)
+            };
+            container.Controls.Add(item);
+        }
+        container.Controls.Add(new Label
+        {
+            Text = "Classificação pelo serviço do evento. As cores originais do Google Agenda não são alteradas.",
+            Width = 350, Height = 58, ForeColor = Color.FromArgb(60, 78, 80),
+            Margin = new Padding(2, 13, 3, 3)
+        });
+        form.Controls.Add(container);
+        form.ShowDialog(this);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) eventTip.Dispose();
+        base.Dispose(disposing);
+    }
 }
