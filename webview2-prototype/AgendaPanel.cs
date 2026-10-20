@@ -459,6 +459,11 @@ internal sealed class AgendaPanel : UserControl
             Status("Esse compromisso ainda não é editável no Google. Eventos iCal são apenas leitura.");
             return;
         }
+        if (google.SpansMultipleDays || google.Duration > 1440)
+        {
+            Status("Eventos de vários dias ainda devem ser editados no Google Agenda original.");
+            return;
+        }
         using var editor = new GoogleCalendarEventDialog(google, google.Date);
         if (editor.ShowDialog(this) != DialogResult.OK) return;
         SetBusy(true);
