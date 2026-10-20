@@ -1,0 +1,35 @@
+name: MODUX 1.9 - validação interna (sem instalador)
+
+on:
+  push:
+    branches:
+      - feature/modux-1.9-consolidated
+    paths:
+      - "webview2-prototype/**"
+      - "modux-agenda/**"
+      - "tests/GoogleCalendarCore/**"
+      - "tests/AgendaServiceColors/**"
+      - ".github/workflows/validate-modux-19.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Encaixar Agenda na base Windows
+        run: python modux-agenda/apply_sidebar.py
+      - name: Testar parser e escrita segura Google
+        run: dotnet run --project tests/GoogleCalendarCore/GoogleCalendarCore.csproj -c Release
+      - name: Testar as cores da Agenda
+        run: dotnet run --project tests/AgendaServiceColors/AgendaServiceColors.csproj -c Release
+      - name: Testes anteriores de protocolo
+        run: dotnet run --project tests/ComposeRequest/ComposeRequest.csproj -c Release
+      - name: Compilar MODUX Windows SEM empacotar ou publicar instalador
+        run: dotnet build webview2-prototype/CentralWhatsApp.WebView2.csproj -c Release -r win-x64
