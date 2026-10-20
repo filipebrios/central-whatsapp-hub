@@ -4,7 +4,6 @@ using System.Text;
 using Ical.Net;
 using Ical.Net.CalendarComponents;
 using Ical.Net.DataTypes;
-using NodaTime;
 
 namespace CentralWhatsApp.WebView2;
 
@@ -15,7 +14,6 @@ namespace CentralWhatsApp.WebView2;
 internal sealed class GoogleCalendarFeed : IDisposable
 {
     private const string LocalTimezone = "America/Sao_Paulo";
-    private static readonly DateTimeZone Zone = DateTimeZoneProviders.Tzdb[LocalTimezone];
     private readonly string settingsFile;
     private readonly HttpClient client = new(new HttpClientHandler { AllowAutoRedirect = false })
     {
@@ -106,19 +104,17 @@ internal sealed class GoogleCalendarFeed : IDisposable
     {
         var calendar = Calendar.Load(ics) ??
             throw new InvalidOperationException("Calendário Google inválido.");
-        var from = new LocalDateTime(first.Year, first.Month, first.Day, 0, 0)
-            .InZoneLeniently(Zone).ToInstant();
+        var from = new CalDateTime(first.Year, first.Month, first.Day, 0, 0, 0, LocalTimezone);
         var exclusive = last.AddDays(1);
-        var to = new LocalDateTime(exclusive.Year, exclusive.Month, exclusive.Day, 0, 0)
-            .InZoneLeniently(Zone).ToInstant();
+        var to = new CalDateTime(exclusive.Year, exclusive.Month, exclusive.Day, 0, 0, 0, LocalTimezone);
         var results = new List<GoogleCalendarOccurrence>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         // O Ical.Net expande recorrências, EXDATE e exceções do Google.
-        foreach (var occurrence in calendar.GetOccurrences(Zone, from)
+        foreach (var occurrence in calendar.GetOccurrences<CalendarEvent>(from)
                      .TakeWhileBefore(to))
         {
             if (occurrence.Source is not CalendarEvent e) continue;
-            var local = occurrence.Start.WithZone(Zone).LocalDateTime.ToDateTimeUnspecified();
+            var local = occurrence.Period.StartTime.ToTimeZone(LocalTimezone).Value;
             var date = DateOnly.FromDateTime(local);
             if (date < first || date > last) continue;
             var title = string.IsNullOrWhiteSpace(e.Summary) ? "(sem título)" : e.Summary.Trim();
