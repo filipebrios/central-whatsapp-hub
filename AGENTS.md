@@ -154,7 +154,7 @@ Antes de entregar uma versão:
 - `AgendaAppointmentDialog.cs`: PF/PJ, cliente, responsável, WhatsApp, endereço, e-mail opcional, múltiplos serviços ou serviço customizado, data, hora, duração padrão de 60 min, técnico e observações. Salva dados no Supabase sem disparar WhatsApp nem criar evento no Google.
 - A tabela `agenda_service_types` ainda está vazia: catálogo do formulário é local nesta candidata, sem sincronização de configuração entre usuários. Próxima etapa é transferir os serviços para o banco.
 - Google Calendar não é sincronizado, compromissos da extensão antiga não foram importados, e CRM WaSeller segue pendente. Não substituir versão 1.7.1 estável sem testar a beta no Windows.
-- Workflow Windows `build-modux-agenda-17.yml` passou a gerar `MODUX-Setup-1.8.0.exe`; **compilação e testes ainda em andamento** na execução #39433058396.
+- GitHub Actions run **#39433058396** concluída com sucesso em 20/10/2026: teste ComposeRequest, compilação .NET, instalador Inno Setup, artefato e release beta `modux-v1.8.0-beta1` com `MODUX-Setup-1.8.0.exe`. **Validação visual e teste dos novos formulários no Windows ainda pendentes.**
 
 ## Registro de mudanças
 
