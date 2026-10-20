@@ -20,6 +20,7 @@ internal sealed class AgendaMonthView : UserControl
     public event Action<DateOnly>? DateSelected;
     public event Action<DateOnly>? MonthChanged;
     public DateOnly DisplayedMonth => displayedMonth;
+    public DateOnly SelectedDate => selectedDate;
 
     internal AgendaMonthView()
     {
