@@ -125,6 +125,7 @@ internal static class AgendaServiceColors
         foreach (var c in normalized)
             if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
                 builder.Append(c);
-        return builder.ToString().Normalize(NormalizationForm.FormC);
+        return builder.ToString().Normalize(NormalizationForm.FormC)
+            .Replace('\'', ' ').Replace('’', ' ');
     }
 }
