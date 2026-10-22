@@ -218,6 +218,14 @@ Antes de entregar uma versão:
 - Etapa 2 continua **parcial** até teste real de autorização do navegador e leitura do evento pelo MODUX no Windows. Não publicar beta intermediária; relatório CI interno deve ser consultado para confirmar compilação.
 - Nenhum segredo OAuth, token, print de credencial nem convite de calendário com dados reais deve ser enviado no chat.
 
+### 2026-10-22 — separar a Agenda operacional dos eventos de teste na mesma tela
+
+- `AgendaPanel.cs` alterado na branch `feature/modux-1.9-consolidated`: antes o código `if (googleOAuth.CalendarId is not null) ... else if (googleFeed.HasUrl)` escondia TODOS os compromissos reais do iCal quando uma agenda de teste OAuth era conectada.
+- Agora o MODUX carrega **ambas as fontes independentemente**, desde que autorizadas: calendário operacional privado iCal permanece `Google • leitura`; somente calendário secundário `MODUX - TESTES` entra como `Google • TESTES`, identificado como editável e com seleção de cor de linha distinta.
+- Contadores e status informam separadamente locais, iCal operacional e Google TESTES. Os dados continuam sem importação/duplicação no Supabase e sem alteração no Google operacional.
+- Código `AgendaPanel` commit `18c5036`; GitHub Actions run [#39797773408](https://github.com/filipebrios/central-whatsapp-hub/actions/runs/39797773408) foi disparado para testes de parser, cores, protocolo e compilação Windows. **Não assumir sucesso antes da conclusão.**
+- Próxima validação humana: usuário deverá abrir autorização no MODUX com JSON OAuth local e confirmar leitura do evento fictício com o botão de verificação. Esta prova real ainda não ocorreu; usuário pediu não publicar instaladores intermediários.
+
 ## Registro de mudanças
 
 ### 2026-09-23 — candidata MODUX 1.5.2
