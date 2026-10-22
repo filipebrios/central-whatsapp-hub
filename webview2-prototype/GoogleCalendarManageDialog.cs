@@ -57,10 +57,11 @@ internal sealed class GoogleCalendarManageDialog : Form
         body.Controls.Add(authorize);
         body.Controls.Add(new Label
         {
-            Text = "Calendário que receberá as alterações:",
+            Text = "Nesta fase, somente MODUX - TESTES pode receber alterações:",
             AutoSize = true, Margin = new Padding(5, 18, 5, 4)
         });
         calendars.Width = 520;
+        calendars.SelectedIndexChanged += (_, _) => RefreshStatus();
         body.Controls.Add(calendars);
         body.Controls.Add(select);
         body.Controls.Add(disconnect);
@@ -100,11 +101,16 @@ internal sealed class GoogleCalendarManageDialog : Form
     {
         chooseFile.Enabled = true;
         authorize.Enabled = oauth.Configured;
-        select.Enabled = oauth.Connected && calendars.SelectedItem is GoogleCalendarChoice;
+        select.Enabled = oauth.Connected &&
+            calendars.SelectedItem is GoogleCalendarChoice choice &&
+            GoogleCalendarWriteGuard.IsTestCalendar(choice.Name);
         state.Text = oauth.Connected
-            ? "Conta autorizada. Calendário atual: " +
-              (oauth.CalendarName ?? "Selecione um calendário") +
-              ".\nEdição direta habilitada somente após escolher uma agenda com permissão."
+            ? oauth.CanWriteSelectedCalendar
+                ? "Conta autorizada. Teste controlado ativo em: " +
+                  (oauth.CalendarName ?? "MODUX - TESTES") +
+                  ".\nA agenda operacional São Bento permanece protegida."
+                : "Conta autorizada. Crie no Google Agenda um calendário separado chamado " +
+                  "MODUX - TESTES e selecione-o aqui. A agenda real NÃO será alterada."
             : oauth.Configured
                 ? "Credenciais instaladas. Clique em Autorizar para conceder acesso no navegador."
                 : "Nenhuma conta Google autorizada. Importe o JSON OAuth Desktop primeiro.";
@@ -179,8 +185,16 @@ internal sealed class GoogleCalendarManageDialog : Form
     private void SelectCalendar()
     {
         if (calendars.SelectedItem is not GoogleCalendarChoice item) return;
+        if (!GoogleCalendarWriteGuard.IsTestCalendar(item.Name))
+        {
+            MessageBox.Show(this,
+                "Nesta fase, selecione um calendário separado chamado MODUX - TESTES. " +
+                "As agendas operacionais não podem ser editadas.",
+                "Proteção da agenda São Bento", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
         if (MessageBox.Show(this,
-            $"Usar o calendário “{item.Name}” para consultar e editar os serviços?",
+            $"Usar o calendário isolado “{item.Name}” para TESTAR criação e edição de eventos? Nenhuma agenda operacional será alterada.",
             "Confirmar calendário", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
             return;
         oauth.SelectCalendar(item.Id, item.Name);
