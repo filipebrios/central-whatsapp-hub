@@ -211,6 +211,13 @@ Antes de entregar uma versão:
 - **Ainda não está concluída a etapa 2:** validação do consentimento OAuth e operações num calendário Google **real de testes** exige execução no computador do usuário. Não há instalador 1.9 publicado; não anunciar integração operacional validada.
 - O Google informa que refresh tokens de aplicativo Externo em modo Testando e com permissões de Calendar expiram em cerca de 7 dias; tratar antes de liberar uso contínuo. Documentação: https://developers.google.com/identity/protocols/oauth2/
 
+### 2026-10-22 — evento de teste preparado e verificação de leitura no MODUX
+
+- Usuário confirmou por captura do Google Agenda a agenda secundária `MODUX - TESTES` marcada em amarelo e um compromisso de teste em 23/10 por volta das 10h, com título truncado `TESTE MODUX - DES…`. A captura NÃO confirma ainda ID interno de calendário nem OAuth/API.
+- `GoogleCalendarManageDialog.cs`: botão `4. Verificar evento de teste` só fica habilitado após OAuth e seleção autorizada da agenda secundária de testes. Consulta em modo **somente leitura** a data 23/10/2026 via Google Calendar API e procura um título contendo `TESTE MODUX`, sem modificar eventos, sem tocar na agenda real.
+- Etapa 2 continua **parcial** até teste real de autorização do navegador e leitura do evento pelo MODUX no Windows. Não publicar beta intermediária; relatório CI interno deve ser consultado para confirmar compilação.
+- Nenhum segredo OAuth, token, print de credencial nem convite de calendário com dados reais deve ser enviado no chat.
+
 ## Registro de mudanças
 
 ### 2026-09-23 — candidata MODUX 1.5.2
