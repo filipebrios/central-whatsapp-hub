@@ -195,7 +195,7 @@ internal sealed class AgendaPanel : UserControl
         busy = value;
         signIn.Enabled = refresh.Enabled = add.Enabled = signOut.Enabled = !value;
         googleButton.Enabled = googleApiButton.Enabled = !value;
-        googleNewButton.Enabled = !value && googleOAuth.CalendarId is not null;
+        googleNewButton.Enabled = !value && googleOAuth.CanWriteSelectedCalendar;
     }
     private static StringContent Json(object body) =>
         new(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
@@ -417,9 +417,10 @@ internal sealed class AgendaPanel : UserControl
     private void UpdateGoogleLabel()
     {
         googleButton.Text = googleFeed.HasUrl ? "iCal conectado ✓" : "Google iCal";
-        googleApiButton.Text = googleOAuth.CalendarId is not null
-            ? "Google: " + (googleOAuth.CalendarName ?? "Conectado") : "Google (editar)";
-        googleNewButton.Enabled = googleOAuth.CalendarId is not null;
+        googleApiButton.Text = googleOAuth.CanWriteSelectedCalendar
+            ? "Google: MODUX - TESTES ✓"
+            : googleOAuth.Connected ? "Google • modo protegido" : "Google (configurar)";
+        googleNewButton.Enabled = googleOAuth.CanWriteSelectedCalendar;
     }
 
     private void ShowCachedRows()
@@ -454,6 +455,11 @@ internal sealed class AgendaPanel : UserControl
     private async Task EditSelectedGoogleEvent(int rowIndex)
     {
         if (busy || googleOAuth.CalendarId is null || rowIndex >= grid.Rows.Count) return;
+        if (!googleOAuth.CanWriteSelectedCalendar)
+        {
+            Status("Edição bloqueada: selecione a agenda isolada MODUX - TESTES.");
+            return;
+        }
         if (grid.Rows[rowIndex].Tag is not GoogleEventSnapshot google)
         {
             Status("Esse compromisso ainda não é editável no Google. Eventos iCal são apenas leitura.");
@@ -492,9 +498,9 @@ internal sealed class AgendaPanel : UserControl
 
     private async Task CreateGoogleEvent()
     {
-        if (busy || googleOAuth.CalendarId is null)
+        if (busy || !googleOAuth.CanWriteSelectedCalendar)
         {
-            Status("Autorize primeiro uma agenda Google com permissão de edição.");
+            Status("Para criar eventos nesta fase, selecione MODUX - TESTES no Google.");
             return;
         }
         using var editor = new GoogleCalendarEventDialog(null, calendar.SelectedDate);
