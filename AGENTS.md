@@ -231,7 +231,7 @@ Antes de entregar uma versão:
 - Confirmação da GitHub Actions [#39797773408](https://github.com/filipebrios/central-whatsapp-hub/actions/runs/39797773408): integração visual de Google iCal operacional + calendário secundário MODUX - TESTES, testes automáticos e compilação Windows **passaram**. Não equivale a autorização OAuth com conta real.
 - `GoogleEventDraft.CreateRequestId` agora gera identificador estável por instância de rascunho, prefixo `modu` + UUID hexadecimal, obedecendo caracteres permitidos pela Google Calendar Events.insert. `GoogleCalendarApi.Create` envia esse identificador em `id` para reduzir risco de repetição no mesmo rascunho.
 - Quando ocorre erro de rede/timeout após POST, o aplicativo informa que o Google **pode** ter salvo o evento e manda consultar o calendário de testes antes de repetir. Nunca reenviar automaticamente operações de criação ambíguas.
-- Testes `tests/GoogleCalendarCore` incluem 1000 IDs criados sem duplicatas e com caracteres base32hex válidos. Verificar status do build mais recente antes de anunciar aprovado.
+- Testes `tests/GoogleCalendarCore` incluem 1000 IDs criados sem duplicatas e com caracteres base32hex válidos. GitHub Actions [#39805612341](https://github.com/filipebrios/central-whatsapp-hub/actions/runs/39805612341) **concluiu com sucesso**: testes Google, paleta de cores, protocolo e compilação Windows, sem gerar instalador.
 - Este código ainda **não garante deduplicação entre duas sessões ou novos rascunhos**; a prevenção definitiva depende de IDs consistentes relacionados à entidade no Supabase, etapa 4, e validação real da API no Windows.
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
