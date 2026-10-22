@@ -131,6 +131,7 @@ internal sealed class GoogleCalendarApi : IDisposable
 
     internal async Task<GoogleEventSnapshot> Create(GoogleEventDraft draft, CancellationToken ct = default)
     {
+        auth.DemandSafeWrite();
         var path = "calendars/" + Uri.EscapeDataString(SelectedCalendar()) +
             "/events?sendUpdates=none";
         using var response = await Request(HttpMethod.Post, path, draft.AsGoogleFields(), ct: ct);
@@ -142,6 +143,7 @@ internal sealed class GoogleCalendarApi : IDisposable
     internal async Task<GoogleEventSnapshot> Update(
         GoogleEventSnapshot original, GoogleEventDraft proposed, CancellationToken ct = default)
     {
+        auth.DemandSafeWrite();
         if (string.IsNullOrWhiteSpace(original.ETag))
             throw new InvalidOperationException("A versão do evento é desconhecida. Atualize a agenda.");
         if (original.SpansMultipleDays || original.Duration > 1440)
@@ -161,6 +163,7 @@ internal sealed class GoogleCalendarApi : IDisposable
 
     internal async Task Delete(GoogleEventSnapshot original, CancellationToken ct = default)
     {
+        auth.DemandSafeWrite();
         if (string.IsNullOrWhiteSpace(original.ETag))
             throw new InvalidOperationException("Atualize o compromisso antes de cancelar.");
         var current = await Event(original.Id, ct);
