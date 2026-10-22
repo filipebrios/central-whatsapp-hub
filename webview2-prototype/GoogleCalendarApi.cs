@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace CentralWhatsApp.WebView2;
 
@@ -134,7 +135,12 @@ internal sealed class GoogleCalendarApi : IDisposable
         auth.DemandSafeWrite();
         var path = "calendars/" + Uri.EscapeDataString(SelectedCalendar()) +
             "/events?sendUpdates=none";
-        using var response = await Request(HttpMethod.Post, path, draft.AsGoogleFields(), ct: ct);
+        // O Google permite IDs explícitos em base32hex. Mantemos o mesmo ID
+        // enquanto este rascunho existir, evitando duplicar uma tentativa repetida.
+        // Uma dúvida de rede deve ser resolvida por consulta, nunca novo POST cego.
+        var payload = JsonSerializer.SerializeToNode(draft.AsGoogleFields())!.AsObject();
+        payload["id"] = draft.CreateRequestId;
+        using var response = await Request(HttpMethod.Post, path, payload, ct: ct);
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
         return GoogleEventSnapshot.Parse(json.RootElement) ??
             throw new InvalidOperationException("Evento salvo pelo Google, mas resposta incompleta. Atualize antes de tentar novamente.");
@@ -243,6 +249,10 @@ internal sealed record GoogleEventSnapshot(
 internal sealed record GoogleEventDraft(string Title, string Description, string Location,
     DateOnly Date, TimeOnly Time, int DurationMinutes, bool AllDay)
 {
+    // Prefixo "modu" e UUID hexadecimal usam apenas caracteres base32hex [0-9a-v],
+    // como exige a API Google Calendar. Não publicar esses IDs como segredo.
+    internal string CreateRequestId { get; } = "modu" + Guid.NewGuid().ToString("N");
+
     internal object AsGoogleFields()
     {
         if (string.IsNullOrWhiteSpace(Title) || Title.Length > 500 ||
