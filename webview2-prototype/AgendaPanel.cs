@@ -32,6 +32,7 @@ internal sealed class AgendaPanel : UserControl
     private readonly Button googleButton = MakeButton("Conectar Google Agenda");
     private readonly System.Windows.Forms.Timer googleRefreshTimer = new() { Interval = 15 * 60 * 1000 };
     private int googleEventCount;
+    private int googleTestEventCount;
     private int supabaseEventCount;
     private readonly List<(string[] Values, AgendaServiceCategory Category, GoogleEventSnapshot? Google)> cachedRows = [];
     private DateOnly? filterDate;
@@ -248,7 +249,7 @@ internal sealed class AgendaPanel : UserControl
         accessToken = refreshToken = companyId = currentUserId = null;
         password.Clear();
         grid.Rows.Clear(); cachedRows.Clear(); calendar.SetEntries([]);
-        googleEventCount = supabaseEventCount = 0;
+        googleEventCount = googleTestEventCount = supabaseEventCount = 0;
         filterDate = null;
         appointmentsPane.Visible = false; loginPane.Visible = true;
     }
@@ -321,7 +322,7 @@ internal sealed class AgendaPanel : UserControl
             cachedRows.Clear();
             var calendarRows = new List<AgendaCalendarEntry>();
             supabaseEventCount = 0;
-            googleEventCount = 0;
+            googleEventCount = googleTestEventCount = 0;
             string? googleWarning = null;
             foreach (var appointment in doc.RootElement.EnumerateArray())
             {
@@ -350,33 +351,10 @@ internal sealed class AgendaPanel : UserControl
                     System.Globalization.DateTimeStyles.None, out var parsed))
                     calendarRows.Add(new AgendaCalendarEntry(parsed, time, clientName, service, statusName, category));
             }
-            // O Google é uma fonte de leitura: não copia os eventos ao Supabase,
-            // não cria serviços novos e não dispara nenhum lembrete.
-            if (googleOAuth.CalendarId is not null)
-            {
-                try
-                {
-                    var googleEvents = await googleApi.Events(first, last);
-                    foreach (var item in googleEvents)
-                    {
-                        var category = AgendaServiceColors.Classify(item.Title, item.Description);
-                        cachedRows.Add(([
-                            item.Date.ToString("yyyy-MM-dd"), item.Time,
-                            item.Title, category.Label, "Google • editável", "",
-                            item.Location
-                        ], category, item));
-                        calendarRows.Add(new AgendaCalendarEntry(item.Date, item.Time,
-                            item.Title, category.Label, "google", category));
-                        googleEventCount++;
-                    }
-                }
-                catch (Exception ex) when (ex is InvalidOperationException or
-                    HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
-                {
-                    googleWarning = "Google API: " + ex.Message;
-                }
-            }
-            else if (googleFeed.HasUrl)
+            // No piloto, manter a agenda operacional iCal (somente leitura)
+            // SEMPRE visível, mesmo depois de autorizar a API OAuth para MODUX - TESTES.
+            // O Google API nunca substitui nem importa automaticamente eventos do iCal.
+            if (googleFeed.HasUrl)
             {
                 try
                 {
@@ -396,7 +374,35 @@ internal sealed class AgendaPanel : UserControl
                 }
                 catch (Exception)
                 {
-                    googleWarning = "Não foi possível ler o Google iCal. Revise o link privado e a conexão.";
+                    // Não expor URL secreta do iCal em mensagens ou logs.
+                    googleWarning = "Falha ao ler a agenda operacional iCal. Verifique a conexão.";
+                }
+            }
+
+            if (googleOAuth.CanWriteSelectedCalendar)
+            {
+                // Apenas eventos do calendário SECUNDÁRIO MODUX - TESTES entram
+                // no modo editável. Operacional continua identificado como leitura.
+                try
+                {
+                    var testEvents = await googleApi.Events(first, last);
+                    foreach (var item in testEvents)
+                    {
+                        var category = AgendaServiceColors.Classify(item.Title, item.Description);
+                        cachedRows.Add(([
+                            item.Date.ToString("yyyy-MM-dd"), item.Time,
+                            item.Title, category.Label, "Google • TESTES", "",
+                            item.Location
+                        ], category, item));
+                        calendarRows.Add(new AgendaCalendarEntry(item.Date, item.Time,
+                            item.Title, category.Label, "teste", category));
+                        googleTestEventCount++;
+                    }
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or
+                    HttpRequestException or TaskCanceledException or JsonException)
+                {
+                    googleWarning = "Google TESTES: " + ex.Message;
                 }
             }
             cachedRows.Sort((left, right) =>
@@ -404,10 +410,11 @@ internal sealed class AgendaPanel : UserControl
                     right.Values[0] + right.Values[1]));
             calendar.SetEntries(calendarRows);
             ShowCachedRows();
-            Status($"{supabaseEventCount} locais + {googleEventCount} Google • {first:dd/MM} a {last:dd/MM}. " +
-                (googleWarning ?? (googleOAuth.CalendarId is null
-                    ? "Google iCal: leitura apenas; sem duplicar nem enviar WhatsApp."
-                    : "Google API conectada. Duplo clique em evento do Google para editar.")));
+            Status($"{supabaseEventCount} locais + {googleEventCount} Google iCal (leitura) " +
+                $"+ {googleTestEventCount} TESTES (editável) • {first:dd/MM} a {last:dd/MM}. " +
+                (googleWarning ?? (googleOAuth.CanWriteSelectedCalendar
+                    ? "Duplo clique apenas em evento TESTES para editar. Clientes reais protegidos."
+                    : "Agenda operacional iCal: somente leitura. Sem envio WhatsApp.")));
         }
         catch (Exception error) when (error is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
         { Status("Não foi possível atualizar: " + error.Message); }
@@ -433,16 +440,18 @@ internal sealed class AgendaPanel : UserControl
             var index = grid.Rows.Add(record);
             grid.Rows[index].Tag = google;
             grid.Rows[index].Cells[2].ToolTipText = google is not null
-                ? "Duplo clique para editar diretamente no Google"
-                : "Agendamento local ou iCal somente leitura";
+                ? "MODUX - TESTES: duplo clique para editar evento fictício"
+                : "Operacional: agendamento local ou iCal somente leitura";
             var state = record[4];
             var serviceCell = grid.Rows[index].Cells[3];
             serviceCell.Style.BackColor = category.Color;
             serviceCell.Style.ForeColor = category.TextColor;
             serviceCell.ToolTipText = category.Label + " • " + category.GoogleColorName
                 + (state == "Google • leitura" ? " (classificado pelo texto do evento)" : "");
-            if (state is "Google • leitura" or "Google • editável")
+            if (state == "Google • leitura")
                 grid.Rows[index].DefaultCellStyle.BackColor = Color.FromArgb(229, 241, 255);
+            else if (state == "Google • TESTES")
+                grid.Rows[index].DefaultCellStyle.BackColor = Color.FromArgb(255, 248, 221);
             else if (state is "cancelado" or "cancelar")
                 grid.Rows[index].DefaultCellStyle.ForeColor = Color.FromArgb(164, 42, 42);
             else if (state is "confirmado")
