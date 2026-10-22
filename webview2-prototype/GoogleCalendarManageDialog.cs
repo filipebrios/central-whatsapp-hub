@@ -103,7 +103,7 @@ internal sealed class GoogleCalendarManageDialog : Form
         authorize.Enabled = oauth.Configured;
         select.Enabled = oauth.Connected &&
             calendars.SelectedItem is GoogleCalendarChoice choice &&
-            GoogleCalendarWriteGuard.IsTestCalendar(choice.Name);
+            GoogleCalendarWriteGuard.IsWritableTestCalendar(choice.Name, choice.Id, true);
         state.Text = oauth.Connected
             ? oauth.CanWriteSelectedCalendar
                 ? "Conta autorizada. Teste controlado ativo em: " +
@@ -185,7 +185,7 @@ internal sealed class GoogleCalendarManageDialog : Form
     private void SelectCalendar()
     {
         if (calendars.SelectedItem is not GoogleCalendarChoice item) return;
-        if (!GoogleCalendarWriteGuard.IsTestCalendar(item.Name))
+        if (!GoogleCalendarWriteGuard.IsWritableTestCalendar(item.Name, item.Id, oauth.Connected))
         {
             MessageBox.Show(this,
                 "Nesta fase, selecione um calendário separado chamado MODUX - TESTES. " +
