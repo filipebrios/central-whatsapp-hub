@@ -205,10 +205,11 @@ internal sealed record GoogleEventSnapshot(
         var allDay = start.TryGetProperty("date", out var d);
         if (allDay)
         {
-            if (!DateOnly.TryParse(d.GetString(), out var date)) return null;
-            var multiDay = end.TryGetProperty("date", out var endDay) &&
-                DateOnly.TryParse(endDay.GetString(), out var endsOn) &&
-                endsOn > date.AddDays(1);
+            if (!DateOnly.TryParse(d.GetString(), out var date) ||
+                !end.TryGetProperty("date", out var endDay) ||
+                !DateOnly.TryParse(endDay.GetString(), out var endsOn) ||
+                endsOn <= date) return null; // Fim de dia inteiro é exclusivo.
+            var multiDay = endsOn > date.AddDays(1);
             return new GoogleEventSnapshot(eid, Get(e, "etag"), Get(e, "summary"),
                 Get(e, "description"), Get(e, "location"), date, "Dia todo",
                 true, 1440, Get(e, "colorId"), Get(e, "recurringEventId"))
@@ -217,15 +218,21 @@ internal sealed record GoogleEventSnapshot(
             };
         }
         if (!DateTimeOffset.TryParse(Get(start, "dateTime"), out var begin) ||
-            !DateTimeOffset.TryParse(Get(end, "dateTime"), out var finish))
-            return null;
-        var local = TimeZoneInfo.ConvertTime(begin,
-            TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo"));
-        var minutes = Math.Max(15, (int)Math.Round((finish - begin).TotalMinutes));
+            !DateTimeOffset.TryParse(Get(end, "dateTime"), out var finish) ||
+            finish <= begin) return null;
+        var saoPaulo = TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo");
+        var local = TimeZoneInfo.ConvertTime(begin, saoPaulo);
+        var localEnd = TimeZoneInfo.ConvertTime(finish, saoPaulo);
+        var minutes = Math.Max(1, (int)Math.Round((finish - begin).TotalMinutes));
         return new GoogleEventSnapshot(eid, Get(e, "etag"), Get(e, "summary"),
             Get(e, "description"), Get(e, "location"), DateOnly.FromDateTime(local.DateTime),
             local.ToString("HH:mm"), false, minutes, Get(e, "colorId"),
-            Get(e, "recurringEventId"));
+            Get(e, "recurringEventId"))
+        {
+            // Importante: eventos com horário atravessando a meia-noite também
+            // precisam da proteção contra edição que alteraria sua duração.
+            SpansMultipleDays = local.Date != localEnd.Date
+        };
     }
 }
 
