@@ -20,6 +20,18 @@ if (item is null || item.Title != "Desinsetização - Cliente XYZ"
 var change = new GoogleEventDraft(
     item.Title, item.Description, item.Location, item.Date,
     new TimeOnly(10, 15), 75, false);
+// IDs gerados para criação de eventos: base32hex, únicos e estáveis no mesmo rascunho.
+var generatedIds = new HashSet<string>(StringComparer.Ordinal);
+for (var i = 0; i < 1000; i++)
+{
+    var generated = new GoogleEventDraft(
+        "Teste", "", "", new DateOnly(2026, 10, 23), new TimeOnly(10, 0), 30, false);
+    var id = generated.CreateRequestId;
+    if (!System.Text.RegularExpressions.Regex.IsMatch(id, "^[a-v0-9]{5,1024}$") ||
+        !generatedIds.Add(id) || generated.CreateRequestId != id)
+        throw new Exception("ID Google invalido, duplicado ou instavel.");
+}
+Console.WriteLine("PASS: 1000 IDs Google base32hex únicos e estáveis por rascunho.");
 var patch = JsonSerializer.Serialize(change.AsGoogleFields());
 using var parsed = JsonDocument.Parse(patch);
 if (parsed.RootElement.GetProperty("start").GetProperty("dateTime").GetString()
