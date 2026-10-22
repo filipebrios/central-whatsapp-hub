@@ -193,6 +193,15 @@ Antes de entregar uma versão:
 - **A fonte iCal não garante trazer cor individual de evento do Google**: a paleta é inferida dos serviços e aplicada só ao MODUX; a cor do Google original nunca é alterada. Os eventos existentes são apenas lidos, sem salvar ou duplicar no Supabase.
 - Testes automatizados de classificação e hexadecimais em `tests/AgendaServiceColors/` **passaram**. GitHub Actions **#39440133345** concluído com sucesso em 20/10/2026: testes, compilação Windows, Inno Setup e release beta `modux-v1.8.2-beta1` com `MODUX-Setup-1.8.2.exe`. **Teste visual e conferência da classificação com eventos reais ainda pendentes.**
 
+### 2026-10-21 — etapa 1 de 8: proteções de eventos e testes de regressão
+
+- Decisão do usuário: trabalho em **etapas sequenciais, com verificação explícita e passagem para a próxima somente após evidência**. Continuam proibidas publicações de instaladores intermediários. Checklist em https://github.com/filipebrios/central-whatsapp-hub/issues/5.
+- Auditoria de `GoogleCalendarApi.cs` identificou que eventos temporizados atravessando a meia-noite não eram marcados `SpansMultipleDays`, apesar do bloqueio de edição de eventos multidiários. Corrigida a marcação comparando datas locais no fuso `America/Sao_Paulo`.
+- `GoogleEventSnapshot.Parse` agora recusa evento dia inteiro com fim exclusivo anterior/igual ao início e eventos temporizados com término anterior/igual ao início.
+- `tests/GoogleCalendarCore/Program.cs` expandido com recorrência isolada, virada da meia-noite, dia inteiro de vários dias, inversão de horários, dados incompletos e título inválido, sem acessar agenda verdadeira.
+- Apenas código de desenvolvimento e testes; verificar conclusão da execução GitHub Actions mais recente **antes de marcar a etapa como concluída**.
+- Próxima etapa: conexão OAuth oficial em uma conta autorizada/teste controlado; credenciais e consentimento Google são bloqueadores explícitos para validação real e não podem ser simulados como êxito.
+
 ## Registro de mudanças
 
 ### 2026-09-23 — candidata MODUX 1.5.2
