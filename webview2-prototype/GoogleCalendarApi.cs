@@ -140,10 +140,21 @@ internal sealed class GoogleCalendarApi : IDisposable
         // Uma dúvida de rede deve ser resolvida por consulta, nunca novo POST cego.
         var payload = JsonSerializer.SerializeToNode(draft.AsGoogleFields())!.AsObject();
         payload["id"] = draft.CreateRequestId;
-        using var response = await Request(HttpMethod.Post, path, payload, ct: ct);
-        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
-        return GoogleEventSnapshot.Parse(json.RootElement) ??
-            throw new InvalidOperationException("Evento salvo pelo Google, mas resposta incompleta. Atualize antes de tentar novamente.");
+        try
+        {
+            using var response = await Request(HttpMethod.Post, path, payload, ct: ct);
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+            return GoogleEventSnapshot.Parse(json.RootElement) ??
+                throw new InvalidOperationException("Evento salvo pelo Google, mas resposta incompleta. Atualize antes de tentar novamente.");
+        }
+        catch (Exception error) when (error is HttpRequestException or TaskCanceledException)
+        {
+            // Uma falha após o envio não prova que a criação foi rejeitada.
+            // Não reenviar POST automaticamente; a consulta à agenda deve decidir.
+            throw new InvalidOperationException(
+                "A conexão falhou durante a criação. O Google pode ter salvo o evento. " +
+                "Atualize o calendário de testes antes de tentar criar novamente.", error);
+        }
     }
 
     internal async Task<GoogleEventSnapshot> Update(
