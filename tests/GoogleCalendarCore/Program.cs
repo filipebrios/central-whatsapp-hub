@@ -115,3 +115,26 @@ if (attendees.Contains("attendees", StringComparison.OrdinalIgnoreCase) ||
     throw new Exception("Campos sensíveis não podem ser substituídos em PATCH.");
 
 Console.WriteLine("PASS: recorrência, meia-noite, evento multidiário, datas inválidas e edição restrita.");
+
+
+// Etapa 2: um teste NÃO pode gravar na agenda operacional, mesmo que o usuário
+// confirme o diálogo ou uma chamada futura acesse diretamente a API.
+static void ExpectBlocked(string? name, string? id, bool authorized)
+{
+    try
+    {
+        GoogleCalendarWriteGuard.DemandTestCalendar(name, id, authorized);
+    }
+    catch (InvalidOperationException) { return; }
+    throw new Exception("Falha de segurança: gravação liberada na agenda errada: " + name);
+}
+ExpectBlocked("Agendamento São Bento", "agendamento.saobento@gmail.com", true);
+ExpectBlocked("MODUX - TESTES extra", "test@example.com", true);
+ExpectBlocked("MODUX - TESTES", "", true);
+ExpectBlocked("MODUX - TESTES", "test@example.com", false);
+ExpectBlocked(null, "test@example.com", true);
+GoogleCalendarWriteGuard.DemandTestCalendar("MODUX - TESTES", "test@example.com", true);
+GoogleCalendarWriteGuard.DemandTestCalendar("  MODUX - TESTES  ", "test@example.com", true);
+if (GoogleCalendarWriteGuard.IsTestCalendar("Agendamento São Bento"))
+    throw new Exception("O calendário operacional não pode ser reconhecido como testes.");
+Console.WriteLine("PASS: trava da agenda operacional, calendarId e OAuth testados.");
