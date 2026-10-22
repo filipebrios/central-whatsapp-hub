@@ -14,7 +14,12 @@ internal static class GoogleCalendarWriteGuard
 
     internal static void DemandTestCalendar(string? displayName, string? calendarId, bool authorized)
     {
-        if (!authorized || string.IsNullOrWhiteSpace(calendarId) || !IsTestCalendar(displayName))
+        // Um calendário secundário criado no Google Calendar tem ID @group.calendar.google.com.
+        // Exigimos esse identificador para impedir que renomear a agenda principal
+        // como "MODUX - TESTES" libere gravações nela.
+        if (!authorized || !IsTestCalendar(displayName) ||
+            calendarId is null ||
+            !calendarId.EndsWith("@group.calendar.google.com", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException(
                 "Gravação Google bloqueada nesta etapa. Selecione a agenda isolada " +
                 "'MODUX - TESTES'. Os agendamentos reais da São Bento estão protegidos.");
