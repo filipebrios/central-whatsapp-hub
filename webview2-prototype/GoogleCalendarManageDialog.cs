@@ -217,9 +217,9 @@ internal sealed class GoogleCalendarManageDialog : Form
             {
                 state.Text = "Leitura Google confirmada no calendário de testes. Nenhum evento foi alterado.";
                 MessageBox.Show(this,
-                    "Evento localizado no Google Agenda de testes:\\n" +
-                    expected.Title + "\\nData: 23/10/2026 | Hora: " + expected.Time +
-                    "\\n\\nEste teste apenas LEU os dados; não criou nem alterou eventos.",
+                    "Evento localizado no Google Agenda de testes:\n" +
+                    expected.Title + "\nData: 23/10/2026 | Hora: " + expected.Time +
+                    "\n\nEste teste apenas LEU os dados; não criou nem alterou eventos.",
                     "Teste de leitura aprovado", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
         }
