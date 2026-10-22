@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+    <Compile Include="../../webview2-prototype/GoogleCalendarWriteGuard.cs" Link="GoogleCalendarWriteGuard.cs" />
     <Compile Include="../../webview2-prototype/GoogleDesktopOAuth.cs" Link="GoogleDesktopOAuth.cs" />
     <Compile Include="../../webview2-prototype/GoogleCalendarApi.cs" Link="GoogleCalendarApi.cs" />
   </ItemGroup>
