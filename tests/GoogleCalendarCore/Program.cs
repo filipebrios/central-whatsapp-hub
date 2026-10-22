@@ -129,12 +129,14 @@ static void ExpectBlocked(string? name, string? id, bool authorized)
     throw new Exception("Falha de segurança: gravação liberada na agenda errada: " + name);
 }
 ExpectBlocked("Agendamento São Bento", "agendamento.saobento@gmail.com", true);
-ExpectBlocked("MODUX - TESTES extra", "test@example.com", true);
+ExpectBlocked("MODUX - TESTES extra", "example@group.calendar.google.com", true);
 ExpectBlocked("MODUX - TESTES", "", true);
-ExpectBlocked("MODUX - TESTES", "test@example.com", false);
-ExpectBlocked(null, "test@example.com", true);
-GoogleCalendarWriteGuard.DemandTestCalendar("MODUX - TESTES", "test@example.com", true);
-GoogleCalendarWriteGuard.DemandTestCalendar("  MODUX - TESTES  ", "test@example.com", true);
+ExpectBlocked("MODUX - TESTES", "example@group.calendar.google.com", false);
+ExpectBlocked(null, "example@group.calendar.google.com", true);
+ExpectBlocked("MODUX - TESTES", "agendamento.saobento@gmail.com", true);
+ExpectBlocked("MODUX - TESTES", "primary", true);
+GoogleCalendarWriteGuard.DemandTestCalendar("MODUX - TESTES", "example@group.calendar.google.com", true);
+GoogleCalendarWriteGuard.DemandTestCalendar("  MODUX - TESTES  ", "example@group.calendar.google.com", true);
 if (GoogleCalendarWriteGuard.IsTestCalendar("Agendamento São Bento"))
     throw new Exception("O calendário operacional não pode ser reconhecido como testes.");
 Console.WriteLine("PASS: trava da agenda operacional, calendarId e OAuth testados.");
