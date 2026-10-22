@@ -22,6 +22,7 @@ internal sealed class GoogleCalendarManageDialog : Form
     private readonly Button chooseFile = Button("1. Importar credenciais do Google"),
         authorize = Button("2. Autorizar no navegador"),
         select = Button("3. Usar calendário selecionado"),
+        verify = Button("4. Verificar evento de teste"),
         disconnect = Button("Desconectar este Windows");
     internal bool Changed { get; private set; }
 
@@ -64,6 +65,7 @@ internal sealed class GoogleCalendarManageDialog : Form
         calendars.SelectedIndexChanged += (_, _) => RefreshStatus();
         body.Controls.Add(calendars);
         body.Controls.Add(select);
+        body.Controls.Add(verify);
         body.Controls.Add(disconnect);
         state.Width = 540;
         body.Controls.Add(state);
@@ -71,6 +73,7 @@ internal sealed class GoogleCalendarManageDialog : Form
         chooseFile.Click += (_, _) => ImportCredentials();
         authorize.Click += async (_, _) => await Authorize();
         select.Click += (_, _) => SelectCalendar();
+        verify.Click += async (_, _) => await VerifyTestEvent();
         disconnect.Click += (_, _) =>
         {
             if (MessageBox.Show(this,
@@ -104,6 +107,7 @@ internal sealed class GoogleCalendarManageDialog : Form
         select.Enabled = oauth.Connected &&
             calendars.SelectedItem is GoogleCalendarChoice choice &&
             GoogleCalendarWriteGuard.IsWritableTestCalendar(choice.Name, choice.Id, true);
+        verify.Enabled = oauth.CanWriteSelectedCalendar;
         state.Text = oauth.Connected
             ? oauth.CanWriteSelectedCalendar
                 ? "Conta autorizada. Teste controlado ativo em: " +
@@ -140,7 +144,7 @@ internal sealed class GoogleCalendarManageDialog : Form
 
     private async Task Authorize()
     {
-        chooseFile.Enabled = authorize.Enabled = select.Enabled = disconnect.Enabled = false;
+        chooseFile.Enabled = authorize.Enabled = select.Enabled = verify.Enabled = disconnect.Enabled = false;
         state.Text = "Aguardando autorização no navegador padrão (até 4 minutos)...";
         try
         {
@@ -180,6 +184,53 @@ internal sealed class GoogleCalendarManageDialog : Form
         catch (Exception error) when (error is InvalidOperationException or HttpRequestException
             or TaskCanceledException)
         { state.Text = "Não foi possível carregar a lista: " + error.Message; }
+    }
+
+    private async Task VerifyTestEvent()
+    {
+        // Verificação sem qualquer POST/PATCH/DELETE. O usuário criou um
+        // compromisso fictício nesta data no calendário secundário.
+        if (!oauth.CanWriteSelectedCalendar)
+        {
+            MessageBox.Show(this, "Selecione primeiro a agenda isolada MODUX - TESTES.",
+                "Google Agenda", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        verify.Enabled = false;
+        state.Text = "Conferindo leitura do evento fictício de 23/10/2026...";
+        try
+        {
+            var testDate = new DateOnly(2026, 10, 23);
+            var events = await api.Events(testDate, testDate);
+            var expected = events.FirstOrDefault(e =>
+                e.Date == testDate &&
+                e.Title.Contains("TESTE MODUX", StringComparison.OrdinalIgnoreCase));
+            if (expected is null)
+            {
+                state.Text = "Conexão autorizada, mas o evento TESTE MODUX não foi encontrado na agenda selecionada.";
+                MessageBox.Show(this,
+                    "A conexão Google funcionou, mas não encontrei o compromisso fictício de 23/10/2026. " +
+                    "Confirme em qual calendário ele foi salvo e use Atualizar.",
+                    "Teste de leitura", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            else
+            {
+                state.Text = "Leitura Google confirmada no calendário de testes. Nenhum evento foi alterado.";
+                MessageBox.Show(this,
+                    "Evento localizado no Google Agenda de testes:\\n" +
+                    expected.Title + "\\nData: 23/10/2026 | Hora: " + expected.Time +
+                    "\\n\\nEste teste apenas LEU os dados; não criou nem alterou eventos.",
+                    "Teste de leitura aprovado", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+        catch (Exception error) when (error is InvalidOperationException or
+            HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            state.Text = "Falha ao conferir a leitura do evento fictício.";
+            MessageBox.Show(this, error.Message, "Google Agenda",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        finally { verify.Enabled = oauth.CanWriteSelectedCalendar; }
     }
 
     private void SelectCalendar()
