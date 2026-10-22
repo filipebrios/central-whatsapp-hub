@@ -34,6 +34,14 @@ internal sealed class GoogleDesktopOAuth : IDisposable
     internal bool Connected => !string.IsNullOrWhiteSpace(config?.RefreshToken);
     internal string? CalendarId => config?.CalendarId;
     internal string? CalendarName => config?.CalendarName;
+    // Durante o piloto somente a agenda separada de testes permite gravar.
+    internal bool CanWriteSelectedCalendar => Connected &&
+        !string.IsNullOrWhiteSpace(config?.CalendarId) &&
+        GoogleCalendarWriteGuard.IsTestCalendar(config?.CalendarName);
+
+    internal void DemandSafeWrite() =>
+        GoogleCalendarWriteGuard.DemandTestCalendar(
+            config?.CalendarName, config?.CalendarId, Connected);
 
     internal GoogleDesktopOAuth()
     {
@@ -73,6 +81,9 @@ internal sealed class GoogleDesktopOAuth : IDisposable
     {
         if (!Connected || string.IsNullOrWhiteSpace(id))
             throw new InvalidOperationException("Autorize a conta Google e selecione um calendário válido.");
+        // Bloquear a seleção de agendas operacionais nesta fase. O nome é verificado
+        // novamente dentro do cliente de API antes de CADA operação de escrita.
+        GoogleCalendarWriteGuard.DemandTestCalendar(name, id, Connected);
         config!.CalendarId = id;
         config.CalendarName = name;
         Save();
