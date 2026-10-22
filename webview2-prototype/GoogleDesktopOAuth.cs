@@ -35,9 +35,9 @@ internal sealed class GoogleDesktopOAuth : IDisposable
     internal string? CalendarId => config?.CalendarId;
     internal string? CalendarName => config?.CalendarName;
     // Durante o piloto somente a agenda separada de testes permite gravar.
-    internal bool CanWriteSelectedCalendar => Connected &&
-        !string.IsNullOrWhiteSpace(config?.CalendarId) &&
-        GoogleCalendarWriteGuard.IsTestCalendar(config?.CalendarName);
+    internal bool CanWriteSelectedCalendar =>
+        GoogleCalendarWriteGuard.IsWritableTestCalendar(
+            config?.CalendarName, config?.CalendarId, Connected);
 
     internal void DemandSafeWrite() =>
         GoogleCalendarWriteGuard.DemandTestCalendar(
