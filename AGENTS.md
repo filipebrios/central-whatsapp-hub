@@ -202,6 +202,15 @@ Antes de entregar uma versão:
 - Apenas código de desenvolvimento e testes; verificar conclusão da execução GitHub Actions mais recente **antes de marcar a etapa como concluída**.
 - Próxima etapa: conexão OAuth oficial em uma conta autorizada/teste controlado; credenciais e consentimento Google são bloqueadores explícitos para validação real e não podem ser simulados como êxito.
 
+### 2026-10-22 — etapa 2/8: Google Cloud configurado e trava de escrita isolada
+
+- Usuário confirmou configuração manual do projeto Google Cloud `MODUX - Agenda Sao Bento`: Calendar API ativa, app OAuth tipo Desktop com JSON baixado **somente no computador dele**, testador `agendamento.saobento@gmail.com`, escopos `calendar.calendarlist.readonly` e `calendar.events`. **Nunca copiar credenciais, segredos ou tokens ao GitHub/chat.** O segredo anterior apareceu em um print e o usuário informou substituição das credenciais.
+- `GoogleCalendarWriteGuard.cs`: piloto permite Create/Update/Delete exclusivamente quando o calendário autorizado tem nome exato `MODUX - TESTES` e ID secundário `@group.calendar.google.com`. Recusa a agenda principal, inclusive se renomeada com o nome de testes.
+- `GoogleDesktopOAuth` aplica a guarda ao selecionar agenda e expõe `CanWriteSelectedCalendar`; `GoogleCalendarApi` aplica `DemandSafeWrite()` antes de cada método de escrita; `AgendaPanel` e `GoogleCalendarManageDialog` deixam explícita a restrição e desabilitam controles de escrita na agenda operacional.
+- Testes `GoogleCalendarCore` ampliados para cobrir guarda positiva, autorização ausente, ID principal, ID inválido e nomes que não correspondem exatamente.
+- **Ainda não está concluída a etapa 2:** validação do consentimento OAuth e operações num calendário Google **real de testes** exige execução no computador do usuário. Não há instalador 1.9 publicado; não anunciar integração operacional validada.
+- O Google informa que refresh tokens de aplicativo Externo em modo Testando e com permissões de Calendar expiram em cerca de 7 dias; tratar antes de liberar uso contínuo. Documentação: https://developers.google.com/identity/protocols/oauth2/
+
 ## Registro de mudanças
 
 ### 2026-09-23 — candidata MODUX 1.5.2
