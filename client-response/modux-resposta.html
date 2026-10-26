@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src https://snypbekmjseayljvltwq.supabase.co; base-uri 'none'; form-action 'none'; object-src 'none'">
+<title>Seu atendimento • São Bento</title>
+<link rel="stylesheet" href="./modux-resposta.css">
+<script type="module" src="./modux-resposta.mjs"></script>
+</head>
+<body>
+<main>
+<header><span class="mark" aria-hidden="true">SB</span><div><strong>São Bento</strong><span>Manejo Integrado de Pragas Urbanas</span></div></header>
+<p class="eyebrow">CUIDADO EM CADA ETAPA</p>
+<h1 id="title">Seu atendimento</h1>
+<p id="status" role="status" aria-live="polite">Conferindo o link recebido…</p>
+<section id="appointment" hidden aria-label="Atendimento"><p id="service"></p><p id="schedule"></p></section>
+<div id="confirmation" hidden>
+<button id="confirm" type="button">Confirmar atendimento</button>
+<button id="cancel" type="button" class="secondary">Solicitar cancelamento ou alteração</button>
+<p class="hint">Pedidos de alteração serão conferidos pela equipe antes de combinar um novo horário.</p>
+</div>
+<form id="feedback" hidden>
+<fieldset><legend>De 0 a 10, quanto você recomendaria a São Bento?</legend>
+<div id="scores" class="scores"></div><div class="scale"><span>Não recomendaria</span><span>Recomendaria muito</span></div></fieldset>
+<label for="note">Quer contar como foi? <span>(opcional)</span></label>
+<textarea id="note" maxlength="4000" rows="4"></textarea>
+<button id="submit" type="submit">Enviar minha avaliação</button>
+</form>
+<p id="error" role="alert"></p>
+<footer>Este link é exclusivo do seu atendimento. Não o compartilhe.<br>São Bento • Itajubá, MG</footer>
+</main>
+</body></html>

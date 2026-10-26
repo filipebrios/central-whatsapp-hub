@@ -64,6 +64,17 @@ internal static class AgendaWorkflowRules
         return result;
     }
 
+    internal static ComposeRequest WithResponseLink(ComposeRequest message, string token)
+    {
+        if (!Regex.IsMatch(token, "^[0-9a-f]{64}$"))
+            throw new InvalidOperationException("Link de resposta inválido. Atualize a rotina.");
+        var text = message.Text + "\n\nResponda por este link exclusivo do atendimento:\n" +
+            "https://www.sbento.com.br/modux-resposta.html#token=" + token;
+        if (text.Length > ComposeRequest.MaxTextLength)
+            throw new InvalidOperationException("O modelo ficou longo demais com o link. Reduza o texto antes de preparar.");
+        return message with { Text = text };
+    }
+
     internal static ComposeRequest Message(AgendaWorkItem work, string template)
     {
         var phone = Phone(work.Appointment.Phone) ?? throw new InvalidOperationException("Complete o WhatsApp do cliente.");
@@ -148,6 +159,27 @@ internal sealed class AgendaWorkflowStore(
         if (job.AppointmentId != work.Appointment.Id || job.TemplateKey != work.TemplateKey || job.Occurrence != work.Occurrence)
             throw new InvalidOperationException("O atendimento mudou. Atualize a fila antes de preparar.");
         return job;
+    }
+
+    internal async Task<string> IssueResponseToken(string companyId, AgendaWorkItem work)
+    {
+        if (work.TemplateKey is not ("confirmacao" or "pos_venda"))
+            throw new InvalidOperationException("Esta rotina não usa link de resposta.");
+        using var response = await authorized(HttpMethod.Post, "rest/v1/rpc/agenda_issue_response_token", new
+        {
+            p_company_id = companyId, p_appointment_id = work.Appointment.Id,
+            p_kind = work.TemplateKey, p_expected_revision = work.Appointment.Revision
+        });
+        Check(response);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var row = json.RootElement;
+        if (!row.TryGetProperty("token", out var token) || token.ValueKind != JsonValueKind.String ||
+            !Regex.IsMatch(token.GetString()!, "^[0-9a-f]{64}$") ||
+            !row.TryGetProperty("expires_at", out var expiry) ||
+            !DateTimeOffset.TryParse(expiry.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var expires) ||
+            expires <= DateTimeOffset.UtcNow)
+            throw new InvalidOperationException("Link não confirmado. Atualize a rotina antes de preparar novamente.");
+        return token.GetString()!;
     }
 
     internal async Task Mark(string companyId, AgendaMessageJob job, string state)

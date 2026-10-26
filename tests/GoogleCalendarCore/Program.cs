@@ -594,6 +594,36 @@ if (feedIdentity != "equipe@group.calendar.google.com" ||
     throw new Exception("Identidade iCal incorreta: poderia esconder outro calendário.");
 Console.WriteLine("PASS: consentimento por ID, alias principal bloqueado e deduplicação de fonte iCal por identidade.");
 
+
+// Capabilities stay in a fragment; only authenticated RPC issuance carries the appointment identity.
+var responseToken = new string('a', 64);
+var responseDraft = AgendaWorkflowRules.WithResponseLink(new ComposeRequest("5535999999999", "Mensagem", "saobento"), responseToken);
+if (!responseDraft.Text.Contains("modux-resposta.html#token=" + responseToken) ||
+    responseDraft.Source != "saobento" || responseDraft.Phone != "5535999999999")
+    throw new Exception("Link perdeu fragmento ou origem da conta.");
+await ExpectFailure(() => Task.Run(() => AgendaWorkflowRules.WithResponseLink(responseDraft, "../invalid")), "inválido");
+await ExpectFailure(() => Task.Run(() => AgendaWorkflowRules.WithResponseLink(
+    new ComposeRequest("5535999999999", new string('x', 1790), "saobento"), responseToken)), "longo");
+var issuanceCalls = 0;
+var responseStore = new AgendaWorkflowStore((method, path, payload) =>
+{
+    issuanceCalls++;
+    if (method != HttpMethod.Post || path != "rest/v1/rpc/agenda_issue_response_token")
+        throw new Exception("Emissão fora da RPC autenticada.");
+    using var body = System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(payload));
+    if (body.RootElement.GetProperty("p_company_id").GetString() != company ||
+        body.RootElement.GetProperty("p_appointment_id").GetString() != todayAppointment.Id ||
+        body.RootElement.GetProperty("p_expected_revision").GetInt32() != todayAppointment.Revision)
+        throw new Exception("Emissão perdeu empresa/atendimento/revisão.");
+    return Task.FromResult(CalendarTestHandler.Json(System.Text.Json.JsonSerializer.Serialize(new
+    { token = responseToken, expires_at = DateTimeOffset.UtcNow.AddDays(1).ToString("O") })));
+});
+var responseWork = new AgendaWorkItem(todayAppointment, "confirmacao", "Teste");
+if (await responseStore.IssueResponseToken(company, responseWork) != responseToken) throw new Exception("Token emitido inválido.");
+await ExpectFailure(() => responseStore.IssueResponseToken(company, responseWork with { TemplateKey = "lembrete_d0" }), "não usa");
+if (issuanceCalls != 1) throw new Exception("Rotina inadequada chegou ao servidor.");
+Console.WriteLine("PASS: link exclusivo em fragmento, emissão por revisão/empresa e rascunho sem envio.");
+
 static async Task ExpectFailure(Func<Task> operation, string message)
 {
     try { await operation(); }

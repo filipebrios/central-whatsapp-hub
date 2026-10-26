@@ -10,6 +10,8 @@ on:
       - "tools/GoogleCalendarDiagnostic/**"
       - "tests/GoogleCalendarCore/**"
       - "tests/AgendaServiceColors/**"
+      - "supabase/functions/**"
+      - "client-response/**"
       - ".github/workflows/validate-modux-19.yml"
   workflow_dispatch:
 
@@ -21,6 +23,11 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Testar API de respostas públicas
+        run: node --test supabase/functions/agenda-response/handler.test.mjs
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"

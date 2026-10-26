@@ -47,6 +47,8 @@ internal sealed class AgendaWorkflowDialog : Form
                 var job = await store.Prepare(company, row.Work);
                 if (job.State is "enviada_manual" or "tratada_manual" or "cancelada")
                     throw new InvalidOperationException("Essa ocorrência já foi tratada. Atualize para conferir o registro.");
+                if (row.Work.TemplateKey is "confirmacao" or "pos_venda")
+                    message = AgendaWorkflowRules.WithResponseLink(message, await store.IssueResponseToken(company, row.Work));
                 Prepared = message;
             });
             if (Prepared is not null) DialogResult = DialogResult.OK;

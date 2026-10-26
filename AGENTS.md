@@ -61,6 +61,8 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- 26/10: handler de resposta pública passou em cinco testes Node (origem/método, limites, consulta sem consumo, nota zero, não vazamento). Edge `agenda-response` v1 ativa com autenticação própria por capacidade; teste HTTP inválido retornou 400/no-store. Página e integração de rascunho no cliente em validação de CI; publicação da página ainda pendente, sem link real enviado.
+
 - 26/10: ativação operacional e deduplicação iCal passaram no CI #40350635367. Backend de respostas públicas aprovado em testes SQL com rollback: token SHA-256, validade, uso único, horário exato, NPS e isolamento. Migração `20261026172943_modux_public_responses` aplicada; zero tokens/fixtures reais persistidos. Página pública e integração do cliente ainda em implementação; nenhum link foi enviado e nenhum instalador novo foi criado.
 
 - 26/10: busca/filtros/CSV/checkpoints passaram no CI #40348718438. Implementação da ativação operacional no aplicativo principal está em validação: usuário deve escolher e confirmar o ID concreto do calendário no próprio Windows. Configurações antigas não herdam aprovação; verificador isolado continua limitado a MODUX - TESTES. Nenhuma agenda operacional real foi ativada ou alterada por estas ferramentas.
@@ -281,6 +283,13 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-26 — API e página de resposta pública
+
+- Handler limita origem, tamanho do corpo, operações e campos; consulta não consome token, respostas contêm somente serviço/data/hora ou situação, sem contatos/identidade/credenciais. Service role permanece no ambiente Edge; nenhuma chave administrativa no Windows ou HTML.
+- Página independente recebe capacidade por fragmento (fora de logs de URL/referrer), remove fragmento do histórico, usa textContent e CSP, sem analytics/dependências externas. Exige ação explícita para confirmar/cancelar e nota selecionada para NPS; não promete exclusão automática do Google.
+- Rascunho confirmação/NPS emite capacidade autenticada pela revisão atual e acrescenta URL; preparação continua separada de envio manual. Testes Node passaram; teste HTTP negativo na Edge v1 retornou 400 com no-store. Integração C# aguardando CI e página aguardando publicação verificada.
+
 
 ### 2026-10-26 — capacidades de resposta do cliente
 
