@@ -1009,6 +1009,7 @@ public sealed class MainForm : Form
         foreach (var browser in browsers.Values.ToArray())
             browser.ZoomFactor = preferences.WhatsAppZoom / 100d;
 
+        ModuxAppearance.Configure(!light);
         brand.Invalidate();
         RenderAccountButtons();
         UpdateActiveAccountHeader();

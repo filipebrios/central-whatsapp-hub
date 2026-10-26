@@ -125,12 +125,30 @@ internal sealed class AgendaMonthView : UserControl
         Render();
     }
 
+    internal void ApplyAppearance()
+    {
+        BackColor = ModuxAppearance.Surface;
+        days.BackColor = ModuxAppearance.Border;
+        legend.BackColor = ModuxAppearance.Surface;
+        caption.ForeColor = ModuxAppearance.Text;
+        foreach (Control control in Controls)
+            if (control is FlowLayoutPanel panel) panel.BackColor = ModuxAppearance.Surface;
+        foreach (var button in new[] { previous, next, current })
+        {
+            button.BackColor = ModuxAppearance.Field;
+            button.ForeColor = ModuxAppearance.Dark ? Color.FromArgb(150, 214, 178) : Color.FromArgb(22, 88, 60);
+            button.FlatAppearance.BorderSize = 0;
+        }
+        Render();
+    }
+
     private void Render()
     {
         caption.Text = Br.TextInfo.ToTitleCase(displayedMonth.ToDateTime(TimeOnly.MinValue).ToString("MMMM yyyy", Br));
         days.SuspendLayout();
         try
         {
+            foreach (Control old in days.Controls.Cast<Control>().ToArray()) old.Dispose();
             days.Controls.Clear();
             var heads = new[] { "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom" };
             for (var col = 0; col < 7; col++)
@@ -140,8 +158,8 @@ internal sealed class AgendaMonthView : UserControl
                     Text = heads[col], Dock = DockStyle.Fill,
                     TextAlign = ContentAlignment.MiddleCenter,
                     Font = new Font("Segoe UI", 8f, FontStyle.Bold),
-                    BackColor = Color.FromArgb(232, 241, 234),
-                    ForeColor = Color.FromArgb(26, 63, 38),
+                    BackColor = ModuxAppearance.Field,
+                    ForeColor = ModuxAppearance.Muted,
                     Margin = Padding.Empty
                 }, col, 0);
             }
@@ -159,9 +177,9 @@ internal sealed class AgendaMonthView : UserControl
                     Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4,
                     Margin = Padding.Empty, Padding = new Padding(2),
                     BackColor = date == selectedDate
-                        ? Color.FromArgb(210, 238, 215)
+                        ? (ModuxAppearance.Dark ? Color.FromArgb(33, 67, 54) : Color.FromArgb(225, 242, 231))
                         : date.Month == displayedMonth.Month
-                            ? Color.White : Color.FromArgb(244, 246, 245),
+                            ? ModuxAppearance.Surface : ModuxAppearance.Canvas,
                     Cursor = Cursors.Hand,
                     AccessibleName = $"{date:dd/MM/yyyy} • {count} agendamentos"
                 };
@@ -175,8 +193,8 @@ internal sealed class AgendaMonthView : UserControl
                     Dock = DockStyle.Fill, Margin = Padding.Empty,
                     Font = new Font("Segoe UI", 8.5f,
                         date == today ? FontStyle.Bold : FontStyle.Regular),
-                    ForeColor = date == today ? Color.FromArgb(0, 103, 44)
-                        : date.Month == displayedMonth.Month ? Color.FromArgb(15, 31, 20) : Color.Gray,
+                    ForeColor = date == today ? (ModuxAppearance.Dark ? Color.FromArgb(150, 214, 178) : Color.FromArgb(22, 88, 60))
+                        : date.Month == displayedMonth.Month ? ModuxAppearance.Text : ModuxAppearance.Muted,
                     Text = $"{date.Day}{(date == today ? " •" : "")}",
                     Cursor = Cursors.Hand,
                     TextAlign = ContentAlignment.MiddleLeft
@@ -213,7 +231,7 @@ internal sealed class AgendaMonthView : UserControl
                         {
                             Dock = DockStyle.Fill, Text = $"+{count - 2} outros",
                             Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
-                            ForeColor = Color.FromArgb(68, 85, 99), Margin = Padding.Empty,
+                            ForeColor = ModuxAppearance.Muted, Margin = Padding.Empty,
                             Cursor = Cursors.Hand
                         };
                         eventTip.SetToolTip(extra, string.Join("\n",

@@ -13,6 +13,7 @@ on:
       - "supabase/functions/**"
       - "client-response/**"
       - "tests/ClientResponse/**"
+      - "tests/WindowsUiSmoke/**"
       - ".github/workflows/validate-modux-19.yml"
   workflow_dispatch:
 
@@ -42,6 +43,15 @@ jobs:
         run: dotnet run --project tests/ComposeRequest/ComposeRequest.csproj -c Release
       - name: Compilar MODUX Windows SEM empacotar ou publicar instalador
         run: dotnet build webview2-prototype/CentralWhatsApp.WebView2.csproj -c Release -r win-x64
+      - name: Conferir interface nativa sem credenciais
+        run: dotnet run --project tests/WindowsUiSmoke/WindowsUiSmoke.csproj -c Release
+      - name: Guardar capturas da interface para revisão
+        uses: actions/upload-artifact@v4
+        with:
+          name: MODUX-UI-interna
+          path: ui-smoke-output/
+          retention-days: 7
+          if-no-files-found: error
       - name: Compilar verificador isolado Google (portátil, sem instalador)
         run: dotnet publish tools/GoogleCalendarDiagnostic/GoogleCalendarDiagnostic.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o diagnostic-output
       - name: Incluir instruções da verificação

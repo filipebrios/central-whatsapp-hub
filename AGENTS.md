@@ -61,6 +61,8 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- 26/10: refinamento nativo de aparência em validação: temas alcançam Agenda/formulários, botões arredondados, tabelas e calendário; mantém DOM/sessões/WebView2/WaSeller. Novo smoke Windows sem login/credenciais prepara capturas clara/escura. Não declarar revisão visual concluída antes de executar e conferir.
+
 - 26/10: links/rascunhos passaram nos testes C#/Node e compilação Windows CI #40369817886. Página preparada em sbento PR #26, aguardando validação/publicação; não declarar link público entregue. Convites Google em validação interna: ação separada, padrão Não, If-Match e preservação dos convidados; nenhum convite real enviado.
 
 - 26/10: handler de resposta pública passou em cinco testes Node (origem/método, limites, consulta sem consumo, nota zero, não vazamento). Edge `agenda-response` v1 ativa com autenticação própria por capacidade; teste HTTP inválido retornou 400/no-store. Página e integração de rascunho no cliente em validação de CI; publicação da página ainda pendente, sem link real enviado.
@@ -285,6 +287,13 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-26 — aparência nativa e smoke Windows
+
+- Camada visual aplica paleta clara/escura aos controles Windows e formulários abertos, com foco nativo, botões arredondados, campos/tabelas de contraste e cores semânticas preservadas. Controles WebView2 são excluídos; nenhuma mudança em DOM, perfis ou extensão.
+- Calendário usa superfícies/seleção/texto do tema mantendo faixas de serviços. Renderização descarta células antigas para não reter controles a cada recarga.
+- Smoke em Windows instancia painel real sem autenticar ou abrir WhatsApp, alterna temas, confere espaço da grade e preservação da cor de serviço; captura clara/escura como artefatos internos. Implementação aguardando CI e inspeção visual, sem instalador.
+
 
 ### 2026-10-26 — navegação entre links da página
 
