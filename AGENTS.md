@@ -61,6 +61,10 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- **26/10 — beta consolidada PUBLICADA:** release `modux-v1.9.0-beta1`, Windows x64, instalador `MODUX-Setup-1.9.0.exe` (51.268.369 bytes), commit do pacote `bdc0e6fd987d1d36dc417a49a4bdd9ed08e9aff9`. CI #40376455340 concluiu com sucesso todos os testes, smoke Windows, geração, instalação/desinstalação com perfil fictício, download dos assets e SHA-256. Release não está em rascunho e é prerelease. SHA-256 EXE: `90fec62ae89840ee85d68aceaa061a3944e32cadd1cae0862560d8ba38392bff`.
+- Download: https://github.com/filipebrios/central-whatsapp-hub/releases/download/modux-v1.9.0-beta1/MODUX-Setup-1.9.0.exe . Página de respostas ativa em `https://sbento.com.br/modux-resposta.html`; links usam domínio sem www verificado. Nenhum WhatsApp/convite real foi enviado por estas ferramentas.
+- Próxima validação humana é a única rodada integrada no computador do usuário: contas/sessões, WaSeller, notificações, bandeja e operação da Agenda. O piloto OAuth/CRUD real de testes já foi confirmado antes; não pedir para repetir a configuração Google Cloud. No aplicativo principal a conexão usa o JSON local existente e consentimento/seleção explícita, pois diagnóstico tem pasta própria.
+
 - 26/10: página publicada no projeto Vercel sbento, commit `411572af`, e GET em `https://sbento.com.br/modux-resposta.html` retornou 200 com HTML correto; script também retornou 200. A variante www retornou 404, por isso links do app/pipeline usam o domínio canônico verificado sem www. Primeira tentativa do pacote foi bloqueada antes de gerar instalador; nova tentativa usa URL corrigida.
 
 - 26/10: CI #40372627924 aprovou revisão de horário antes de mensagens, Unicode da API, navegador móvel, temas/legenda e smoke Windows. Acionado pacote único 1.9.0 beta por manifesto explícito; pipeline ainda precisa validar novamente, conferir página pública, gerar/testar instalação e verificar assets/SHA-256 antes de liberar. NÃO considerar instalador publicado até confirmar release.
@@ -131,6 +135,9 @@ Requisitos permanentes:
 - Alterações atribuídas ao Manus não estão no repositório conhecido.
 
 ## Pendências priorizadas
+
+- **Pós-entrega 1.9.0 beta1:** recolher uma rodada estruturada de feedback, preservar sessões e corrigir falhas críticas. Não gerar outro instalador por ajuste pequeno. Edição de série completa/multidia, restauração de backup integral e refinamentos do escopo continuam abertos e não foram anunciados como entregues. WhatsApp permanece manual; cancelamento público é solicitação para equipe.
+- As entradas anteriores abaixo registram histórico de implementação; o estado publicado confirmado acima prevalece sobre antigas frases “aguardando CI/sem instalador”.
 
 - Concluir página/handler e integração dos links de confirmação/NPS no rascunho manual; convites Google, revisão visual e instalador consolidado. Backend aprovado não equivale a fluxo público entregue.
 
@@ -293,6 +300,15 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-26 — entrega única MODUX 1.9.0 beta1
+
+- CI #40376455340 passou: regressões C#/protocolo/cores, API Node, página móvel em Chrome, smoke real de UI Windows, compilação autocontida e Inno Setup.
+- Instalação e desinstalação silenciosas passaram em ambiente descartável, preservando arquivo/sha de perfil fictício fora da pasta do programa. Isso não substitui a conferência das sessões reais WhatsApp/WaSeller do usuário.
+- Release criada em rascunho, assets baixados e SHA-256 conferido antes de publicação como prerelease. EXE 51.268.369 bytes; digest `90fec62ae89840ee85d68aceaa061a3944e32cadd1cae0862560d8ba38392bff`. Único instalador consolidado publicado; versões anteriores preservadas.
+- Página de resposta publicada no projeto sbento (PR #26), domínio canônico sem www e HTML/CSS/JS verificados. Links/convites continuam dependentes de preparação/revisão/ação explícita; nenhuma mensagem ou convite real disparado pelo desenvolvimento.
+- Notas da beta explicitam limites de série/multidia, checkpoints parciais, solicitação de cancelamento e validação real pendente. PR #1 permanece rascunho e não foi mesclado; base Electron não foi alterada.
+
 
 ### 2026-10-26 — desbloqueio da preparação do navegador
 
