@@ -286,6 +286,12 @@ Antes de entregar uma versão:
 
 ## Registro de mudanças
 
+### 2026-10-26 — teste integrado da página móvel
+
+- Preparado teste Playwright da página real com API simulada: fragmento removido, conteúdo via textContent, responsividade 390 px, confirmação, cancelamento com voltar, NPS zero/nota obrigatória e links encerrados. CI instala navegador em diretório isolado, sem alterar dependências do aplicativo.
+- Navegador não pôde ser instalado localmente por download truncado; aguardar resultado do job remoto antes de considerar a página validada. PR sbento #26 permanece rascunho e sem publicação de produção.
+
+
 ### 2026-10-26 — convites Google explícitos
 
 - API lê evento/ETag e preserva lista completa de convidados, respostas e campos editáveis antes de acrescentar apenas o e-mail escolhido. Recusa lista omitida, revisão antiga e endereço composto; participante já existente não gera PATCH/reenvio.
