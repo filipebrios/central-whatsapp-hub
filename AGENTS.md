@@ -61,7 +61,10 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
-- 26/10: preparado verificador Google portátil independente em `tools/GoogleCalendarDiagnostic`, usando os mesmos componentes OAuth/API/formulários da 1.9. Armazena tokens na pasta própria `GoogleOAuthDiagnostic`, sem abrir sessões WhatsApp/WaSeller nem alterar o aplicativo instalado. Não é instalador nem release 1.9. CI #40318275302 concluiu testes, compilação Windows e verificador autocontido; artefato #12647269936 disponível até 09/11/2026. Execução visual/OAuth real ainda pendente.
+- 26/10: usuário concluiu no Windows a autorização OAuth, leitura do evento preparado e criação, edição e exclusão de um evento descartável no calendário secundário **MODUX - TESTES**, usando o verificador do CI #40318275302. Etapa 2 aprovada para o piloto; CRUD básico real confirmado. Isso não autoriza gravações na agenda operacional nem comprova recorrências/séries, convites ou sincronização Supabase.
+- 26/10: vínculo explícito Google/Supabase em implementação na branch 1.9. Migração remota `20261026142854_modux_google_calendar_links` aplicada: unicidade por evento/atendimento/calendário, RPC invoker com revisão/lock, RLS e privilégios mínimos. Testes transacionais de idempotência, conflito, revisão, isolamento e anonimato passaram com rollback integral (0 fixtures/vínculos persistidos). Código Windows aguardando CI.
+
+- 26/10: preparado verificador Google portátil independente em `tools/GoogleCalendarDiagnostic`, usando os mesmos componentes OAuth/API/formulários da 1.9. Armazena tokens na pasta própria `GoogleOAuthDiagnostic`, sem abrir sessões WhatsApp/WaSeller nem alterar o aplicativo instalado. Não é instalador nem release 1.9. CI #40318275302 concluiu testes, compilação Windows e verificador autocontido; artefato #12647269936 disponível até 09/11/2026. Execução real de OAuth e CRUD básico confirmada pelo usuário em 26/10; demais fluxos ainda pendentes.
 
 - 26/10: a correção da verificação OAuth passou nos testes e na compilação Windows (CI #40314893833). Testes HTTP de CRUD/ETag e compilação também passaram no CI #40317911528, sem autenticar conta real.
 - 26/10: retomada na branch 1.9; verificação OAuth permite escolher a data do evento fictício e bloqueia troca/desconexão durante a consulta. Compilação pendente de CI; nenhum instalador novo.
@@ -102,11 +105,9 @@ Requisitos permanentes:
 
 ## Pendências priorizadas
 
-- Usar o verificador isolado no Windows do responsável para OAuth real e leitura/CRUD de eventos fictícios exclusivamente em MODUX - TESTES. Não é possível executar o consentimento local nesta máquina Linux nem comprovar autenticação apenas com mocks.
-
-- Conferir CI dos testes HTTP de integração isolada (criação/edição/exclusão, conflitos ETag, autorização, falhas ambíguas), sem confundir mocks com teste Google real.
-
-- Etapa 2/8 continua dependente da autorização OAuth no Windows do responsável e da leitura real do calendário MODUX - TESTES; Google Cloud já configurado, não pedir novamente.
+- Consolidar vínculo Google/Supabase no aplicativo principal e validar a UI na entrega integrada. O piloto OAuth + CRUD básico no calendário de testes já foi confirmado pelo usuário; não pedir repetição sem falha nova.
+- Concluir reconciliação de revisões/ETags, criação operacional integrada, edição de dados PF/PJ, recorrência e convites, rotinas de mensagens com revisão humana e redesign geral.
+- Manter guarda de escrita na agenda operacional até uma seleção/ativação explícita; aprovação dos testes não equivale a autorização de mudanças em clientes reais.
 
 - Usuário reportou em 06/10 que o rascunho recarrega o WhatsApp na mesma janela e aparece na conta da empresa. A seleção 1.6.0 podia usar conta ativa/primeira. Candidata 1.6.1 exige vínculo explícito e ignora a preferência antiga; validar escolha Criatta, abertura a frio/bandeja e envio manual no Windows.
 
@@ -247,6 +248,14 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-26 — OAuth real aprovado e vínculo Google/Supabase
+
+- Usuário confirmou autorização, leitura, criação, edição e exclusão reais no verificador de testes; registrado o fechamento da etapa 2 para esse piloto.
+- `AgendaCalendarLinks.cs` contém cliente RLS/RPC e projeção por IDs exatos, sem associação por nome/telefone/data. A UI oferece vínculo explícito com atendimento existente, conferindo ETag Google e revisão Supabase antes de gravar.
+- Linhas vinculadas são exibidas uma única vez com data/hora Google e contatos/serviços operacionais. Atendimentos com mudança de mês são buscados pelo ID. Vínculos sem evento/cadastro ou ETag divergente permanecem visíveis como pendência; nenhuma importação/recoloração/regravação Google automática.
+- Migração criada pela CLI, alinhada à versão remota `20261026142854`. Teste `tests/Database/calendar-links.sql` passou no banco em transação com rollback: associação repetida, dois atendimentos por evento, dois eventos por atendimento, revisão antiga, isolamento entre empresas, identidade imutável e acesso anônimo negado. Dados reais não foram importados nem editados.
+- Advisors de segurança sem novos avisos após a migração (aviso pré-existente de proteção de senha vazada permanece). Testes C# de projeção/RPC/paginação e compilação Windows aguardando CI; não há novo instalador.
 
 ### 2026-10-26 — verificador portátil para desbloquear o teste real OAuth
 

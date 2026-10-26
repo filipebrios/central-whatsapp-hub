@@ -1,0 +1,132 @@
+using System.Net;
+using System.Text.Json;
+
+namespace CentralWhatsApp.WebView2;
+
+internal sealed record AgendaLocalSnapshot(string Id, int Revision, string Client,
+    string Service, string[] ServiceIds, string Date, string Time, string Status,
+    string Phone, string Address)
+{
+    internal static AgendaLocalSnapshot Parse(JsonElement row)
+    {
+        static string Read(JsonElement e, string key) =>
+            e.TryGetProperty(key, out var value) && value.ValueKind != JsonValueKind.Null
+                ? value.ToString() : "";
+        var time = Read(row, "time");
+        return new(Read(row, "id"), row.GetProperty("revision").GetInt32(),
+            Read(row, "client"), Read(row, "primary_service"),
+            row.TryGetProperty("service_ids", out var ids) && ids.ValueKind == JsonValueKind.Array
+                ? ids.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String)
+                    .Select(x => x.GetString()!).ToArray() : [],
+            Read(row, "date"), time.Length > 5 ? time[..5] : time,
+            Read(row, "status"), Read(row, "phone"), Read(row, "address"));
+    }
+    public override string ToString() => $"{Date} {Time} • {Client} • {Service}";
+}
+
+internal sealed record AgendaCalendarLink(string CompanyId, string AppointmentId,
+    string CalendarId, string EventId, string ETag)
+{
+    internal static AgendaCalendarLink Parse(JsonElement row) => new(
+        row.GetProperty("company_id").GetString()!, row.GetProperty("appointment_id").GetString()!,
+        row.GetProperty("calendar_id").GetString()!, row.GetProperty("event_id").GetString()!,
+        row.TryGetProperty("event_etag", out var etag) && etag.ValueKind == JsonValueKind.String
+            ? etag.GetString()! : "");
+}
+
+internal sealed record AgendaUnifiedEvent(GoogleEventSnapshot? Google,
+    AgendaLocalSnapshot? Local, AgendaCalendarLink? Link);
+
+/// <summary>Associa somente identidades explícitas; título, telefone e horário nunca são chaves.</summary>
+internal static class AgendaCalendarProjection
+{
+    internal static IReadOnlyList<AgendaUnifiedEvent> Merge(string companyId, string calendarId,
+        IReadOnlyList<AgendaLocalSnapshot> locals, IReadOnlyList<GoogleEventSnapshot> google,
+        IReadOnlyList<AgendaCalendarLink> links)
+    {
+        var byId = locals.ToDictionary(x => x.Id, StringComparer.Ordinal);
+        var scoped = links.Where(x => x.CompanyId == companyId && x.CalendarId == calendarId).ToArray();
+        if (scoped.GroupBy(x => x.EventId, StringComparer.Ordinal).Any(g => g.Count() > 1) ||
+            scoped.GroupBy(x => x.AppointmentId, StringComparer.Ordinal).Any(g => g.Count() > 1))
+            throw new InvalidOperationException("Vínculos inconsistentes. Atualize antes de continuar.");
+        var byEvent = scoped.ToDictionary(x => x.EventId, StringComparer.Ordinal);
+        var byAppointment = scoped.ToDictionary(x => x.AppointmentId, StringComparer.Ordinal);
+        var attached = new HashSet<string>(StringComparer.Ordinal);
+        var result = new List<AgendaUnifiedEvent>();
+        foreach (var item in google)
+        {
+            byEvent.TryGetValue(item.Id, out var link);
+            AgendaLocalSnapshot? local = null;
+            if (link is not null && byId.TryGetValue(link.AppointmentId, out local))
+                attached.Add(local.Id);
+            result.Add(new(item, local, link));
+        }
+        foreach (var item in locals)
+            if (!attached.Contains(item.Id))
+            {
+                byAppointment.TryGetValue(item.Id, out var link);
+                result.Add(new(null, item, link));
+            }
+        return result;
+    }
+}
+
+/// <summary>Usa exclusivamente a sessão do operador e RLS; não recebe chave de serviço.</summary>
+internal sealed class AgendaCalendarLinkStore(
+    Func<HttpMethod, string, object?, Task<HttpResponseMessage>> authorized)
+{
+    internal async Task<IReadOnlyList<AgendaCalendarLink>> List(string companyId, string calendarId)
+    {
+        var result = new List<AgendaCalendarLink>();
+        for (var offset = 0; offset < 10000; offset += 250)
+        {
+            using var response = await authorized(HttpMethod.Get,
+                "rest/v1/agenda_calendar_links?select=company_id,appointment_id,calendar_id,event_id,event_etag" +
+                "&company_id=eq." + Uri.EscapeDataString(companyId) +
+                "&calendar_id=eq." + Uri.EscapeDataString(calendarId) +
+                "&order=event_id.asc&limit=250&offset=" + offset, null);
+            await Check(response);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            foreach (var row in document.RootElement.EnumerateArray()) result.Add(AgendaCalendarLink.Parse(row));
+            if (document.RootElement.GetArrayLength() < 250) return result;
+        }
+        throw new InvalidOperationException("Vínculos demais para conferir com segurança. Contate o responsável.");
+    }
+
+    internal async Task Link(string companyId, AgendaLocalSnapshot local,
+        string calendarId, GoogleEventSnapshot google)
+    {
+        if (!Guid.TryParse(companyId, out _) || !Guid.TryParse(local.Id, out _) ||
+            local.Revision < 1 || string.IsNullOrWhiteSpace(calendarId) ||
+            string.IsNullOrWhiteSpace(google.Id) || string.IsNullOrWhiteSpace(google.ETag))
+            throw new InvalidOperationException("Identidade incompleta. Atualize antes de vincular.");
+        using var response = await authorized(HttpMethod.Post, "rest/v1/rpc/agenda_link_google_event", new
+        {
+            p_company_id = companyId, p_appointment_id = local.Id,
+            p_calendar_id = calendarId, p_event_id = google.Id,
+            p_event_etag = google.ETag, p_expected_revision = local.Revision
+        });
+        await Check(response);
+    }
+
+    private static async Task Check(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode) return;
+        string? code = null;
+        try
+        {
+            using var error = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            if (error.RootElement.TryGetProperty("code", out var field) && field.ValueKind == JsonValueKind.String)
+                code = field.GetString();
+        }
+        catch (JsonException) { }
+        if (code is "40001" or "23505")
+            throw new InvalidOperationException("O atendimento mudou ou já possui outro vínculo. Atualize antes de tentar novamente.");
+        throw new InvalidOperationException(response.StatusCode switch
+        {
+            HttpStatusCode.Conflict => "O atendimento mudou ou já possui outro vínculo. Atualize antes de tentar novamente.",
+            HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized => "Sem permissão para vincular este atendimento.",
+            _ => "Não foi possível confirmar o vínculo (HTTP " + (int)response.StatusCode + "). Atualize antes de repetir."
+        });
+    }
+}

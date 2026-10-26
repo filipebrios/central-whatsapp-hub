@@ -260,6 +260,74 @@ foreach (var timeout in new[] { false, true })
 }
 Console.WriteLine("PASS: cliente HTTP isolado, CRUD, bloqueio operacional, ETag, erros e ausência de reenvio cego.");
 
+// Reconciliação usa IDs explícitos; nomes iguais nunca autorizam fusão de registros.
+var company = "11111111-1111-1111-1111-111111111111";
+var localRecord = new AgendaLocalSnapshot("22222222-2222-2222-2222-222222222222", 7,
+    item!.Title, "Desinsetização", ["desinsetizacao"], "2026-09-22", "08:00", "agendado", "contato fictício", "Endereço local");
+var calendarId = "test@group.calendar.google.com";
+var association = new AgendaCalendarLink(company, localRecord.Id, calendarId, item.Id, item.ETag);
+var separate = AgendaCalendarProjection.Merge(company, calendarId, [localRecord], [item], []);
+if (separate.Count != 2) throw new Exception("Nome igual não pode fundir registros sem vínculo.");
+var merged = AgendaCalendarProjection.Merge(company, calendarId, [localRecord], [item], [association]);
+if (merged.Count != 1 || merged[0].Google != item || merged[0].Local != localRecord ||
+    merged[0].Google!.Date.Month != 10 || merged[0].Local!.Phone != "contato fictício")
+    throw new Exception("Vínculo perdeu o evento ou os dados operacionais.");
+foreach (var wrong in new[] { association with { CompanyId = "outra empresa" },
+    association with { CalendarId = "outra agenda" }, association with { EventId = "outro evento" } })
+    if (AgendaCalendarProjection.Merge(company, calendarId, [localRecord], [item], [wrong]).Count != 2)
+        throw new Exception("Vínculo fora do escopo ocultou atendimento.");
+var missingLocal = AgendaCalendarProjection.Merge(company, calendarId, [], [item], [association]);
+if (missingLocal.Count != 1 || missingLocal[0].Google is null || missingLocal[0].Link is null)
+    throw new Exception("Vínculo sem cadastro precisa permanecer visível para revisão.");
+var missingGoogle = AgendaCalendarProjection.Merge(company, calendarId, [localRecord], [], [association]);
+if (missingGoogle.Count != 1 || missingGoogle[0].Local is null || missingGoogle[0].Link is null)
+    throw new Exception("Falha de leitura Google não pode apagar atendimento da tela.");
+var inconsistentBlocked = false;
+try { _ = AgendaCalendarProjection.Merge(company, calendarId, [localRecord], [item], [association, association]); }
+catch (InvalidOperationException) { inconsistentBlocked = true; }
+if (!inconsistentBlocked) throw new Exception("Vínculo duplicado precisa ser sinalizado.");
+
+var linkCalls = 0;
+var store = new AgendaCalendarLinkStore((method, path, data) =>
+{
+    linkCalls++;
+    if (method != HttpMethod.Post || path != "rest/v1/rpc/agenda_link_google_event")
+        throw new Exception("Vínculo deve usar RPC com identidade e revisão.");
+    using var payload = JsonDocument.Parse(JsonSerializer.Serialize(data));
+    if (payload.RootElement.GetProperty("p_expected_revision").GetInt32() != 7 ||
+        payload.RootElement.GetProperty("p_event_id").GetString() != item.Id ||
+        payload.RootElement.GetProperty("p_appointment_id").GetString() != localRecord.Id)
+        throw new Exception("Vínculo perdeu identidade ou revisão.");
+    return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK));
+});
+await store.Link(company, localRecord, calendarId, item);
+if (linkCalls != 1) throw new Exception("Vínculo enviou múltiplos pedidos.");
+await ExpectFailure(() => store.Link(company, localRecord with { Id = "inválido" }, calendarId, item), "Identidade incompleta");
+if (linkCalls != 1) throw new Exception("Identidade inválida chegou à API.");
+var conflictStore = new AgendaCalendarLinkStore((_, _, _) => Task.FromResult(
+    new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError)
+    { Content = new StringContent("{\"code\":\"40001\"}") }));
+await ExpectFailure(() => conflictStore.Link(company, localRecord, calendarId, item), "atendimento mudou");
+var listCalls = 0;
+var pagedStore = new AgendaCalendarLinkStore((method, path, _) =>
+{
+    if (method != HttpMethod.Get || !path.Contains("company_id=eq." + company) ||
+        !path.Contains("calendar_id=eq." + Uri.EscapeDataString(calendarId)))
+        throw new Exception("Leitura de vínculos sem filtro de empresa/calendário.");
+    listCalls++;
+    if (!path.Contains("offset=" + (listCalls == 1 ? "0" : "250")))
+        throw new Exception("Paginação de vínculos incorreta.");
+    var rows = listCalls == 1 ? Enumerable.Range(0, 250).Select(i => new
+    {
+        company_id = company, appointment_id = localRecord.Id, calendar_id = calendarId,
+        event_id = "event" + i, event_etag = "v1"
+    }).ToArray() : [];
+    return Task.FromResult(CalendarTestHandler.Json(JsonSerializer.Serialize(rows)));
+});
+if ((await pagedStore.List(company, calendarId)).Count != 250 || listCalls != 2)
+    throw new Exception("Paginação truncou vínculos.");
+Console.WriteLine("PASS: vínculos por ID, isolamento, metadados preservados, ausência de eventos, RPC/revisão e paginação.");
+
 static async Task ExpectFailure(Func<Task> operation, string message)
 {
     try { await operation(); }

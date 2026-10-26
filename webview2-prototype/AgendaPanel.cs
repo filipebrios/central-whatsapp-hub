@@ -28,6 +28,11 @@ internal sealed class AgendaPanel : UserControl
     private readonly GoogleDesktopOAuth googleOAuth = new();
     private readonly GoogleCalendarApi googleApi;
     private readonly Button googleApiButton = MakeButton("Google (editar)");
+    private readonly AgendaCalendarLinkStore linkStore;
+    private readonly Button linkButton = MakeButton("Vincular atendimento");
+    private readonly List<AgendaLocalSnapshot> localAppointments = [];
+    private IReadOnlyList<AgendaCalendarLink> calendarLinks = [];
+    private bool linksReady;
     private readonly Button googleNewButton = MakeButton("+ Evento Google");
     private readonly Button googleButton = MakeButton("Conectar Google Agenda");
     private readonly System.Windows.Forms.Timer googleRefreshTimer = new() { Interval = 15 * 60 * 1000 };
@@ -60,6 +65,7 @@ internal sealed class AgendaPanel : UserControl
     internal AgendaPanel()
     {
         googleApi = new GoogleCalendarApi(googleOAuth);
+        linkStore = new AgendaCalendarLinkStore(Authorized);
         Dock = DockStyle.Fill;
         BackColor = Color.FromArgb(248, 250, 252);
         Font = new Font("Segoe UI", 10);
@@ -137,6 +143,8 @@ internal sealed class AgendaPanel : UserControl
         googleNewButton.Click += async (_, _) => await CreateGoogleEvent();
         bar.Controls.Add(refresh); bar.Controls.Add(add);
         bar.Controls.Add(googleNewButton);
+        bar.Controls.Add(linkButton);
+        linkButton.Click += async (_, _) => await LinkSelectedGoogleEvent();
         bar.Controls.Add(googleApiButton);
         bar.Controls.Add(googleButton); bar.Controls.Add(signOut);
         UpdateGoogleLabel();
@@ -153,6 +161,7 @@ internal sealed class AgendaPanel : UserControl
         })
             grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = name, FillWeight = weight });
         grid.ColumnHeadersHeight = 36; grid.RowTemplate.Height = 34;
+        grid.SelectionChanged += (_, _) => UpdateLinkButton();
         grid.CellDoubleClick += async (_, e) =>
         {
             if (e.RowIndex >= 0 && !busy)
@@ -197,6 +206,7 @@ internal sealed class AgendaPanel : UserControl
         signIn.Enabled = refresh.Enabled = add.Enabled = signOut.Enabled = !value;
         googleButton.Enabled = googleApiButton.Enabled = !value;
         googleNewButton.Enabled = !value && googleOAuth.CanWriteSelectedCalendar;
+        UpdateLinkButton();
     }
     private static StringContent Json(object body) =>
         new(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
@@ -249,6 +259,7 @@ internal sealed class AgendaPanel : UserControl
         accessToken = refreshToken = companyId = currentUserId = null;
         password.Clear();
         grid.Rows.Clear(); cachedRows.Clear(); calendar.SetEntries([]);
+        localAppointments.Clear(); calendarLinks = []; linksReady = false;
         googleEventCount = googleTestEventCount = supabaseEventCount = 0;
         filterDate = null;
         appointmentsPane.Visible = false; loginPane.Visible = true;
@@ -312,7 +323,7 @@ internal sealed class AgendaPanel : UserControl
                 1 => first.AddDays(6),
                 _ => first.AddMonths(1).AddDays(-1)
             };
-            var query = "rest/v1/agenda_appointments?select=id,client,phone,primary_service,service_ids,date,time,status,address" +
+            var query = "rest/v1/agenda_appointments?select=id,revision,client,phone,primary_service,service_ids,date,time,status,address" +
                 "&company_id=eq." + Uri.EscapeDataString(companyId) + "&deleted_at=is.null" +
                 $"&date=gte.{first:yyyy-MM-dd}&date=lte.{last:yyyy-MM-dd}" +
                 "&order=date.asc,time.asc&limit=500";
@@ -324,33 +335,12 @@ internal sealed class AgendaPanel : UserControl
             supabaseEventCount = 0;
             googleEventCount = googleTestEventCount = 0;
             string? googleWarning = null;
-            foreach (var appointment in doc.RootElement.EnumerateArray())
-            {
-                static string Read(JsonElement item, string key) =>
-                    item.TryGetProperty(key, out var value) && value.ValueKind != JsonValueKind.Null
-                        ? value.ToString() : "";
-                var date = Read(appointment, "date");
-                var time = Read(appointment, "time");
-                if (time.Length > 5) time = time[..5];
-                var clientName = Read(appointment, "client");
-                var service = Read(appointment, "primary_service");
-                var statusName = Read(appointment, "status");
-                var ids = appointment.TryGetProperty("service_ids", out var services)
-                    && services.ValueKind == JsonValueKind.Array
-                        ? services.EnumerateArray()
-                            .Where(x => x.ValueKind == JsonValueKind.String)
-                            .Select(x => x.GetString() ?? "")
-                        : Enumerable.Empty<string>();
-                var category = AgendaServiceColors.FromServiceIds(ids, service, statusName);
-                cachedRows.Add((
-                    [date, time, clientName, service, statusName,
-                        Read(appointment, "phone"), Read(appointment, "address")], category, null));
-                supabaseEventCount++;
-                if (DateOnly.TryParseExact(date, "yyyy-MM-dd",
-                    System.Globalization.CultureInfo.InvariantCulture,
-                    System.Globalization.DateTimeStyles.None, out var parsed))
-                    calendarRows.Add(new AgendaCalendarEntry(parsed, time, clientName, service, statusName, category));
-            }
+            localAppointments.Clear();
+            localAppointments.AddRange(doc.RootElement.EnumerateArray().Select(AgendaLocalSnapshot.Parse));
+            supabaseEventCount = localAppointments.Count;
+            calendarLinks = [];
+            linksReady = false;
+            IReadOnlyList<GoogleEventSnapshot> testEvents = [];
             // No piloto, manter a agenda operacional iCal (somente leitura)
             // SEMPRE visível, mesmo depois de autorizar a API OAuth para MODUX - TESTES.
             // O Google API nunca substitui nem importa automaticamente eventos do iCal.
@@ -367,8 +357,7 @@ internal sealed class AgendaPanel : UserControl
                             item.Title, category.Label, "Google • leitura", "",
                             item.Location
                         ], category, null));
-                        calendarRows.Add(new AgendaCalendarEntry(item.Date, item.Time,
-                            item.Title, category.Label, "google", category));
+
                         googleEventCount++;
                     }
                 }
@@ -385,33 +374,69 @@ internal sealed class AgendaPanel : UserControl
                 // no modo editável. Operacional continua identificado como leitura.
                 try
                 {
-                    var testEvents = await googleApi.Events(first, last);
-                    foreach (var item in testEvents)
+                    testEvents = await googleApi.Events(first, last);
+                    googleTestEventCount = testEvents.Count;
+                    calendarLinks = await linkStore.List(companyId, googleOAuth.CalendarId!);
+                    linksReady = true;
+                    // Um evento pode ter mudado de mês no Google. Buscar os dados
+                    // operacionais vinculados pelo ID, sem depender da data antiga.
+                    var missing = calendarLinks.Where(link => testEvents.Any(e => e.Id == link.EventId))
+                        .Select(link => link.AppointmentId).Except(localAppointments.Select(a => a.Id)).ToArray();
+                    foreach (var group in missing.Chunk(50))
                     {
-                        var category = AgendaServiceColors.Classify(item.Title, item.Description);
-                        cachedRows.Add(([
-                            item.Date.ToString("yyyy-MM-dd"), item.Time,
-                            item.Title, category.Label, "Google • TESTES", "",
-                            item.Location
-                        ], category, item));
-                        calendarRows.Add(new AgendaCalendarEntry(item.Date, item.Time,
-                            item.Title, category.Label, "teste", category));
-                        googleTestEventCount++;
+                        if (group.Any(id => !Guid.TryParse(id, out _)))
+                            throw new InvalidOperationException("Vínculo contém identificação inválida.");
+                        using var extra = await Authorized(HttpMethod.Get,
+                            "rest/v1/agenda_appointments?select=id,revision,client,phone,primary_service,service_ids,date,time,status,address" +
+                            "&company_id=eq." + Uri.EscapeDataString(companyId) +
+                            "&deleted_at=is.null&id=in.(" + string.Join(",", group) + ")");
+                        RequireSuccess(extra);
+                        using var extraRows = JsonDocument.Parse(await extra.Content.ReadAsStringAsync());
+                        localAppointments.AddRange(extraRows.RootElement.EnumerateArray().Select(AgendaLocalSnapshot.Parse));
                     }
                 }
                 catch (Exception ex) when (ex is InvalidOperationException or
                     HttpRequestException or TaskCanceledException or JsonException)
                 {
-                    googleWarning = "Google TESTES: " + ex.Message;
+                    linksReady = false;
+                    googleWarning = "Google TESTES / vínculos: " + ex.Message;
                 }
             }
+            var unified = AgendaCalendarProjection.Merge(companyId, googleOAuth.CalendarId ?? "",
+                localAppointments, testEvents, calendarLinks);
+            foreach (var row in unified)
+            {
+                var local = row.Local;
+                var google = row.Google;
+                var category = local is not null
+                    ? AgendaServiceColors.FromServiceIds(local.ServiceIds, local.Service, local.Status)
+                    : AgendaServiceColors.Classify(google!.Title, google.Description);
+                var state = google is not null
+                    ? row.Link is null ? "Google • TESTES"
+                        : local is null ? "TESTES • vínculo pendente"
+                        : row.Link.ETag != google.ETag ? "TESTES • conferir alteração" : "TESTES • " + local.Status
+                    : row.Link is null ? local!.Status : "Vínculo • conferir Google";
+                cachedRows.Add(([
+                    google?.Date.ToString("yyyy-MM-dd") ?? local!.Date,
+                    google?.Time ?? local!.Time,
+                    local?.Client ?? google!.Title,
+                    local?.Service ?? category.Label, state, local?.Phone ?? "",
+                    google?.Location ?? local!.Address
+                ], category, google));
+            }
+            foreach (var row in cachedRows)
+                if (DateOnly.TryParseExact(row.Values[0], "yyyy-MM-dd",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var day))
+                    calendarRows.Add(new AgendaCalendarEntry(day, row.Values[1], row.Values[2],
+                        row.Values[3], row.Values[4], row.Category));
             cachedRows.Sort((left, right) =>
                 string.CompareOrdinal(left.Values[0] + left.Values[1],
                     right.Values[0] + right.Values[1]));
             calendar.SetEntries(calendarRows);
             ShowCachedRows();
-            Status($"{supabaseEventCount} locais + {googleEventCount} Google iCal (leitura) " +
-                $"+ {googleTestEventCount} TESTES (editável) • {first:dd/MM} a {last:dd/MM}. " +
+            Status($"{supabaseEventCount} cadastros locais • {googleEventCount} Google iCal (leitura) " +
+                $"• {googleTestEventCount} TESTES (editável) • {first:dd/MM} a {last:dd/MM}. " +
                 (googleWarning ?? (googleOAuth.CanWriteSelectedCalendar
                     ? "Duplo clique apenas em evento TESTES para editar. Clientes reais protegidos."
                     : "Agenda operacional iCal: somente leitura. Sem envio WhatsApp.")));
@@ -450,7 +475,7 @@ internal sealed class AgendaPanel : UserControl
                 + (state == "Google • leitura" ? " (classificado pelo texto do evento)" : "");
             if (state == "Google • leitura")
                 grid.Rows[index].DefaultCellStyle.BackColor = Color.FromArgb(229, 241, 255);
-            else if (state == "Google • TESTES")
+            else if (state == "Google • TESTES" || state.StartsWith("TESTES •", StringComparison.Ordinal))
                 grid.Rows[index].DefaultCellStyle.BackColor = Color.FromArgb(255, 248, 221);
             else if (state is "cancelado" or "cancelar")
                 grid.Rows[index].DefaultCellStyle.ForeColor = Color.FromArgb(164, 42, 42);
@@ -459,6 +484,74 @@ internal sealed class AgendaPanel : UserControl
             else if (state is "revisao" or "reagendar")
                 grid.Rows[index].DefaultCellStyle.BackColor = Color.FromArgb(255, 249, 223);
         }
+    }
+
+    private void UpdateLinkButton()
+    {
+        linkButton.Enabled = !busy && linksReady && googleOAuth.CanWriteSelectedCalendar &&
+            grid.SelectedRows.Count == 1 && grid.SelectedRows[0].Tag is GoogleEventSnapshot;
+    }
+
+    private async Task LinkSelectedGoogleEvent()
+    {
+        if (busy || !linksReady || companyId is null || !googleOAuth.CanWriteSelectedCalendar ||
+            grid.SelectedRows.Count != 1 || grid.SelectedRows[0].Tag is not GoogleEventSnapshot google) return;
+        var calendarId = googleOAuth.CalendarId!;
+        if (calendarLinks.Any(link => link.EventId == google.Id && link.CalendarId == calendarId))
+        {
+            Status("Este evento já tem vínculo. A associação existente foi preservada.");
+            return;
+        }
+        var choices = localAppointments.Where(local =>
+            !calendarLinks.Any(link => link.CalendarId == calendarId && link.AppointmentId == local.Id)).ToArray();
+        if (choices.Length == 0)
+        {
+            MessageBox.Show(this, "Cadastre primeiro o atendimento local correspondente. " +
+                "Nenhum cadastro será importado ou criado automaticamente.", "Vincular atendimento");
+            return;
+        }
+        using var chooser = new Form
+        {
+            Text = "Vincular evento Google a atendimento existente", Width = 720, Height = 260,
+            StartPosition = FormStartPosition.CenterParent, Font = Font,
+            FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false
+        };
+        var selectLocal = new ComboBox
+        {
+            Dock = DockStyle.Top, DropDownStyle = ComboBoxStyle.DropDownList
+        };
+        selectLocal.Items.AddRange(choices.Cast<object>().ToArray());
+        selectLocal.SelectedIndex = -1;
+        var hint = new Label
+        {
+            Dock = DockStyle.Top, Height = 95, Padding = new Padding(12),
+            Text = $"Evento Google: {google.Title}\n{google.Date:dd/MM/yyyy} {google.Time}\n" +
+                "Escolha o atendimento correspondente. A data/hora exibida virá do Google; os contatos e serviços serão preservados."
+        };
+        var confirm = MakeButton("Confirmar vínculo");
+        confirm.Dock = DockStyle.Bottom; confirm.Enabled = false;
+        selectLocal.SelectedIndexChanged += (_, _) => confirm.Enabled = selectLocal.SelectedItem is AgendaLocalSnapshot;
+        confirm.Click += (_, _) => chooser.DialogResult = DialogResult.OK;
+        chooser.Controls.Add(selectLocal); chooser.Controls.Add(hint); chooser.Controls.Add(confirm);
+        if (chooser.ShowDialog(this) != DialogResult.OK || selectLocal.SelectedItem is not AgendaLocalSnapshot local) return;
+        if (MessageBox.Show(this, $"Vincular o atendimento de {local.Client} ao evento “{google.Title}”? " +
+            "Isso registra a associação, sem criar, editar ou excluir eventos no Google.",
+            "Confirmar associação", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+        SetBusy(true);
+        try
+        {
+            // Verificar a versão Google imediatamente antes de persistir o vínculo.
+            var current = await googleApi.Event(google.Id);
+            if (current.ETag != google.ETag)
+                throw new InvalidOperationException("O evento mudou no Google. Atualize antes de vincular.");
+            await linkStore.Link(companyId, local, calendarId, google);
+            Status("Vínculo salvo para a equipe. Nenhum evento Google foi criado ou alterado.");
+        }
+        catch (Exception error) when (error is InvalidOperationException or HttpRequestException
+            or TaskCanceledException or JsonException)
+        { MessageBox.Show(this, error.Message, "Vínculo não confirmado", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        finally { SetBusy(false); }
+        await LoadAppointments();
     }
 
     private async Task EditSelectedGoogleEvent(int rowIndex)
