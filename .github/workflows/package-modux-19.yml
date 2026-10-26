@@ -47,6 +47,18 @@ jobs:
           $compiler = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $compiler)) { choco install innosetup --no-progress -y }
           if (-not (Test-Path $compiler)) { throw "Inno Setup indisponível" }
+      - name: Conferir página pública antes de gerar instalador
+        shell: pwsh
+        run: |
+          $ready = $false
+          for ($attempt = 0; $attempt -lt 30; $attempt++) {
+            try {
+              $page = Invoke-WebRequest "https://www.sbento.com.br/modux-resposta.html" -TimeoutSec 15
+              if ($page.StatusCode -eq 200 -and $page.Content.Contains('id="confirmation"') -and $page.Content.Contains('modux-resposta.mjs')) { $ready = $true; break }
+            } catch { Write-Host "Página pública ainda não disponível; aguardando publicação validada." }
+            Start-Sleep -Seconds 10
+          }
+          if (-not $ready) { throw "Página de respostas ainda não foi publicada; instalador não será gerado." }
       - name: Gerar o instalador consolidado
         shell: pwsh
         working-directory: webview2-prototype
@@ -58,6 +70,7 @@ jobs:
           New-Item -ItemType Directory -Force $profiles | Out-Null
           $sentinel = Join-Path $profiles "modux-ci-sentinel.txt"
           Set-Content $sentinel "fixture de preservação"
+          $fixtureHash = (Get-FileHash $sentinel -Algorithm SHA256).Hash
           $destination = Join-Path $env:RUNNER_TEMP "modux-install-test"
           $setup = Resolve-Path "webview2-prototype/installer-output/MODUX-Setup-1.9.0.exe"
           $process = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", '/TASKS=""', "/DIR=`"$destination`"" -Wait -PassThru
@@ -66,6 +79,7 @@ jobs:
           $uninstall = Join-Path $destination "unins000.exe"
           $process = Start-Process $uninstall -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
           if ($process.ExitCode -ne 0 -or -not (Test-Path $sentinel)) { throw "Desinstalação afetou dados do perfil" }
+          if ((Get-FileHash $sentinel -Algorithm SHA256).Hash -ne $fixtureHash) { throw "Conteúdo do perfil foi alterado" }
       - name: Calcular SHA-256
         shell: pwsh
         run: |

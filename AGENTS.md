@@ -61,6 +61,8 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- 26/10: CI #40372627924 aprovou revisão de horário antes de mensagens, Unicode da API, navegador móvel, temas/legenda e smoke Windows. Acionado pacote único 1.9.0 beta por manifesto explícito; pipeline ainda precisa validar novamente, conferir página pública, gerar/testar instalação e verificar assets/SHA-256 antes de liberar. NÃO considerar instalador publicado até confirmar release.
+
 - 26/10: CI #40371916359 aprovou C#/Node, página móvel e smoke Windows (grade 1028×155 nos dois temas). Capturas clara/escura conferidas internamente; refinados contraste da legenda e formato brasileiro de data. Convites e links permanecem sem envio real; página prévia sbento PR #26 compilou e GET autenticado retornou 200.
 
 - 26/10: refinamento nativo de aparência em validação: temas alcançam Agenda/formulários, botões arredondados, tabelas e calendário; mantém DOM/sessões/WebView2/WaSeller. Novo smoke Windows sem login/credenciais prepara capturas clara/escura. Não declarar revisão visual concluída antes de executar e conferir.
@@ -289,6 +291,12 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-26 — manifesto do instalador consolidado
+
+- Autorizado pelo pedido de entrega do usuário, manifesto identifica Windows x64 1.9.0 beta1 e CI aprovado #40372627924. Pipeline depende da página pública e de nova validação integral; testa instalador/perfil fictício e confere download/SHA-256 dos assets antes da publicação.
+- Ainda não há confirmação de geração/publicação do instalador. Etapas de revisão geral pelo usuário, sessões reais, WaSeller e notificações permanecem para a única rodada de feedback. Restrições explícitas nas notas da beta.
+
 
 ### 2026-10-26 — revisão final do fluxo de mensagem
 
