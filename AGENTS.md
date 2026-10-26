@@ -61,6 +61,8 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- 26/10: reconciliação vinculada/cancelamento passaram no CI #40342399727. Edição operacional PF/PJ em implementação: PATCH condicionado a empresa/ID/revisão; horários vinculados preservados, alteração pelo editor Google. Aguardar novo CI e validação integrada da UI.
+
 - 26/10: criação integrada recuperável e cancelamento OAuth passaram nos testes/compilação Windows no CI #40341480502. Reconciliação de horários/ETags e cancelamento vinculado em integração; migração remota `20261026143956_modux_google_calendar_reconciliation` e testes SQL com rollback aprovados. Não há novo instalador nem escrita na agenda operacional liberada.
 
 - 26/10: usuário concluiu no Windows a autorização OAuth, leitura do evento preparado e criação, edição e exclusão de um evento descartável no calendário secundário **MODUX - TESTES**, usando o verificador do CI #40318275302. Etapa 2 aprovada para o piloto; CRUD básico real confirmado. Isso não autoriza gravações na agenda operacional nem comprova recorrências/séries, convites ou sincronização Supabase.
@@ -106,6 +108,8 @@ Requisitos permanentes:
 - Alterações atribuídas ao Manus não estão no repositório conhecido.
 
 ## Pendências priorizadas
+
+- Validar CI da edição operacional; concluir catálogo/cores compartilhados, busca/filtros, painel e mensagens preparadas, redesign e instalador consolidado. Não confundir fases Google/Supabase já testadas com entrega completa.
 
 - Aguardar CI da reconciliação vinculada no cliente: horários/duração por revisão+ETag, cancelamento preservando cadastro e recuperação explícita de pendências. A validação integrada de UI permanece para a entrega consolidada.
 
@@ -254,6 +258,14 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-26 — edição operacional e proteção do horário vinculado
+
+- CI #40342399727 aprovou testes de reconciliação/cancelamento, regressões e compilação Windows.
+- `AgendaAppointmentStore` edita por PATCH com empresa/ID/revisão e retorno de representação; zero linhas é conflito, nunca motivo para forçar sobrescrita. Não altera identidade nem autoria. Ao concluir serviço registra data de conclusão para futura rotina de pós-venda.
+- Formulário PF/PJ reaproveitado para edição de contatos, serviços, equipe, observações e situação local. Preserva IDs/rótulo originais de serviços não reconhecidos quando não editados. Horário de atendimento vinculado fica bloqueado no formulário local; é alterado pela ação Google e reconciliado.
+- `Editar atendimento` disponível somente em linha com cadastro operacional. Edição local não cria/altera eventos nem envia mensagens; campos Google permanecem em fluxo explícito separado.
+- Testes C# verificam CAS/escopo, proteção de horário vinculado, identidade imutável no payload, conclusão e detecção de revisão antiga. Compilação desta etapa aguardando CI; sem novo instalador.
 
 ### 2026-10-26 — reconciliação otimista e cancelamento vinculado
 

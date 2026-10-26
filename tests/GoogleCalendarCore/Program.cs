@@ -446,6 +446,38 @@ await ExpectFailure(() => reconcileStore.Reconcile(company, association, localRe
 if (reconciledPosts != 2) throw new Exception("Reconciliação inválida chegou à API.");
 Console.WriteLine("PASS: reconciliação/cancelamento RPC, revisão/ETag e guarda multidiária.");
 
+var proposal = new AgendaAppointmentInput("pj", "Cliente atualizado", "Responsável", "(35) 99999-9999",
+    "", "Endereço novo", ["desratizacao"], "Desratização", "Equipe A", "Nota preservada",
+    "2026-12-01", "15:00:00", 120, "concluido");
+foreach (var linkedSchedule in new[] { false, true })
+{
+    var storeCalls = 0;
+    var operationalStore = new AgendaAppointmentStore((method, path, data) =>
+    {
+        storeCalls++;
+        if (method != HttpMethod.Patch || !path.Contains("company_id=eq." + company) ||
+            !path.Contains("id=eq." + localRecord.Id) || !path.Contains("revision=eq.7") ||
+            !path.Contains("deleted_at=is.null")) throw new Exception("Edição local sem identidade/revisão.");
+        using var request = JsonDocument.Parse(JsonSerializer.Serialize(data));
+        var hasSchedule = request.RootElement.TryGetProperty("date", out _);
+        if (hasSchedule == linkedSchedule || request.RootElement.TryGetProperty("company_id", out _) ||
+            request.RootElement.TryGetProperty("id", out _) ||
+            !request.RootElement.TryGetProperty("service_completed_date", out _))
+            throw new Exception("Edição local alterou identidade/horário vinculado ou perdeu conclusão.");
+        return Task.FromResult(CalendarTestHandler.Json(JsonSerializer.Serialize(new[] { new
+        {
+            id = localRecord.Id, revision = 8, client = proposal.Client, primary_service = proposal.PrimaryService,
+            service_ids = proposal.ServiceIds, date = localRecord.Date, time = localRecord.Time,
+            status = proposal.Status, phone = proposal.Phone, address = proposal.Address
+        } })));
+    });
+    var changedLocal = await operationalStore.Update(company, localRecord, proposal, linkedSchedule);
+    if (changedLocal.Revision != 8 || storeCalls != 1) throw new Exception("Edição local não confirmou a nova revisão.");
+}
+var staleLocalStore = new AgendaAppointmentStore((_, _, _) => Task.FromResult(CalendarTestHandler.Json("[]")));
+await ExpectFailure(() => staleLocalStore.Update(company, localRecord, proposal, false), "atendimento mudou");
+Console.WriteLine("PASS: edição operacional com CAS, horário vinculado protegido e data de conclusão.");
+
 static async Task ExpectFailure(Func<Task> operation, string message)
 {
     try { await operation(); }

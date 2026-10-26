@@ -1,13 +1,12 @@
 namespace CentralWhatsApp.WebView2;
 
-internal sealed record AgendaAppointmentInput(
-    string Kind, string Client, string Responsible, string Phone,
-    string Email, string Address, string[] ServiceIds, string PrimaryService,
-    string Technician, string Notes, string Date, string Time, int Duration);
-
 /// <summary>Cadastro PF/PJ com múltiplos serviços, sem enviar mensagens ou criar evento Google.</summary>
 internal sealed class AgendaAppointmentDialog : Form
 {
+    private readonly AgendaLocalSnapshot? original;
+    private readonly List<(string Id, string Label)> availableCatalog = Catalog.ToList();
+    private bool serviceChanged;
+    private readonly ComboBox appointmentStatus = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Top };
     private readonly ComboBox kind = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Top };
     private readonly TextBox client = new() { Dock = DockStyle.Top, PlaceholderText = "Nome completo ou razão social" };
     private readonly TextBox responsible = new() { Dock = DockStyle.Top, PlaceholderText = "Responsável no local (opcional)" };
@@ -57,10 +56,13 @@ internal sealed class AgendaAppointmentDialog : Form
 
     internal AgendaAppointmentInput? Result { get; private set; }
 
-    internal AgendaAppointmentDialog(DateOnly initialDay, bool allowGoogle = false)
+    internal AgendaAppointmentDialog(DateOnly initialDay, bool allowGoogle = false,
+        AgendaLocalSnapshot? source = null, bool lockSchedule = false)
     {
-        Text = "Novo agendamento • São Bento";
-        googleSync.Enabled = googleSync.Checked = allowGoogle;
+        original = source;
+        Text = source is null ? "Novo agendamento • São Bento" : "Editar atendimento • São Bento";
+        googleSync.Enabled = googleSync.Checked = allowGoogle && source is null;
+        googleSync.Visible = source is null;
         Width = 680; Height = 765;
         MinimumSize = new Size(570, 600);
         StartPosition = FormStartPosition.CenterParent;
@@ -72,14 +74,44 @@ internal sealed class AgendaAppointmentDialog : Form
         {
             client.PlaceholderText = kind.SelectedIndex == 1 ? "Razão social da empresa" : "Nome completo do cliente";
         };
-        foreach (var svc in Catalog) services.Items.Add(svc.Label);
+        if (source is not null)
+            foreach (var id in source.ServiceIds.Where(id => id != "outro" && !availableCatalog.Any(c => c.Id == id)))
+                availableCatalog.Add((id, "Serviço importado: " + id));
+        foreach (var svc in availableCatalog) services.Items.Add(svc.Label);
         day.Value = initialDay.ToDateTime(new TimeOnly(8, 0));
         time.Value = DateTime.Today.AddHours(8);
+        appointmentStatus.Items.AddRange(["agendado", "confirmado", "reagendar", "cancelar", "cancelado", "concluido", "revisao"]);
+        appointmentStatus.SelectedIndex = 0;
+        appointmentStatus.Enabled = source is not null;
+        if (source is not null)
+        {
+            kind.SelectedIndex = source.Kind == "pj" ? 1 : 0;
+            client.Text = source.Client; responsible.Text = source.Responsible;
+            phone.Text = source.Phone; email.Text = source.Email; address.Text = source.Address;
+            technician.Text = source.Technician; notes.Text = source.Notes;
+            duration.Value = Math.Clamp(source.Duration, 15, 1440);
+            if (DateOnly.TryParse(source.Date, out var sourceDay)) day.Value = sourceDay.ToDateTime(TimeOnly.MinValue);
+            if (TimeOnly.TryParse(source.Time, out var sourceTime)) time.Value = DateTime.Today.Add(sourceTime.ToTimeSpan());
+            for (var i = 0; i < availableCatalog.Count; i++)
+                services.SetItemChecked(i, source.ServiceIds.Contains(availableCatalog[i].Id, StringComparer.Ordinal));
+            if (source.ServiceIds.Contains("outro", StringComparer.Ordinal))
+            {
+                var known = string.Join(" + ", availableCatalog.Where(c => source.ServiceIds.Contains(c.Id)).Select(c => c.Label));
+                otherService.Text = known.Length > 0 && source.Service.StartsWith(known + " + ", StringComparison.Ordinal)
+                    ? source.Service[(known.Length + 3)..] : source.Service;
+            }
+            var statusIndex = appointmentStatus.Items.IndexOf(source.Status);
+            if (statusIndex >= 0) appointmentStatus.SelectedIndex = statusIndex;
+            save.Text = "Salvar alterações locais";
+        }
+        services.ItemCheck += (_, _) => serviceChanged = true;
+        otherService.TextChanged += (_, _) => serviceChanged = true;
+        day.Enabled = time.Enabled = duration.Enabled = !lockSchedule;
 
         var fields = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Padding = new Padding(20, 12, 20, 16),
-            ColumnCount = 2, RowCount = 13, AutoScroll = true
+            ColumnCount = 2, RowCount = 14, AutoScroll = true
         };
         fields.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 174));
         fields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -96,6 +128,7 @@ internal sealed class AgendaAppointmentDialog : Form
         AddRow(fields, 10, "Duração (min)", duration, 46);
         AddRow(fields, 11, "Técnico / equipe", technician, 46);
         AddRow(fields, 12, "Observações", notes, 94);
+        AddRow(fields, 13, "Situação local", appointmentStatus, 46);
 
         var buttons = new FlowLayoutPanel
         {
@@ -115,6 +148,9 @@ internal sealed class AgendaAppointmentDialog : Form
             ? "Salva o atendimento e cria o evento no calendário de testes. Não envia WhatsApp."
             : "Salva somente o atendimento no Supabase. Não cria evento Google nem envia WhatsApp.";
         if (googleSync.Checked) hint.Text = "Salva o atendimento e cria o evento no calendário de testes. Não envia WhatsApp.";
+        if (source is not null) hint.Text = lockSchedule
+            ? "Horário vinculado: altere no editor Google. Estes campos atualizam somente o cadastro da equipe."
+            : "Atualiza o cadastro local. Não cria/edita evento Google e não envia WhatsApp.";
         Controls.Add(fields); Controls.Add(hint); Controls.Add(googleSync); Controls.Add(buttons);
         save.Click += (_, _) => Confirm();
         cancel.Click += (_, _) => DialogResult = DialogResult.Cancel;
@@ -142,10 +178,10 @@ internal sealed class AgendaAppointmentDialog : Form
 
     private void Confirm()
     {
-        var selected = Catalog.Where((_, i) => services.GetItemChecked(i)).ToList();
+        var selected = availableCatalog.Where((_, i) => services.GetItemChecked(i)).ToList();
         var custom = otherService.Text.Trim();
         if (string.IsNullOrWhiteSpace(client.Text) || string.IsNullOrWhiteSpace(phone.Text) ||
-            string.IsNullOrWhiteSpace(address.Text) || (selected.Count == 0 && custom.Length == 0))
+            string.IsNullOrWhiteSpace(address.Text) || (selected.Count == 0 && custom.Length == 0 && !(original is not null && !serviceChanged && original.Service.Length > 0)))
         {
             MessageBox.Show(this, "Preencha cliente, WhatsApp, endereço e ao menos um serviço.",
                 "Agenda São Bento", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -169,10 +205,11 @@ internal sealed class AgendaAppointmentDialog : Form
         Result = new AgendaAppointmentInput(
             kind.SelectedIndex == 1 ? "pj" : "pf",
             client.Text.Trim(), responsible.Text.Trim(), phone.Text.Trim(), email.Text.Trim(),
-            address.Text.Trim(), ids.ToArray(),
-            string.Join(" + ", selected.Select(x => x.Label).Concat(custom.Length > 0 ? [custom] : [])),
+            address.Text.Trim(), original is not null && !serviceChanged ? original.ServiceIds : ids.ToArray(),
+            original is not null && !serviceChanged ? original.Service :
+                string.Join(" + ", selected.Select(x => x.Label).Concat(custom.Length > 0 ? [custom] : [])),
             technician.Text.Trim(), notes.Text.Trim(),
-            day.Value.ToString("yyyy-MM-dd"), time.Value.ToString("HH:mm:ss"), (int)duration.Value);
+            day.Value.ToString("yyyy-MM-dd"), time.Value.ToString("HH:mm:ss"), (int)duration.Value, appointmentStatus.SelectedItem?.ToString() ?? "agendado");
         DialogResult = DialogResult.OK;
     }
 }

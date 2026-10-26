@@ -29,6 +29,8 @@ internal sealed class AgendaPanel : UserControl
     private readonly GoogleCalendarApi googleApi;
     private readonly Button googleApiButton = MakeButton("Google (editar)");
     private readonly AgendaCalendarLinkStore linkStore;
+    private readonly AgendaAppointmentStore appointmentStore;
+    private readonly Button editLocalButton = MakeButton("Editar atendimento");
     private sealed record AgendaRowContext(GoogleEventSnapshot? Google, AgendaLocalSnapshot? Local);
     private readonly Button reconcileButton = MakeButton("Conferir vínculo");
     private readonly Button completeGoogleButton = MakeButton("Completar Google");
@@ -69,6 +71,7 @@ internal sealed class AgendaPanel : UserControl
     {
         googleApi = new GoogleCalendarApi(googleOAuth);
         linkStore = new AgendaCalendarLinkStore(Authorized);
+        appointmentStore = new AgendaAppointmentStore(Authorized);
         Dock = DockStyle.Fill;
         BackColor = Color.FromArgb(248, 250, 252);
         Font = new Font("Segoe UI", 10);
@@ -146,6 +149,8 @@ internal sealed class AgendaPanel : UserControl
         googleNewButton.BackColor = Color.FromArgb(7, 106, 63);
         googleNewButton.Click += async (_, _) => await CreateGoogleEvent();
         bar.Controls.Add(refresh); bar.Controls.Add(add);
+        bar.Controls.Add(editLocalButton);
+        editLocalButton.Click += async (_, _) => await EditSelectedAppointment();
         bar.Controls.Add(googleNewButton);
         bar.Controls.Add(linkButton);
         bar.Controls.Add(completeGoogleButton);
@@ -431,7 +436,7 @@ internal sealed class AgendaPanel : UserControl
                     google?.Time ?? local!.Time,
                     local?.Client ?? google!.Title,
                     local?.Service ?? category.Label, state, local?.Phone ?? "",
-                    google?.Location ?? local!.Address
+                    local?.Address ?? google!.Location
                 ], category, google, local));
             }
             foreach (var row in cachedRows)
@@ -498,6 +503,8 @@ internal sealed class AgendaPanel : UserControl
 
     private void UpdateLinkButton()
     {
+        editLocalButton.Enabled = !busy && grid.SelectedRows.Count == 1 &&
+            grid.SelectedRows[0].Tag is AgendaRowContext { Local: not null };
         linkButton.Enabled = !busy && linksReady && googleOAuth.CanWriteSelectedCalendar &&
             grid.SelectedRows.Count == 1 && grid.SelectedRows[0].Tag is AgendaRowContext { Google: not null };
         completeGoogleButton.Enabled = !busy && linksReady && googleOAuth.CanWriteSelectedCalendar &&
@@ -506,6 +513,25 @@ internal sealed class AgendaPanel : UserControl
         reconcileButton.Enabled = !busy && linksReady && googleOAuth.CanWriteSelectedCalendar &&
             grid.SelectedRows.Count == 1 && grid.SelectedRows[0].Tag is AgendaRowContext { Local: { } linkedLocal } &&
             calendarLinks.Any(link => link.AppointmentId == linkedLocal.Id && link.CalendarId == googleOAuth.CalendarId);
+    }
+
+    private async Task EditSelectedAppointment()
+    {
+        if (busy || companyId is null || grid.SelectedRows.Count != 1 ||
+            grid.SelectedRows[0].Tag is not AgendaRowContext { Local: { } original }) return;
+        var linked = calendarLinks.Any(link => link.AppointmentId == original.Id);
+        using var editor = new AgendaAppointmentDialog(calendar.SelectedDate, source: original, lockSchedule: linked);
+        if (editor.ShowDialog(this) != DialogResult.OK || editor.Result is not { } proposed) return;
+        SetBusy(true);
+        try
+        {
+            await appointmentStore.Update(companyId, original, proposed, linked);
+            Status("Cadastro operacional atualizado para a equipe. Nenhum evento Google ou WhatsApp foi enviado.");
+        }
+        catch (Exception error) when (error is InvalidOperationException or HttpRequestException or TaskCanceledException or JsonException)
+        { MessageBox.Show(this, error.Message, "Conferir atualização local", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        finally { SetBusy(false); }
+        await LoadAppointments();
     }
 
     private async Task ReconcileSelectedEvent()
