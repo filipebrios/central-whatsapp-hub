@@ -61,6 +61,8 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- 26/10: ativação operacional e deduplicação iCal passaram no CI #40350635367. Backend de respostas públicas aprovado em testes SQL com rollback: token SHA-256, validade, uso único, horário exato, NPS e isolamento. Migração `20261026172943_modux_public_responses` aplicada; zero tokens/fixtures reais persistidos. Página pública e integração do cliente ainda em implementação; nenhum link foi enviado e nenhum instalador novo foi criado.
+
 - 26/10: busca/filtros/CSV/checkpoints passaram no CI #40348718438. Implementação da ativação operacional no aplicativo principal está em validação: usuário deve escolher e confirmar o ID concreto do calendário no próprio Windows. Configurações antigas não herdam aprovação; verificador isolado continua limitado a MODUX - TESTES. Nenhuma agenda operacional real foi ativada ou alterada por estas ferramentas.
 - O ambiente local ficou indisponível nesta etapa; continuidade pelo conector GitHub e CI Windows. Mudanças de desenvolvimento são salvas no repositório, sem prometer trabalho entre mensagens.
 
@@ -117,6 +119,8 @@ Requisitos permanentes:
 - Alterações atribuídas ao Manus não estão no repositório conhecido.
 
 ## Pendências priorizadas
+
+- Concluir página/handler e integração dos links de confirmação/NPS no rascunho manual; convites Google, revisão visual e instalador consolidado. Backend aprovado não equivale a fluxo público entregue.
 
 - Validar CI da ativação operacional por ID/consentimento e fallback iCal por identidade; manter escrita real desativada até a ação explícita do operador no aplicativo. Concluir links públicos/convites, validação visual e empacotamento único.
 
@@ -277,6 +281,13 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-26 — capacidades de resposta do cliente
+
+- Migração criada com Supabase CLI e alinhada ao histórico remoto `20261026172943`. Guarda somente SHA-256 de token aleatório de 256 bits; identidade, validade e snapshots definidos no servidor. Emissão exige membro ativo e revisão atual; consumo reservado a service_role, sem RPC anônima nem segredo no aplicativo.
+- Confirmação exige horário ainda vigente. Cancelamento é solicitação para equipe (`reagendar`), interrompe rascunhos de confirmação/lembrete e não afirma excluir o evento Google. Pós-venda exige sete dias desde conclusão e nota ainda ausente; resposta de uso único não sobrescreve nota registrada.
+- Testes transacionais cobriram consulta sem consumo/contatos, validade, repetição, horário alterado, nota inválida, tipos cruzados, RLS e ACL. Rollback confirmou zero tokens/fixtures persistidos. Página/Edge/clientes ainda pendentes; sem envio real ou instalador.
+
 
 ### 2026-10-26 — ativação operacional explícita e fallback por identidade
 
