@@ -286,6 +286,11 @@ Antes de entregar uma versão:
 
 ## Registro de mudanças
 
+### 2026-10-26 — correção do teste de convites
+
+- CI identificou colisão do parâmetro `_` da lambda com descarte `out _` em teste HTTP. Renomeado o resultado local do TryGetProperty; falha era de compilação do teste, sem envio a calendário real. Aguardar nova execução.
+
+
 ### 2026-10-26 — teste integrado da página móvel
 
 - Preparado teste Playwright da página real com API simulada: fragmento removido, conteúdo via textContent, responsividade 390 px, confirmação, cancelamento com voltar, NPS zero/nota obrigatória e links encerrados. CI instala navegador em diretório isolado, sem alterar dependências do aplicativo.

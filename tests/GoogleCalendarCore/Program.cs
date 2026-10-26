@@ -637,7 +637,7 @@ using (var transport = new CalendarTestHandler((method, uri, _, body) =>
     var guests = payload.RootElement.GetProperty("attendees");
     if (guests.GetArrayLength() != 2 || guests[0].GetProperty("responseStatus").GetString() != "accepted" ||
         !guests[0].GetProperty("optional").GetBoolean() || guests[1].GetProperty("email").GetString() != "client@example.test" ||
-        payload.RootElement.TryGetProperty("summary", out _))
+        payload.RootElement.TryGetProperty("summary", out var ignoredSummary))
         throw new Exception("Convite perdeu convidados/respostas ou alterou o evento.");
     return CalendarTestHandler.Json(source);
 }))
