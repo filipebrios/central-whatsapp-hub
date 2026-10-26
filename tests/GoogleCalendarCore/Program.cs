@@ -579,6 +579,21 @@ if (!csv.Contains("\"'=HYPERLINK(") || !csv.Contains("\"Serviço; combinado\"") 
     throw new Exception("CSV perdeu escape de campo ou proteção contra fórmula.");
 Console.WriteLine("PASS: filtros por origem/situação/serviço, busca sem acento e CSV seguro.");
 
+// Consentimento operacional exige ID concreto exato; o piloto continua recusando agenda principal.
+if (!GoogleCalendarWriteGuard.IsExplicitOperationalCalendar("equipe@example.test", "equipe@example.test", true) ||
+    GoogleCalendarWriteGuard.IsExplicitOperationalCalendar("primary", "primary", true) ||
+    GoogleCalendarWriteGuard.IsExplicitOperationalCalendar("equipe@example.test", null, true) ||
+    GoogleCalendarWriteGuard.IsExplicitOperationalCalendar("equipe@example.test", "outra@example.test", true) ||
+    GoogleCalendarWriteGuard.IsExplicitOperationalCalendar("equipe@example.test", "equipe@example.test", false))
+    throw new Exception("Consentimento operacional não foi vinculado ao calendário autorizado.");
+var feedIdentity = GoogleCalendarIdentity.FromPrivateIcalUrl(new Uri(
+    "https://calendar.google.com/calendar/ical/equipe%40group.calendar.google.com/private-fixture/basic.ics"));
+if (feedIdentity != "equipe@group.calendar.google.com" ||
+    GoogleCalendarIdentity.FromPrivateIcalUrl(new Uri(
+        "https://calendar.google.com.example.test/calendar/ical/equipe/private-fixture/basic.ics")) is not null)
+    throw new Exception("Identidade iCal incorreta: poderia esconder outro calendário.");
+Console.WriteLine("PASS: consentimento por ID, alias principal bloqueado e deduplicação de fonte iCal por identidade.");
+
 static async Task ExpectFailure(Func<Task> operation, string message)
 {
     try { await operation(); }

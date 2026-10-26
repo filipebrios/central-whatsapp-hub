@@ -416,6 +416,7 @@ internal sealed class AgendaPanel : UserControl
             supabaseEventCount = localAppointments.Count;
             calendarLinks = []; linksReady = false;
             IReadOnlyList<GoogleEventSnapshot> testEvents = [];
+            var apiReadSucceeded = false;
             // No piloto, manter a agenda operacional iCal (somente leitura)
             // SEMPRE visível, mesmo depois de autorizar a API OAuth para MODUX - TESTES.
             // O Google API nunca substitui nem importa automaticamente eventos do iCal.
@@ -450,6 +451,7 @@ internal sealed class AgendaPanel : UserControl
                 try
                 {
                     testEvents = await googleApi.Events(first, last);
+                    apiReadSucceeded = true;
                     googleTestEventCount = testEvents.Count;
                     calendarLinks = await linkStore.List(companyId, googleOAuth.CalendarId!);
                     linksReady = true;
@@ -474,9 +476,17 @@ internal sealed class AgendaPanel : UserControl
                     HttpRequestException or TaskCanceledException or JsonException)
                 {
                     linksReady = false;
-                    googleWarning = "Google TESTES / vínculos: " + ex.Message;
+                    googleWarning = "Google / vínculos: " + ex.Message;
                 }
             }
+            if (apiReadSucceeded && googleFeed.MatchesCalendar(googleOAuth.CalendarId))
+            {
+                // Quando as duas fontes são do mesmo calendário, API prevalece;
+                // se API falhar, iCal permanece como fallback de leitura.
+                cachedRows.RemoveAll(row => row.Values[4] == "Google • leitura");
+                googleEventCount = 0;
+            }
+            var googleOrigin = googleOAuth.IsTestCalendarSelected ? "TESTES" : "Google";
             var unified = AgendaCalendarProjection.Merge(companyId, googleOAuth.CalendarId ?? "",
                 localAppointments, testEvents, calendarLinks);
             foreach (var row in unified)
@@ -487,9 +497,9 @@ internal sealed class AgendaPanel : UserControl
                     ? serviceCatalog.Resolve(local)
                     : serviceCatalog.Apply(AgendaServiceColors.Classify(google!.Title, google.Description));
                 var state = google is not null
-                    ? row.Link is null ? "Google • TESTES"
-                        : local is null ? "TESTES • vínculo pendente"
-                        : row.Link.ETag != google.ETag ? "TESTES • conferir alteração" : "TESTES • " + local.Status
+                    ? row.Link is null ? googleOrigin + " • editável"
+                        : local is null ? googleOrigin + " • vínculo pendente"
+                        : row.Link.ETag != google.ETag ? googleOrigin + " • conferir alteração" : googleOrigin + " • " + local.Status
                     : row.Link is null || row.Link.SyncStatus == "excluido" ? local!.Status : "Vínculo • conferir Google";
                 cachedRows.Add(([
                     google?.Date.ToString("yyyy-MM-dd") ?? local!.Date,
@@ -521,9 +531,9 @@ internal sealed class AgendaPanel : UserControl
                 System.Security.Cryptography.CryptographicException or InvalidOperationException)
             { backupWarning = "Não foi possível gerar o checkpoint local do período."; }
             Status($"{supabaseEventCount} cadastros locais • {googleEventCount} Google iCal (leitura) " +
-                $"• {googleTestEventCount} TESTES (editável) • {first:dd/MM} a {last:dd/MM}. " +
+                $"• {googleTestEventCount} Google API ({(googleOAuth.IsTestCalendarSelected ? "testes" : "selecionado")}) • {first:dd/MM} a {last:dd/MM}. " +
                 (googleWarning ?? backupWarning ?? (googleOAuth.CanWriteSelectedCalendar
-                    ? "Duplo clique apenas em evento TESTES para editar. Clientes reais protegidos."
+                    ? "Duplo clique para editar no calendário Google selecionado. Alterações exigem confirmação."
                     : "Agenda operacional iCal: somente leitura. Sem envio WhatsApp.")));
         }
         catch (Exception error) when (error is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
@@ -534,9 +544,11 @@ internal sealed class AgendaPanel : UserControl
     private void UpdateGoogleLabel()
     {
         googleButton.Text = googleFeed.HasUrl ? "iCal conectado ✓" : "Google iCal";
+        var name = googleOAuth.CalendarName ?? "selecionado";
+        if (name.Length > 22) name = name[..22] + "…";
         googleApiButton.Text = googleOAuth.CanWriteSelectedCalendar
-            ? "Google: MODUX - TESTES ✓"
-            : googleOAuth.Connected ? "Google • modo protegido" : "Google (configurar)";
+            ? "Google: " + name + " ✓"
+            : googleOAuth.Connected ? "Google • escolher agenda" : "Google (configurar)";
         googleNewButton.Enabled = googleOAuth.CanWriteSelectedCalendar;
     }
 
@@ -556,7 +568,7 @@ internal sealed class AgendaPanel : UserControl
             var index = grid.Rows.Add(record);
             grid.Rows[index].Tag = new AgendaRowContext(google, local);
             grid.Rows[index].Cells[2].ToolTipText = google is not null
-                ? "MODUX - TESTES: duplo clique para editar evento fictício"
+                ? "Duplo clique para editar no calendário Google selecionado"
                 : "Operacional: agendamento local ou iCal somente leitura";
             var state = record[4];
             var serviceCell = grid.Rows[index].Cells[3];
@@ -566,7 +578,8 @@ internal sealed class AgendaPanel : UserControl
                 + (state == "Google • leitura" ? " (classificado pelo texto do evento)" : "");
             if (state == "Google • leitura")
                 grid.Rows[index].DefaultCellStyle.BackColor = Color.FromArgb(229, 241, 255);
-            else if (state == "Google • TESTES" || state.StartsWith("TESTES •", StringComparison.Ordinal))
+            else if ((google is not null && state.StartsWith("Google •", StringComparison.Ordinal)) ||
+                state.StartsWith("TESTES •", StringComparison.Ordinal))
                 grid.Rows[index].DefaultCellStyle.BackColor = Color.FromArgb(255, 248, 221);
             else if (state is "cancelado" or "cancelar")
                 grid.Rows[index].DefaultCellStyle.ForeColor = Color.FromArgb(164, 42, 42);
@@ -749,7 +762,7 @@ internal sealed class AgendaPanel : UserControl
             grid.SelectedRows[0].Tag is not AgendaRowContext { Google: null, Local: { } local }) return;
         if (calendarLinks.Any(link => link.AppointmentId == local.Id && link.CalendarId == googleOAuth.CalendarId))
         { Status("O atendimento já possui vínculo. Confira o evento original antes de tentar criar outro."); return; }
-        if (MessageBox.Show(this, $"Criar ou recuperar no calendário MODUX - TESTES o evento do atendimento de {local.Client}? " +
+        if (MessageBox.Show(this, $"Criar ou recuperar no calendário Google “{googleOAuth.CalendarName}” o evento do atendimento de {local.Client}? " +
             "O identificador do atendimento será reutilizado para evitar duplicação.", "Completar Google",
             MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
         SetBusy(true);
@@ -769,7 +782,7 @@ internal sealed class AgendaPanel : UserControl
     private async Task CompleteGoogle(AgendaLocalSnapshot local)
     {
         if (companyId is null || !googleOAuth.CanWriteSelectedCalendar)
-            throw new InvalidOperationException("Conecte primeiro o calendário MODUX - TESTES.");
+            throw new InvalidOperationException("Selecione e confirme primeiro o calendário Google.");
         var calendarId = googleOAuth.CalendarId!;
         var draft = local.AsGoogleDraft(companyId);
         _ = draft.AsGoogleFields();
@@ -845,7 +858,7 @@ internal sealed class AgendaPanel : UserControl
         if (busy || googleOAuth.CalendarId is null || rowIndex >= grid.Rows.Count) return;
         if (!googleOAuth.CanWriteSelectedCalendar)
         {
-            Status("Edição bloqueada: selecione a agenda isolada MODUX - TESTES.");
+            Status("Edição bloqueada: selecione e confirme o calendário Google.");
             return;
         }
         if (grid.Rows[rowIndex].Tag is not AgendaRowContext { Google: { } google })
@@ -903,7 +916,7 @@ internal sealed class AgendaPanel : UserControl
     {
         if (busy || !googleOAuth.CanWriteSelectedCalendar)
         {
-            Status("Para criar eventos nesta fase, selecione MODUX - TESTES no Google.");
+            Status("Para criar eventos, selecione e confirme o calendário Google.");
             return;
         }
         using var editor = new GoogleCalendarEventDialog(null, calendar.SelectedDate);
@@ -928,7 +941,8 @@ internal sealed class AgendaPanel : UserControl
     private async Task CreateAppointment()
     {
         if (busy || companyId is null) return;
-        using var dialog = new AgendaAppointmentDialog(calendar.SelectedDate, googleOAuth.CanWriteSelectedCalendar, sharedServices: serviceCatalog.Items);
+        using var dialog = new AgendaAppointmentDialog(calendar.SelectedDate, googleOAuth.CanWriteSelectedCalendar,
+            sharedServices: serviceCatalog.Items, calendarName: googleOAuth.CalendarName);
         if (dialog.ShowDialog(this) != DialogResult.OK || dialog.Result is not { } value) return;
         SetBusy(true);
         var saved = false;

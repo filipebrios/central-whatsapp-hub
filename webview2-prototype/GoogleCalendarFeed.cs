@@ -31,6 +31,19 @@ internal sealed class GoogleCalendarFeed : IDisposable
 
     public bool HasUrl => File.Exists(settingsFile);
 
+    // Compara só a identidade do calendário; nunca expõe o trecho secreto da URL.
+    internal bool MatchesCalendar(string? calendarId)
+    {
+        if (string.IsNullOrWhiteSpace(calendarId) || !HasUrl) return false;
+        try
+        {
+            return string.Equals(GoogleCalendarIdentity.FromPrivateIcalUrl(LoadSecretUrl()),
+                calendarId, StringComparison.Ordinal);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or
+            InvalidOperationException or CryptographicException or UriFormatException) { return false; }
+    }
+
     public void SetSecretUrl(string raw)
     {
         if (!TryGoogleUrl(raw, out var uri))

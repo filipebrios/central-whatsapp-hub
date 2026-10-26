@@ -88,7 +88,7 @@ internal sealed class GoogleCalendarEventDialog : Form
                         ? "Excluir este evento do Google e marcar o atendimento vinculado como cancelado? O cadastro e histórico serão preservados."
                         : "Excluir este evento do Google Agenda? Essa ação removerá o compromisso do calendário original.",
                     "Confirmar exclusão", MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Warning) != DialogResult.Yes) return;
+                    MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
                 Action = GoogleEventUserAction.Delete;
                 DialogResult = DialogResult.OK;
             };
@@ -150,7 +150,7 @@ internal sealed class GoogleCalendarEventDialog : Form
                 ? "Criar este compromisso no Google Agenda agora?"
                 : "Salvar as alterações deste compromisso no Google Agenda agora?",
             "Confirmar alteração no Google",
-            MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+            MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
         Draft = proposal;
         Action = GoogleEventUserAction.Save;
         DialogResult = DialogResult.OK;

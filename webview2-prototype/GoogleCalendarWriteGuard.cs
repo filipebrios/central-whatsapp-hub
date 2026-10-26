@@ -18,11 +18,30 @@ internal static class GoogleCalendarWriteGuard
         calendarId is not null &&
         calendarId.EndsWith("@group.calendar.google.com", StringComparison.OrdinalIgnoreCase);
 
+    // Aprovação operacional é vinculada ao ID concreto, nunca ao alias "primary".
+    internal static bool IsExplicitOperationalCalendar(string? calendarId, string? approvedCalendarId, bool authorized) =>
+        authorized && !string.IsNullOrWhiteSpace(calendarId) && calendarId.Length <= 1024 &&
+        !string.Equals(calendarId, "primary", StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(calendarId, approvedCalendarId, StringComparison.Ordinal);
+
     internal static void DemandTestCalendar(string? displayName, string? calendarId, bool authorized)
     {
         if (!IsWritableTestCalendar(displayName, calendarId, authorized))
             throw new InvalidOperationException(
                 "Gravação Google bloqueada nesta etapa. Selecione a agenda isolada " +
                 "'MODUX - TESTES'. Os agendamentos reais da São Bento estão protegidos.");
+    }
+}
+
+internal static class GoogleCalendarIdentity
+{
+    internal static string? FromPrivateIcalUrl(Uri url)
+    {
+        if (url.Scheme != "https" || url.Host != "calendar.google.com" || url.Port != 443 ||
+            url.UserInfo.Length != 0) return null;
+        var parts = url.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 5 || parts[0] != "calendar" || parts[1] != "ical" ||
+            !parts[3].StartsWith("private-", StringComparison.Ordinal) || parts[4] != "basic.ics") return null;
+        return Uri.UnescapeDataString(parts[2]);
     }
 }

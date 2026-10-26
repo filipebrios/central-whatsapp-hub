@@ -18,6 +18,7 @@ internal sealed class GoogleDesktopOAuth : IDisposable, IGoogleCalendarAuthoriza
     private readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(30) };
     private readonly string storageFile;
     private Record? config;
+    private readonly bool diagnosticMode;
 
     private sealed class Record
     {
@@ -28,23 +29,31 @@ internal sealed class GoogleDesktopOAuth : IDisposable, IGoogleCalendarAuthoriza
         public DateTimeOffset Expires { get; set; }
         public string? CalendarId { get; set; }
         public string? CalendarName { get; set; }
+        public string? OperationalWriteCalendarId { get; set; }
+        public DateTimeOffset? OperationalWriteEnabledAt { get; set; }
     }
 
     internal bool Configured => config is { ClientId.Length: > 0 };
     internal bool Connected => !string.IsNullOrWhiteSpace(config?.RefreshToken);
     internal string? CalendarId => config?.CalendarId;
     internal string? CalendarName => config?.CalendarName;
-    // Durante o piloto somente a agenda separada de testes permite gravar.
-    internal bool CanWriteSelectedCalendar =>
-        GoogleCalendarWriteGuard.IsWritableTestCalendar(
-            config?.CalendarName, config?.CalendarId, Connected);
+    internal bool SupportsOperationalSelection => !diagnosticMode;
+    internal bool IsTestCalendarSelected => GoogleCalendarWriteGuard.IsWritableTestCalendar(
+        config?.CalendarName, config?.CalendarId, Connected);
+    internal bool CanWriteSelectedCalendar => IsTestCalendarSelected ||
+        (!diagnosticMode && config?.OperationalWriteEnabledAt is not null &&
+         GoogleCalendarWriteGuard.IsExplicitOperationalCalendar(
+             config?.CalendarId, config?.OperationalWriteCalendarId, Connected));
 
-    internal void DemandSafeWrite() =>
-        GoogleCalendarWriteGuard.DemandTestCalendar(
-            config?.CalendarName, config?.CalendarId, Connected);
+    internal void DemandSafeWrite()
+    {
+        if (!CanWriteSelectedCalendar)
+            throw new InvalidOperationException("Selecione e confirme o calendário Google antes de alterar compromissos.");
+    }
 
     internal GoogleDesktopOAuth(bool diagnostic = false)
     {
+        diagnosticMode = diagnostic;
         var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "CentralWhatsApp", diagnostic ? "GoogleOAuthDiagnostic" : "WebView2Prototype");
         Directory.CreateDirectory(folder);
@@ -81,15 +90,18 @@ internal sealed class GoogleDesktopOAuth : IDisposable, IGoogleCalendarAuthoriza
         Save();
     }
 
-    internal void SelectCalendar(string id, string name)
+    internal void SelectCalendar(string id, string name, bool allowOperational = false)
     {
         if (!Connected || string.IsNullOrWhiteSpace(id))
             throw new InvalidOperationException("Autorize a conta Google e selecione um calendário válido.");
-        // Bloquear a seleção de agendas operacionais nesta fase. O nome é verificado
-        // novamente dentro do cliente de API antes de CADA operação de escrita.
-        GoogleCalendarWriteGuard.DemandTestCalendar(name, id, Connected);
+        var test = GoogleCalendarWriteGuard.IsWritableTestCalendar(name, id, Connected);
+        if (!test && !(SupportsOperationalSelection && allowOperational &&
+            GoogleCalendarWriteGuard.IsExplicitOperationalCalendar(id, id, Connected)))
+            throw new InvalidOperationException("Confirme o calendário operacional para habilitar escrita.");
         config!.CalendarId = id;
         config.CalendarName = name;
+        config.OperationalWriteCalendarId = test ? null : id;
+        config.OperationalWriteEnabledAt = test ? null : DateTimeOffset.UtcNow;
         Save();
     }
 
@@ -183,19 +195,24 @@ internal sealed class GoogleDesktopOAuth : IDisposable, IGoogleCalendarAuthoriza
         if (!response.IsSuccessStatusCode)
             throw new InvalidOperationException("O Google não aceitou o código OAuth; revise as credenciais Desktop.");
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
-        ReceiveTokens(body.RootElement);
-        if (!Connected)
+        var granted = new Record { ClientId = settings.ClientId, ClientSecret = settings.ClientSecret };
+        ReceiveTokens(granted, body.RootElement);
+        if (string.IsNullOrWhiteSpace(granted.RefreshToken))
             throw new InvalidOperationException("O Google não retornou um token de renovação. Revogue o acesso e tente novamente.");
+        // Uma nova conta/autorização nunca herda aprovação nem refresh token anteriores.
+        config = granted;
         Save();
     }
 
-    private void ReceiveTokens(JsonElement json)
+    private static void ReceiveTokens(Record target, JsonElement json)
     {
-        if (config is null) throw new InvalidOperationException("Credenciais ausentes.");
-        config.AccessToken = json.GetProperty("access_token").GetString();
-        if (json.TryGetProperty("refresh_token", out var rt) && !string.IsNullOrWhiteSpace(rt.GetString()))
-            config.RefreshToken = rt.GetString();
-        config.Expires = DateTimeOffset.UtcNow.AddSeconds(
+        if (!json.TryGetProperty("access_token", out var access) || access.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(access.GetString()))
+            throw new InvalidOperationException("O Google não retornou um token válido. Autorize novamente.");
+        target.AccessToken = access.GetString();
+        if (json.TryGetProperty("refresh_token", out var rt) && rt.ValueKind == JsonValueKind.String &&
+            !string.IsNullOrWhiteSpace(rt.GetString())) target.RefreshToken = rt.GetString();
+        target.Expires = DateTimeOffset.UtcNow.AddSeconds(
             json.TryGetProperty("expires_in", out var expiry) ? Math.Max(60, expiry.GetInt32()) : 3600);
     }
 
@@ -215,9 +232,11 @@ internal sealed class GoogleDesktopOAuth : IDisposable, IGoogleCalendarAuthoriza
         if (!response.IsSuccessStatusCode)
             throw new InvalidOperationException("Sessão Google expirada ou revogada. Autorize novamente.");
         using var data = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
-        ReceiveTokens(data.RootElement);
+        if (!ReferenceEquals(config, settings))
+            throw new InvalidOperationException("A conexão Google mudou durante a consulta. Atualize e tente novamente.");
+        ReceiveTokens(settings, data.RootElement);
         Save();
-        return config!.AccessToken!;
+        return settings.AccessToken!;
     }
 
     private static string Base64Url(byte[] bytes) =>

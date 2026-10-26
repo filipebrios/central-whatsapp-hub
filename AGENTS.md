@@ -61,6 +61,9 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- 26/10: busca/filtros/CSV/checkpoints passaram no CI #40348718438. Implementação da ativação operacional no aplicativo principal está em validação: usuário deve escolher e confirmar o ID concreto do calendário no próprio Windows. Configurações antigas não herdam aprovação; verificador isolado continua limitado a MODUX - TESTES. Nenhuma agenda operacional real foi ativada ou alterada por estas ferramentas.
+- O ambiente local ficou indisponível nesta etapa; continuidade pelo conector GitHub e CI Windows. Mudanças de desenvolvimento são salvas no repositório, sem prometer trabalho entre mensagens.
+
 - 26/10: painel de pendências/fila manual/NPS e separação São Bento/Criatta passaram no CI #40347646462. Busca/filtros/CSV/checkpoints locais cifrados do período carregado em validação interna; sem novo instalador.
 
 - 26/10: catálogo compartilhado passou nos testes/compilação no CI #40344124246. Rotina manual de pendências/lembretes/NPS em integração: fila compartilhada idempotente, rascunho separado de envio confirmado pelo operador, conta São Bento independente da Criatta. Migrações `20261026150043`/`20261026151259` aplicadas e testes SQL com rollback aprovados; cliente Windows aguardando CI.
@@ -114,6 +117,8 @@ Requisitos permanentes:
 - Alterações atribuídas ao Manus não estão no repositório conhecido.
 
 ## Pendências priorizadas
+
+- Validar CI da ativação operacional por ID/consentimento e fallback iCal por identidade; manter escrita real desativada até a ação explícita do operador no aplicativo. Concluir links públicos/convites, validação visual e empacotamento único.
 
 - Validar CI de busca/filtros/CSV e checkpoints; concluir links públicos/convites controlados, refinamento visual e empacotamento consolidado. Validação real da nova UI será na rodada única de feedback.
 
@@ -272,6 +277,16 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-26 — ativação operacional explícita e fallback por identidade
+
+- CI #40348718438 aprovou filtros/CSV e compilação Windows, junto com regressões do pacote integrado.
+- OAuth do aplicativo principal aceita calendário operacional somente após escolha do ID concreto e confirmação explícita (padrão Não). A aprovação fica cifrada no Windows e vinculada ao ID; alias primary, conta não autorizada ou outro ID não satisfazem a guarda.
+- O verificador portátil usa modo diagnóstico e continua recusando ativação operacional na UI e na camada OAuth/API, mesmo com um arquivo de configuração incompatível.
+- Nova autorização não herda refresh token nem aprovação de calendário anteriores; renovação interrompe se a conexão foi trocada/desconectada durante a consulta.
+- Quando iCal e API representam o mesmo ID de calendário, API prevalece após leitura bem-sucedida; se a API falhar, iCal permanece leitura. Calendários diferentes continuam visíveis separadamente. URL secreta não é exposta nem copiada.
+- Formulários indicam o calendário selecionado e criação integrada; confirmações Google usam padrão Não. Nenhum evento legado é importado ou recolorido automaticamente.
+- Testes adicionais cobrem ID aprovado, ausência de autorização, alias principal e identidade do endereço iCal. Aguardando CI, sem novo instalador e sem ativar agenda real.
 
 ### 2026-10-26 — busca, filtros, exportação e checkpoints
 

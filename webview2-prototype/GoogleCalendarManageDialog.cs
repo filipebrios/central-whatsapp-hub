@@ -69,7 +69,7 @@ internal sealed class GoogleCalendarManageDialog : Form
         body.Controls.Add(cancelAuthorization);
         body.Controls.Add(new Label
         {
-            Text = "Nesta fase, somente MODUX - TESTES pode receber alterações:",
+            Text = "Escolha o calendário. A agenda operacional exige ativação explícita:",
             AutoSize = true, Margin = new Padding(5, 18, 5, 4)
         });
         calendars.Width = 520;
@@ -147,15 +147,23 @@ internal sealed class GoogleCalendarManageDialog : Form
         calendars.Enabled = disconnect.Enabled = testDate.Enabled = !busy;
         select.Enabled = !busy && oauth.Connected &&
             calendars.SelectedItem is GoogleCalendarChoice choice &&
-            GoogleCalendarWriteGuard.IsWritableTestCalendar(choice.Name, choice.Id, true);
-        verify.Enabled = !busy && oauth.CanWriteSelectedCalendar;
+            (GoogleCalendarWriteGuard.IsWritableTestCalendar(choice.Name, choice.Id, true) ||
+             (oauth.SupportsOperationalSelection &&
+              GoogleCalendarWriteGuard.IsExplicitOperationalCalendar(choice.Id, choice.Id, true)));
+        select.Text = calendars.SelectedItem is GoogleCalendarChoice chosen &&
+            !GoogleCalendarWriteGuard.IsWritableTestCalendar(chosen.Name, chosen.Id, true)
+                ? oauth.SupportsOperationalSelection ? "3. Ativar calendário operacional" : "3. Selecione MODUX - TESTES"
+                : "3. Usar calendário de testes";
+        verify.Enabled = !busy && oauth.IsTestCalendarSelected;
         state.Text = oauth.Connected
             ? oauth.CanWriteSelectedCalendar
-                ? "Conta autorizada. Teste controlado ativo em: " +
-                  (oauth.CalendarName ?? "MODUX - TESTES") +
-                  ".\nA agenda operacional São Bento permanece protegida."
-                : "Conta autorizada. Crie no Google Agenda um calendário separado chamado " +
-                  "MODUX - TESTES e selecione-o aqui. A agenda real NÃO será alterada."
+                ? oauth.IsTestCalendarSelected
+                    ? "Conta autorizada. Teste controlado ativo em MODUX - TESTES."
+                    : "Ativação operacional confirmada neste Windows para: " + oauth.CalendarName +
+                      ". Somente esse calendário pode ser alterado pelas suas ações."
+                : oauth.SupportsOperationalSelection
+                    ? "Selecione MODUX - TESTES para o piloto ou ative conscientemente o calendário operacional."
+                    : "Este verificador permite somente o calendário secundário MODUX - TESTES."
             : oauth.Configured
                 ? "Credenciais instaladas. Clique em Autorizar para conceder acesso no navegador."
                 : "Nenhuma conta Google autorizada. Importe o JSON OAuth Desktop primeiro.";
@@ -242,7 +250,7 @@ internal sealed class GoogleCalendarManageDialog : Form
     {
         // Verificação sem qualquer POST/PATCH/DELETE. O usuário criou um
         // compromisso fictício nesta data no calendário secundário.
-        if (!oauth.CanWriteSelectedCalendar)
+        if (!oauth.IsTestCalendarSelected)
         {
             MessageBox.Show(this, "Selecione primeiro a agenda isolada MODUX - TESTES.",
                 "Google Agenda", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -298,19 +306,19 @@ internal sealed class GoogleCalendarManageDialog : Form
     private void SelectCalendar()
     {
         if (calendars.SelectedItem is not GoogleCalendarChoice item) return;
-        if (!GoogleCalendarWriteGuard.IsWritableTestCalendar(item.Name, item.Id, oauth.Connected))
-        {
-            MessageBox.Show(this,
-                "Nesta fase, selecione um calendário separado chamado MODUX - TESTES. " +
-                "As agendas operacionais não podem ser editadas.",
-                "Proteção da agenda São Bento", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            return;
-        }
-        if (MessageBox.Show(this,
-            $"Usar o calendário isolado “{item.Name}” para TESTAR criação e edição de eventos? Nenhuma agenda operacional será alterada.",
-            "Confirmar calendário", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
-            return;
-        oauth.SelectCalendar(item.Id, item.Name);
+        var test = GoogleCalendarWriteGuard.IsWritableTestCalendar(item.Name, item.Id, oauth.Connected);
+        if (!test && !(oauth.SupportsOperationalSelection &&
+            GoogleCalendarWriteGuard.IsExplicitOperationalCalendar(item.Id, item.Id, oauth.Connected))) return;
+        var message = test
+            ? $"Usar o calendário isolado “{item.Name}” para testar criação e edição de eventos?"
+            : $"ATIVAR ESCRITA NA AGENDA OPERACIONAL “{item.Name}”?\n\n" +
+              "Após esta confirmação, o MODUX poderá criar, editar e excluir compromissos nesse calendário, " +
+              "mediante suas ações nos formulários. Eventos antigos não serão importados ou recoloridos automaticamente.\n\n" +
+              "Confirme somente se este é o calendário correto da São Bento.";
+        if (MessageBox.Show(this, message, test ? "Confirmar testes" : "Ativar agenda operacional",
+            MessageBoxButtons.YesNo, test ? MessageBoxIcon.Question : MessageBoxIcon.Warning,
+            MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+        oauth.SelectCalendar(item.Id, item.Name, allowOperational: !test);
         Changed = true;
         RefreshStatus();
     }

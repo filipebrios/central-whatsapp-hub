@@ -59,9 +59,10 @@ internal sealed class AgendaAppointmentDialog : Form
 
     internal AgendaAppointmentDialog(DateOnly initialDay, bool allowGoogle = false,
         AgendaLocalSnapshot? source = null, bool lockSchedule = false,
-        IReadOnlyList<AgendaServiceDefinition>? sharedServices = null)
+        IReadOnlyList<AgendaServiceDefinition>? sharedServices = null, string? calendarName = null)
     {
         original = source;
+        googleSync.Text = "Criar também no Google • " + (calendarName ?? "calendário selecionado");
         if (sharedServices is { Count: > 0 })
         {
             availableCatalog.Clear();
@@ -158,9 +159,17 @@ internal sealed class AgendaAppointmentDialog : Form
             ForeColor = Color.FromArgb(78, 96, 81), Font = new Font("Segoe UI", 8)
         };
         googleSync.CheckedChanged += (_, _) => hint.Text = googleSync.Checked
-            ? "Salva o atendimento e cria o evento no calendário de testes. Não envia WhatsApp."
+            ? "Salva o atendimento e cria o evento no calendário selecionado. Não envia WhatsApp."
             : "Salva somente o atendimento no Supabase. Não cria evento Google nem envia WhatsApp.";
-        if (googleSync.Checked) hint.Text = "Salva o atendimento e cria o evento no calendário de testes. Não envia WhatsApp.";
+        if (googleSync.Checked)
+        {
+            hint.Text = "Salva o atendimento e cria o evento no calendário selecionado. Não envia WhatsApp.";
+            save.Text = "Salvar e criar no Google";
+        }
+        googleSync.CheckedChanged += (_, _) =>
+        {
+            if (source is null) save.Text = googleSync.Checked ? "Salvar e criar no Google" : "Salvar atendimento";
+        };
         if (source is not null) hint.Text = lockSchedule
             ? "Horário vinculado: altere no editor Google. Estes campos atualizam somente o cadastro da equipe."
             : "Atualiza o cadastro local. Não cria/edita evento Google e não envia WhatsApp.";
