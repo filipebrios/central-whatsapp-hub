@@ -328,6 +328,92 @@ if ((await pagedStore.List(company, calendarId)).Count != 250 || listCalls != 2)
     throw new Exception("Paginação truncou vínculos.");
 Console.WriteLine("PASS: vínculos por ID, isolamento, metadados preservados, ausência de eventos, RPC/revisão e paginação.");
 
+// Identidade integrada estável entre novos rascunhos, reinícios e operadores.
+var operationDraft = draft.ForAppointment(Guid.Parse(company), Guid.Parse(localRecord.Id));
+var anotherDraft = new GoogleEventDraft("Outro texto", "", "", draft.Date, draft.Time, 60, false)
+    .ForAppointment(Guid.Parse(company), Guid.Parse(localRecord.Id));
+if (operationDraft.CreateRequestId != anotherDraft.CreateRequestId)
+    throw new Exception("Novo rascunho perdeu a identidade do atendimento.");
+var operationalJson = System.Text.Json.Nodes.JsonNode.Parse(source)!.AsObject();
+operationalJson["id"] = operationDraft.CreateRequestId;
+operationalJson["extendedProperties"] = JsonSerializer.SerializeToNode(
+    new { @private = new { modux_company_id = company, modux_appointment_id = localRecord.Id } });
+var operationResponse = operationalJson.ToJsonString();
+using (var transport = new CalendarTestHandler((method, _, _, body) =>
+{
+    if (method == "GET") return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+    if (method != "POST") throw new Exception("Criação integrada usou método inesperado.");
+    using var request = JsonDocument.Parse(body!);
+    var identity = request.RootElement.GetProperty("extendedProperties").GetProperty("private");
+    if (identity.GetProperty("modux_appointment_id").GetString() != localRecord.Id ||
+        request.RootElement.GetProperty("id").GetString() != operationDraft.CreateRequestId)
+        throw new Exception("Criação integrada não registrou identidade privada.");
+    return CalendarTestHandler.Json(operationResponse);
+}))
+using (var api = new GoogleCalendarApi(auth, new HttpClient(transport)))
+{
+    _ = await api.EnsureOperationalEvent(operationDraft);
+    if (transport.Calls != 2) throw new Exception("Deve consultar antes de criar evento integrado.");
+}
+using (var transport = new CalendarTestHandler((method, _, _, _) =>
+{
+    if (method != "GET") throw new Exception("Evento existente foi criado novamente ou alterado.");
+    return CalendarTestHandler.Json(operationResponse);
+}))
+using (var api = new GoogleCalendarApi(auth, new HttpClient(transport)))
+{
+    _ = await api.EnsureOperationalEvent(anotherDraft);
+    if (transport.Calls != 1) throw new Exception("Recuperação deveria apenas consultar a identidade.");
+}
+var raceStep = 0;
+using (var transport = new CalendarTestHandler((method, _, _, _) =>
+{
+    raceStep++;
+    return raceStep switch
+    {
+        1 when method == "GET" => new HttpResponseMessage(System.Net.HttpStatusCode.NotFound),
+        2 when method == "POST" => new HttpResponseMessage(System.Net.HttpStatusCode.Conflict),
+        3 when method == "GET" => CalendarTestHandler.Json(operationResponse),
+        _ => throw new Exception("Corrida de criação gerou reenvio inesperado.")
+    };
+}))
+using (var api = new GoogleCalendarApi(auth, new HttpClient(transport)))
+{
+    _ = await api.EnsureOperationalEvent(operationDraft);
+    if (transport.Calls != 3) throw new Exception("Conflito de identidade não foi reconciliado por leitura.");
+}
+foreach (var forbiddenResponse in new[] {
+    operationResponse.Replace(company, "33333333-3333-3333-3333-333333333333"), source })
+{
+    using var transport = new CalendarTestHandler((method, _, _, _) =>
+    {
+        if (method != "GET") throw new Exception("Identidade de outra origem provocou escrita.");
+        return CalendarTestHandler.Json(forbiddenResponse);
+    });
+    using var api = new GoogleCalendarApi(auth, new HttpClient(transport));
+    await ExpectFailure(() => api.EnsureOperationalEvent(operationDraft), "outra origem");
+}
+using (var transport = new CalendarTestHandler((_, _, _, _) => new HttpResponseMessage(System.Net.HttpStatusCode.Gone)))
+using (var api = new GoogleCalendarApi(auth, new HttpClient(transport)))
+{
+    await ExpectFailure(() => api.EnsureOperationalEvent(operationDraft), "excluído");
+    if (transport.Calls != 1) throw new Exception("Evento excluído foi recriado silenciosamente.");
+}
+var ambiguousPosts = 0;
+using (var transport = new CalendarTestHandler((method, _, _, _) =>
+{
+    if (method == "GET") return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+    ambiguousPosts++;
+    throw new HttpRequestException("falha depois de enviar");
+}))
+using (var api = new GoogleCalendarApi(auth, new HttpClient(transport)))
+{
+    await ExpectFailure(() => api.EnsureOperationalEvent(operationDraft), "pode ter salvo");
+    if (ambiguousPosts != 1 || transport.Calls != 2)
+        throw new Exception("Criação integrada ambígua foi repetida.");
+}
+Console.WriteLine("PASS: criação integrada recuperável, identidade por atendimento, conflito concorrente, origem e exclusão protegidas.");
+
 static async Task ExpectFailure(Func<Task> operation, string message)
 {
     try { await operation(); }

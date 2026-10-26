@@ -5,7 +5,8 @@ namespace CentralWhatsApp.WebView2;
 
 internal sealed record AgendaLocalSnapshot(string Id, int Revision, string Client,
     string Service, string[] ServiceIds, string Date, string Time, string Status,
-    string Phone, string Address)
+    string Phone, string Address, int Duration = 60, string Notes = "",
+    string Responsible = "", string Email = "", string Kind = "pf", string Technician = "")
 {
     internal static AgendaLocalSnapshot Parse(JsonElement row)
     {
@@ -19,7 +20,20 @@ internal sealed record AgendaLocalSnapshot(string Id, int Revision, string Clien
                 ? ids.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String)
                     .Select(x => x.GetString()!).ToArray() : [],
             Read(row, "date"), time.Length > 5 ? time[..5] : time,
-            Read(row, "status"), Read(row, "phone"), Read(row, "address"));
+            Read(row, "status"), Read(row, "phone"), Read(row, "address"),
+            row.TryGetProperty("duration", out var duration) ? duration.GetInt32() : 60,
+            Read(row, "notes"), Read(row, "responsible"), Read(row, "email"),
+            Read(row, "kind"), Read(row, "technician"));
+    }
+    internal GoogleEventDraft AsGoogleDraft(string companyId)
+    {
+        if (!DateOnly.TryParseExact(Date, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var day) ||
+            !TimeOnly.TryParse(Time, System.Globalization.CultureInfo.InvariantCulture, out var clock))
+            throw new InvalidOperationException("Informe data e horário válidos no atendimento.");
+        var description = $"Serviços: {Service}\nResponsável: {Responsible}\nWhatsApp: {Phone}\nEquipe: {Technician}\n{Notes}";
+        return new GoogleEventDraft(Service + " - " + Client, description, Address,
+            day, clock, Duration, false).ForAppointment(Guid.Parse(companyId), Guid.Parse(Id));
     }
     public override string ToString() => $"{Date} {Time} • {Client} • {Service}";
 }

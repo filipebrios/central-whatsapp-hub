@@ -62,7 +62,7 @@ Requisitos permanentes:
 ## Estado atual confirmado
 
 - 26/10: usuário concluiu no Windows a autorização OAuth, leitura do evento preparado e criação, edição e exclusão de um evento descartável no calendário secundário **MODUX - TESTES**, usando o verificador do CI #40318275302. Etapa 2 aprovada para o piloto; CRUD básico real confirmado. Isso não autoriza gravações na agenda operacional nem comprova recorrências/séries, convites ou sincronização Supabase.
-- 26/10: vínculo explícito Google/Supabase em implementação na branch 1.9. Migração remota `20261026142854_modux_google_calendar_links` aplicada: unicidade por evento/atendimento/calendário, RPC invoker com revisão/lock, RLS e privilégios mínimos. Testes transacionais de idempotência, conflito, revisão, isolamento e anonimato passaram com rollback integral (0 fixtures/vínculos persistidos). Código Windows aguardando CI.
+- 26/10: vínculo explícito Google/Supabase em implementação na branch 1.9. Migração remota `20261026142854_modux_google_calendar_links` aplicada: unicidade por evento/atendimento/calendário, RPC invoker com revisão/lock, RLS e privilégios mínimos. Testes transacionais de idempotência, conflito, revisão, isolamento e anonimato passaram com rollback integral (0 fixtures/vínculos persistidos). Código de vínculo/projeção passou nos testes C# e compilação Windows no CI #40340412410. Criação integrada recuperável em implementação; não há novo instalador.
 
 - 26/10: preparado verificador Google portátil independente em `tools/GoogleCalendarDiagnostic`, usando os mesmos componentes OAuth/API/formulários da 1.9. Armazena tokens na pasta própria `GoogleOAuthDiagnostic`, sem abrir sessões WhatsApp/WaSeller nem alterar o aplicativo instalado. Não é instalador nem release 1.9. CI #40318275302 concluiu testes, compilação Windows e verificador autocontido; artefato #12647269936 disponível até 09/11/2026. Execução real de OAuth e CRUD básico confirmada pelo usuário em 26/10; demais fluxos ainda pendentes.
 
@@ -104,6 +104,8 @@ Requisitos permanentes:
 - Alterações atribuídas ao Manus não estão no repositório conhecido.
 
 ## Pendências priorizadas
+
+- Validar CI da criação integrada recuperável (ID Google derivado do atendimento, propriedades privadas de origem, consulta antes de criar, recuperação de disputa 409 sem sobrescrever). Depois concluir reconciliação de datas/ETags e edição operacional.
 
 - Consolidar vínculo Google/Supabase no aplicativo principal e validar a UI na entrega integrada. O piloto OAuth + CRUD básico no calendário de testes já foi confirmado pelo usuário; não pedir repetição sem falha nova.
 - Concluir reconciliação de revisões/ETags, criação operacional integrada, edição de dados PF/PJ, recorrência e convites, rotinas de mensagens com revisão humana e redesign geral.
@@ -248,6 +250,14 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-26 — criação integrada recuperável e cancelamento OAuth
+
+- Vínculo/projeção por IDs e testes do cliente Supabase passaram no CI #40340412410, junto com regressões e compilação Windows.
+- Formulário de atendimento oferece criação no Google de testes quando conectado. O atendimento é salvo primeiro com UUID explícito; o evento usa ID `modu` + UUID do atendimento e propriedades privadas de empresa/atendimento. `EnsureOperationalEvent` consulta antes de criar, recupera disputa 409 por leitura e recusa origem divergente ou evento excluído (410), sem reenvio cego após timeout.
+- Se Google ou vínculo falhar após salvar o atendimento, a interface informa pendência e permite `Completar Google` no mesmo cadastro, reaproveitando a identidade; nunca manda cadastrar tudo de novo nem anuncia sincronização concluída sem vínculo confirmado.
+- Acrescentado botão `Cancelar autorização` e cancelamento ao fechar a janela enquanto aguarda navegador, corrigindo espera sem saída relatada no piloto. Não foi identificada causa comprovada para o 404 inicial; o usuário conseguiu autorizar depois.
+- Novos testes cobrem identidade estável entre rascunhos, propriedade de origem, recuperação de evento existente/disputa, evento excluído e falha ambígua. Aguardando CI desta alteração; sem instalador intermediário e sem escrita operacional liberada.
 
 ### 2026-10-26 — OAuth real aprovado e vínculo Google/Supabase
 

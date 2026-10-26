@@ -23,7 +23,9 @@ internal sealed class GoogleCalendarManageDialog : Form
         authorize = Button("2. Autorizar no navegador"),
         select = Button("3. Usar calendário selecionado"),
         verify = Button("4. Verificar evento de teste"),
-        disconnect = Button("Desconectar este Windows");
+        disconnect = Button("Desconectar este Windows"),
+        cancelAuthorization = Button("Cancelar autorização");
+    private CancellationTokenSource? authorizationCancellation;
     private readonly DateTimePicker testDate = new()
     {
         Format = DateTimePickerFormat.Custom, CustomFormat = "dd/MM/yyyy",
@@ -62,6 +64,9 @@ internal sealed class GoogleCalendarManageDialog : Form
         });
         body.Controls.Add(chooseFile);
         body.Controls.Add(authorize);
+        cancelAuthorization.BackColor = Color.FromArgb(83, 96, 107);
+        cancelAuthorization.Click += (_, _) => authorizationCancellation?.Cancel();
+        body.Controls.Add(cancelAuthorization);
         body.Controls.Add(new Label
         {
             Text = "Nesta fase, somente MODUX - TESTES pode receber alterações:",
@@ -101,8 +106,12 @@ internal sealed class GoogleCalendarManageDialog : Form
         {
             if (!busy) return;
             e.Cancel = true;
-            state.Text = "Aguarde a operação Google terminar antes de fechar. " +
-                         "A autorização no navegador tem limite de 4 minutos.";
+            if (authorizationCancellation is not null)
+            {
+                authorizationCancellation.Cancel();
+                state.Text = "Cancelando a autorização. Aguarde e feche a janela novamente.";
+            }
+            else state.Text = "Aguarde a consulta Google terminar antes de fechar.";
         };
         Shown += async (_, _) =>
         {
@@ -131,6 +140,8 @@ internal sealed class GoogleCalendarManageDialog : Form
 
     private void RefreshStatus()
     {
+        cancelAuthorization.Visible = authorizationCancellation is not null;
+        cancelAuthorization.Enabled = authorizationCancellation is { IsCancellationRequested: false };
         chooseFile.Enabled = !busy;
         authorize.Enabled = !busy && oauth.Configured;
         calendars.Enabled = disconnect.Enabled = testDate.Enabled = !busy;
@@ -175,15 +186,22 @@ internal sealed class GoogleCalendarManageDialog : Form
     private async Task Authorize()
     {
         if (busy) return;
+        using var cancellation = new CancellationTokenSource();
+        authorizationCancellation = cancellation;
         busy = true;
         RefreshStatus();
-        state.Text = "Aguardando autorização no navegador padrão (até 4 minutos)...";
+        var cancelled = false;
+        state.Text = "Aguardando autorização no navegador padrão (até 4 minutos). Use Cancelar autorização para interromper.";
         try
         {
-            await oauth.AuthorizeAsync();
+            await oauth.AuthorizeAsync(cancellation.Token);
+            authorizationCancellation = null;
+            RefreshStatus();
             Changed = true;
             await RefreshCalendars();
         }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        { cancelled = true; }
         catch (Exception error) when (error is InvalidOperationException or
             HttpRequestException or TaskCanceledException or IOException)
         {
@@ -192,8 +210,10 @@ internal sealed class GoogleCalendarManageDialog : Form
         }
         finally
         {
+            authorizationCancellation = null;
             busy = false;
             RefreshStatus();
+            if (cancelled) state.Text = "Autorização cancelada. Você pode tentar novamente sem reiniciar o verificador.";
         }
     }
 

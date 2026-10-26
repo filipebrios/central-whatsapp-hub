@@ -32,6 +32,12 @@ internal sealed class AgendaAppointmentDialog : Form
     };
     private readonly TextBox technician = new() { Dock = DockStyle.Top, PlaceholderText = "Técnico ou equipe (opcional)" };
     private readonly TextBox notes = new() { Dock = DockStyle.Fill, Multiline = true, ScrollBars = ScrollBars.Vertical };
+    private readonly CheckBox googleSync = new()
+    {
+        Text = "Criar também no Google • MODUX - TESTES", Dock = DockStyle.Bottom,
+        Height = 30, Padding = new Padding(20, 0, 0, 0)
+    };
+    internal bool CreateGoogleEvent => googleSync.Checked;
     private readonly Button save = MakeButton("Salvar na Agenda");
     private readonly Button cancel = MakeButton("Cancelar");
 
@@ -51,9 +57,10 @@ internal sealed class AgendaAppointmentDialog : Form
 
     internal AgendaAppointmentInput? Result { get; private set; }
 
-    internal AgendaAppointmentDialog(DateOnly initialDay)
+    internal AgendaAppointmentDialog(DateOnly initialDay, bool allowGoogle = false)
     {
         Text = "Novo agendamento • São Bento";
+        googleSync.Enabled = googleSync.Checked = allowGoogle;
         Width = 680; Height = 765;
         MinimumSize = new Size(570, 600);
         StartPosition = FormStartPosition.CenterParent;
@@ -104,7 +111,11 @@ internal sealed class AgendaAppointmentDialog : Form
             Text = "Salva no Supabase. Não envia WhatsApp e não cria evento no Google Agenda.",
             ForeColor = Color.FromArgb(78, 96, 81), Font = new Font("Segoe UI", 8)
         };
-        Controls.Add(fields); Controls.Add(hint); Controls.Add(buttons);
+        googleSync.CheckedChanged += (_, _) => hint.Text = googleSync.Checked
+            ? "Salva o atendimento e cria o evento no calendário de testes. Não envia WhatsApp."
+            : "Salva somente o atendimento no Supabase. Não cria evento Google nem envia WhatsApp.";
+        if (googleSync.Checked) hint.Text = "Salva o atendimento e cria o evento no calendário de testes. Não envia WhatsApp.";
+        Controls.Add(fields); Controls.Add(hint); Controls.Add(googleSync); Controls.Add(buttons);
         save.Click += (_, _) => Confirm();
         cancel.Click += (_, _) => DialogResult = DialogResult.Cancel;
         AcceptButton = save;

@@ -29,6 +29,8 @@ internal sealed class AgendaPanel : UserControl
     private readonly GoogleCalendarApi googleApi;
     private readonly Button googleApiButton = MakeButton("Google (editar)");
     private readonly AgendaCalendarLinkStore linkStore;
+    private sealed record AgendaRowContext(GoogleEventSnapshot? Google, AgendaLocalSnapshot? Local);
+    private readonly Button completeGoogleButton = MakeButton("Completar Google");
     private readonly Button linkButton = MakeButton("Vincular atendimento");
     private readonly List<AgendaLocalSnapshot> localAppointments = [];
     private IReadOnlyList<AgendaCalendarLink> calendarLinks = [];
@@ -39,7 +41,7 @@ internal sealed class AgendaPanel : UserControl
     private int googleEventCount;
     private int googleTestEventCount;
     private int supabaseEventCount;
-    private readonly List<(string[] Values, AgendaServiceCategory Category, GoogleEventSnapshot? Google)> cachedRows = [];
+    private readonly List<(string[] Values, AgendaServiceCategory Category, GoogleEventSnapshot? Google, AgendaLocalSnapshot? Local)> cachedRows = [];
     private DateOnly? filterDate;
     private bool suspendRefresh;
     private readonly Label status = new() { Dock = DockStyle.Bottom, Height = 54, AutoEllipsis = true, ForeColor = Color.FromArgb(59, 74, 92), Padding = new Padding(12, 9, 12, 0) };
@@ -128,7 +130,7 @@ internal sealed class AgendaPanel : UserControl
                 await LoadAppointments();
             }
         };
-        add.Text = "+ Agendamento local";
+        add.Text = "+ Agendamento";
         googleApiButton.BackColor = Color.FromArgb(3, 91, 54);
         googleApiButton.Click += async (_, _) =>
         {
@@ -144,6 +146,8 @@ internal sealed class AgendaPanel : UserControl
         bar.Controls.Add(refresh); bar.Controls.Add(add);
         bar.Controls.Add(googleNewButton);
         bar.Controls.Add(linkButton);
+        bar.Controls.Add(completeGoogleButton);
+        completeGoogleButton.Click += async (_, _) => await CompleteSelectedGoogleEvent();
         linkButton.Click += async (_, _) => await LinkSelectedGoogleEvent();
         bar.Controls.Add(googleApiButton);
         bar.Controls.Add(googleButton); bar.Controls.Add(signOut);
@@ -286,6 +290,8 @@ internal sealed class AgendaPanel : UserControl
             using var request = new HttpRequestMessage(method, path);
             request.Headers.Add("apikey", PublicKey);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            if (method == HttpMethod.Post || method == HttpMethod.Patch)
+                request.Headers.TryAddWithoutValidation("Prefer", "return=representation");
             if (data is not null) request.Content = Json(data);
             return await http.SendAsync(request);
         }
@@ -323,7 +329,7 @@ internal sealed class AgendaPanel : UserControl
                 1 => first.AddDays(6),
                 _ => first.AddMonths(1).AddDays(-1)
             };
-            var query = "rest/v1/agenda_appointments?select=id,revision,client,phone,primary_service,service_ids,date,time,status,address" +
+            var query = "rest/v1/agenda_appointments?select=id,revision,client,phone,primary_service,service_ids,date,time,status,address,duration,notes,responsible,email,kind,technician" +
                 "&company_id=eq." + Uri.EscapeDataString(companyId) + "&deleted_at=is.null" +
                 $"&date=gte.{first:yyyy-MM-dd}&date=lte.{last:yyyy-MM-dd}" +
                 "&order=date.asc,time.asc&limit=500";
@@ -356,7 +362,7 @@ internal sealed class AgendaPanel : UserControl
                             item.Date.ToString("yyyy-MM-dd"), item.Time,
                             item.Title, category.Label, "Google • leitura", "",
                             item.Location
-                        ], category, null));
+                        ], category, null, null));
 
                         googleEventCount++;
                     }
@@ -387,7 +393,7 @@ internal sealed class AgendaPanel : UserControl
                         if (group.Any(id => !Guid.TryParse(id, out _)))
                             throw new InvalidOperationException("Vínculo contém identificação inválida.");
                         using var extra = await Authorized(HttpMethod.Get,
-                            "rest/v1/agenda_appointments?select=id,revision,client,phone,primary_service,service_ids,date,time,status,address" +
+                            "rest/v1/agenda_appointments?select=id,revision,client,phone,primary_service,service_ids,date,time,status,address,duration,notes,responsible,email,kind,technician" +
                             "&company_id=eq." + Uri.EscapeDataString(companyId) +
                             "&deleted_at=is.null&id=in.(" + string.Join(",", group) + ")");
                         RequireSuccess(extra);
@@ -422,7 +428,7 @@ internal sealed class AgendaPanel : UserControl
                     local?.Client ?? google!.Title,
                     local?.Service ?? category.Label, state, local?.Phone ?? "",
                     google?.Location ?? local!.Address
-                ], category, google));
+                ], category, google, local));
             }
             foreach (var row in cachedRows)
                 if (DateOnly.TryParseExact(row.Values[0], "yyyy-MM-dd",
@@ -458,12 +464,12 @@ internal sealed class AgendaPanel : UserControl
     private void ShowCachedRows()
     {
         grid.Rows.Clear();
-        foreach (var (record, category, google) in cachedRows)
+        foreach (var (record, category, google, local) in cachedRows)
         {
             if (filterDate is not null && record[0] != filterDate.Value.ToString("yyyy-MM-dd"))
                 continue;
             var index = grid.Rows.Add(record);
-            grid.Rows[index].Tag = google;
+            grid.Rows[index].Tag = new AgendaRowContext(google, local);
             grid.Rows[index].Cells[2].ToolTipText = google is not null
                 ? "MODUX - TESTES: duplo clique para editar evento fictício"
                 : "Operacional: agendamento local ou iCal somente leitura";
@@ -489,13 +495,51 @@ internal sealed class AgendaPanel : UserControl
     private void UpdateLinkButton()
     {
         linkButton.Enabled = !busy && linksReady && googleOAuth.CanWriteSelectedCalendar &&
-            grid.SelectedRows.Count == 1 && grid.SelectedRows[0].Tag is GoogleEventSnapshot;
+            grid.SelectedRows.Count == 1 && grid.SelectedRows[0].Tag is AgendaRowContext { Google: not null };
+        completeGoogleButton.Enabled = !busy && linksReady && googleOAuth.CanWriteSelectedCalendar &&
+            grid.SelectedRows.Count == 1 && grid.SelectedRows[0].Tag is AgendaRowContext { Google: null, Local: { } local } &&
+            !calendarLinks.Any(link => link.AppointmentId == local.Id && link.CalendarId == googleOAuth.CalendarId);
+    }
+
+    private async Task CompleteSelectedGoogleEvent()
+    {
+        if (busy || companyId is null || !linksReady || !googleOAuth.CanWriteSelectedCalendar ||
+            grid.SelectedRows.Count != 1 ||
+            grid.SelectedRows[0].Tag is not AgendaRowContext { Google: null, Local: { } local }) return;
+        if (calendarLinks.Any(link => link.AppointmentId == local.Id && link.CalendarId == googleOAuth.CalendarId))
+        { Status("O atendimento já possui vínculo. Confira o evento original antes de tentar criar outro."); return; }
+        if (MessageBox.Show(this, $"Criar ou recuperar no calendário MODUX - TESTES o evento do atendimento de {local.Client}? " +
+            "O identificador do atendimento será reutilizado para evitar duplicação.", "Completar Google",
+            MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+        SetBusy(true);
+        try
+        {
+            await CompleteGoogle(local);
+            Status("Evento Google e vínculo confirmados. Nenhum WhatsApp foi enviado.");
+        }
+        catch (Exception error) when (error is InvalidOperationException or HttpRequestException
+            or TaskCanceledException or JsonException)
+        { MessageBox.Show(this, "O atendimento permanece salvo. A conclusão Google/vínculo está pendente: " +
+            error.Message, "Google pendente", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        finally { SetBusy(false); }
+        await LoadAppointments();
+    }
+
+    private async Task CompleteGoogle(AgendaLocalSnapshot local)
+    {
+        if (companyId is null || !googleOAuth.CanWriteSelectedCalendar)
+            throw new InvalidOperationException("Conecte primeiro o calendário MODUX - TESTES.");
+        var calendarId = googleOAuth.CalendarId!;
+        var draft = local.AsGoogleDraft(companyId);
+        _ = draft.AsGoogleFields();
+        var saved = await googleApi.EnsureOperationalEvent(draft);
+        await linkStore.Link(companyId, local, calendarId, saved);
     }
 
     private async Task LinkSelectedGoogleEvent()
     {
         if (busy || !linksReady || companyId is null || !googleOAuth.CanWriteSelectedCalendar ||
-            grid.SelectedRows.Count != 1 || grid.SelectedRows[0].Tag is not GoogleEventSnapshot google) return;
+            grid.SelectedRows.Count != 1 || grid.SelectedRows[0].Tag is not AgendaRowContext { Google: { } google }) return;
         var calendarId = googleOAuth.CalendarId!;
         if (calendarLinks.Any(link => link.EventId == google.Id && link.CalendarId == calendarId))
         {
@@ -562,7 +606,7 @@ internal sealed class AgendaPanel : UserControl
             Status("Edição bloqueada: selecione a agenda isolada MODUX - TESTES.");
             return;
         }
-        if (grid.Rows[rowIndex].Tag is not GoogleEventSnapshot google)
+        if (grid.Rows[rowIndex].Tag is not AgendaRowContext { Google: { } google })
         {
             Status("Esse compromisso ainda não é editável no Google. Eventos iCal são apenas leitura.");
             return;
@@ -627,14 +671,22 @@ internal sealed class AgendaPanel : UserControl
     private async Task CreateAppointment()
     {
         if (busy || companyId is null) return;
-        using var dialog = new AgendaAppointmentDialog(calendar.SelectedDate);
+        using var dialog = new AgendaAppointmentDialog(calendar.SelectedDate, googleOAuth.CanWriteSelectedCalendar);
         if (dialog.ShowDialog(this) != DialogResult.OK || dialog.Result is not { } value) return;
         SetBusy(true);
         var saved = false;
+        var appointmentId = Guid.NewGuid();
         try
         {
+            // Validar o rascunho Google antes de criar o atendimento, quando solicitado.
+            if (dialog.CreateGoogleEvent)
+                _ = new AgendaLocalSnapshot(appointmentId.ToString("D"), 1, value.Client,
+                    value.PrimaryService, value.ServiceIds, value.Date, value.Time[..5], "agendado",
+                    value.Phone, value.Address, value.Duration, value.Notes, value.Responsible,
+                    value.Email, value.Kind, value.Technician).AsGoogleDraft(companyId).AsGoogleFields();
             using var response = await Authorized(HttpMethod.Post, "rest/v1/agenda_appointments", new
             {
+                id = appointmentId,
                 company_id = companyId, kind = value.Kind, client = value.Client,
                 responsible = value.Responsible, phone = value.Phone, email = value.Email,
                 address = value.Address, service_ids = value.ServiceIds,
@@ -645,10 +697,23 @@ internal sealed class AgendaPanel : UserControl
             });
             RequireSuccess(response);
             saved = true;
-            Status("Agendamento salvo na nuvem. Nenhum WhatsApp ou evento Google foi enviado.");
+            if (dialog.CreateGoogleEvent)
+            {
+                using var created = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                if (created.RootElement.ValueKind != JsonValueKind.Array || created.RootElement.GetArrayLength() != 1)
+                    throw new InvalidOperationException("Atendimento salvo, mas resposta incompleta. Atualize e use Completar Google.");
+                await CompleteGoogle(AgendaLocalSnapshot.Parse(created.RootElement[0]));
+                Status("Atendimento, evento Google e vínculo confirmados. Nenhum WhatsApp foi enviado.");
+            }
+            else Status("Agendamento salvo na nuvem, sem evento Google nem envio WhatsApp.");
         }
         catch (Exception error) when (error is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
-        { Status("Não foi possível salvar: " + error.Message); }
+        {
+            var message = saved ? "Atendimento salvo. Google/vínculo pendente: "
+                : "Salvamento não confirmado. Em caso de falha de conexão, atualize antes de cadastrar novamente: ";
+            Status(message + error.Message);
+            MessageBox.Show(this, message + error.Message, "Conferir agendamento", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
         finally { SetBusy(false); }
         if (saved)
         {

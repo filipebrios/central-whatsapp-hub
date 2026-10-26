@@ -59,6 +59,16 @@ internal sealed class GoogleCalendarApi : IDisposable
             response.Dispose();
             throw new InvalidOperationException("A autorização Google expirou. Reconecte sua conta.");
         }
+        if (status is HttpStatusCode.NotFound or HttpStatusCode.Gone)
+        {
+            response.Dispose();
+            throw new GoogleEventUnavailableException(status);
+        }
+        if (status == HttpStatusCode.Conflict)
+        {
+            response.Dispose();
+            throw new GoogleEventIdentityConflictException();
+        }
         if (!response.IsSuccessStatusCode)
         {
             response.Dispose();
@@ -147,6 +157,15 @@ internal sealed class GoogleCalendarApi : IDisposable
         // Uma dúvida de rede deve ser resolvida por consulta, nunca novo POST cego.
         var payload = JsonSerializer.SerializeToNode(draft.AsGoogleFields())!.AsObject();
         payload["id"] = draft.CreateRequestId;
+        if (draft.OperationalCompanyId is { } company && draft.OperationalAppointmentId is { } appointment)
+            payload["extendedProperties"] = new JsonObject
+            {
+                ["private"] = new JsonObject
+                {
+                    ["modux_company_id"] = company.ToString("D"),
+                    ["modux_appointment_id"] = appointment.ToString("D")
+                }
+            };
         try
         {
             using var response = await Request(HttpMethod.Post, path, payload, ct: ct);
@@ -161,6 +180,33 @@ internal sealed class GoogleCalendarApi : IDisposable
             throw new InvalidOperationException(
                 "A conexão falhou durante a criação. O Google pode ter salvo o evento. " +
                 "Atualize o calendário de testes antes de tentar criar novamente.", error);
+        }
+    }
+
+    /// <summary>Recupera antes de criar. Repetições entre processos usam o ID do atendimento.</summary>
+    internal async Task<GoogleEventSnapshot> EnsureOperationalEvent(GoogleEventDraft draft,
+        CancellationToken ct = default)
+    {
+        auth.DemandSafeWrite();
+        if (draft.OperationalCompanyId is null || draft.OperationalAppointmentId is null)
+            throw new InvalidOperationException("A criação integrada exige a identidade do atendimento.");
+        GoogleEventSnapshot CheckIdentity(GoogleEventSnapshot found)
+        {
+            if (found.Id != draft.CreateRequestId ||
+                found.OperationalCompanyId != draft.OperationalCompanyId ||
+                found.OperationalAppointmentId != draft.OperationalAppointmentId)
+                throw new InvalidOperationException("O identificador Google já existe com outra origem. Nenhum evento foi alterado.");
+            return found;
+        }
+        try { return CheckIdentity(await Event(draft.CreateRequestId, ct)); }
+        catch (GoogleEventUnavailableException error) when (error.Status == HttpStatusCode.NotFound) { }
+        // 410 indica exclusão anterior: não recriar silenciosamente um evento cancelado.
+        try { return CheckIdentity(await Create(draft, ct)); }
+        catch (GoogleEventIdentityConflictException)
+        {
+            // Outro operador pode ter criado entre nosso GET e POST. Apenas ler,
+            // verificar a origem e reaproveitar; nunca substituir o registro.
+            return CheckIdentity(await Event(draft.CreateRequestId, ct));
         }
     }
 
@@ -218,6 +264,23 @@ internal sealed record GoogleEventSnapshot(
     int Duration, string? ColorId, string? RecurringEventId)
 {
     internal bool SpansMultipleDays { get; init; }
+    internal Guid? OperationalCompanyId { get; init; }
+    internal Guid? OperationalAppointmentId { get; init; }
+
+    private static GoogleEventSnapshot WithIdentity(GoogleEventSnapshot snapshot, JsonElement source)
+    {
+        Guid? Read(string key)
+        {
+            if (source.TryGetProperty("extendedProperties", out var properties) &&
+                properties.ValueKind == JsonValueKind.Object &&
+                properties.TryGetProperty("private", out var metadata) && metadata.ValueKind == JsonValueKind.Object &&
+                metadata.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String &&
+                Guid.TryParse(value.GetString(), out var id)) return id;
+            return null;
+        }
+        return snapshot with { OperationalCompanyId = Read("modux_company_id"),
+            OperationalAppointmentId = Read("modux_appointment_id") };
+    }
 
     internal static GoogleEventSnapshot? Parse(JsonElement e)
     {
@@ -237,12 +300,12 @@ internal sealed record GoogleEventSnapshot(
                 !DateOnly.TryParse(endDay.GetString(), out var endsOn) ||
                 endsOn <= date) return null; // Fim de dia inteiro é exclusivo.
             var multiDay = endsOn > date.AddDays(1);
-            return new GoogleEventSnapshot(eid, Get(e, "etag"), Get(e, "summary"),
+            return WithIdentity(new GoogleEventSnapshot(eid, Get(e, "etag"), Get(e, "summary"),
                 Get(e, "description"), Get(e, "location"), date, "Dia todo",
                 true, 1440, Get(e, "colorId"), Get(e, "recurringEventId"))
             {
                 SpansMultipleDays = multiDay
-            };
+            }, e);
         }
         if (!DateTimeOffset.TryParse(Get(start, "dateTime"), out var begin) ||
             !DateTimeOffset.TryParse(Get(end, "dateTime"), out var finish) ||
@@ -251,7 +314,7 @@ internal sealed record GoogleEventSnapshot(
         var local = TimeZoneInfo.ConvertTime(begin, saoPaulo);
         var localEnd = TimeZoneInfo.ConvertTime(finish, saoPaulo);
         var minutes = Math.Max(1, (int)Math.Round((finish - begin).TotalMinutes));
-        return new GoogleEventSnapshot(eid, Get(e, "etag"), Get(e, "summary"),
+        return WithIdentity(new GoogleEventSnapshot(eid, Get(e, "etag"), Get(e, "summary"),
             Get(e, "description"), Get(e, "location"), DateOnly.FromDateTime(local.DateTime),
             local.ToString("HH:mm"), false, minutes, Get(e, "colorId"),
             Get(e, "recurringEventId"))
@@ -259,7 +322,7 @@ internal sealed record GoogleEventSnapshot(
             // Importante: eventos com horário atravessando a meia-noite também
             // precisam da proteção contra edição que alteraria sua duração.
             SpansMultipleDays = local.Date != localEnd.Date
-        };
+        }, e);
     }
 }
 
@@ -269,7 +332,17 @@ internal sealed record GoogleEventDraft(string Title, string Description, string
 {
     // Prefixo "modu" e UUID hexadecimal usam apenas caracteres base32hex [0-9a-v],
     // como exige a API Google Calendar. Não publicar esses IDs como segredo.
-    internal string CreateRequestId { get; } = "modu" + Guid.NewGuid().ToString("N");
+    internal string CreateRequestId { get; private init; } = "modu" + Guid.NewGuid().ToString("N");
+    internal Guid? OperationalCompanyId { get; private init; }
+    internal Guid? OperationalAppointmentId { get; private init; }
+
+    internal GoogleEventDraft ForAppointment(Guid companyId, Guid appointmentId)
+    {
+        if (companyId == Guid.Empty || appointmentId == Guid.Empty)
+            throw new InvalidOperationException("Identidade do atendimento inválida.");
+        return this with { CreateRequestId = "modu" + appointmentId.ToString("N"),
+            OperationalCompanyId = companyId, OperationalAppointmentId = appointmentId };
+    }
 
     internal object AsGoogleFields()
     {
@@ -307,3 +380,14 @@ internal interface IGoogleCalendarAuthorization
     Task<string> AccessTokenAsync(CancellationToken ct);
     void DemandSafeWrite();
 }
+
+internal sealed class GoogleEventUnavailableException(HttpStatusCode status)
+    : InvalidOperationException(status == HttpStatusCode.Gone
+        ? "O evento foi excluído no Google. Confira o atendimento antes de reagendar."
+        : "Evento não encontrado no Google Agenda.")
+{
+    internal HttpStatusCode Status { get; } = status;
+}
+
+internal sealed class GoogleEventIdentityConflictException()
+    : InvalidOperationException("O identificador do evento já existe no Google. Atualize antes de tentar novamente.") { }
