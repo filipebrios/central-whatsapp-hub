@@ -97,10 +97,27 @@ internal sealed class GoogleCalendarManageDialog : Form
             calendars.Items.Clear();
             RefreshStatus();
         };
+        FormClosing += (_, e) =>
+        {
+            if (!busy) return;
+            e.Cancel = true;
+            state.Text = "Aguarde a operação Google terminar antes de fechar. " +
+                         "A autorização no navegador tem limite de 4 minutos.";
+        };
         Shown += async (_, _) =>
         {
             RefreshStatus();
-            if (oauth.Connected) await RefreshCalendars();
+            if (!oauth.Connected) return;
+            busy = true;
+            RefreshStatus();
+            try { await RefreshCalendars(); }
+            finally
+            {
+                var result = state.Text;
+                busy = false;
+                RefreshStatus();
+                state.Text = result;
+            }
         };
     }
 

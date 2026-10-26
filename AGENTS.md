@@ -253,6 +253,7 @@ Antes de entregar uma versão:
 - Criada ferramenta WinForms separada com a implementação Google compartilhada da 1.9, contendo conexão, consulta por dia e CRUD confirmado de eventos fictícios. Guarda do calendário de testes se aplica também antes da leitura nesta ferramenta.
 - Credenciais/tokens cifrados em `%LOCALAPPDATA%\CentralWhatsApp\GoogleOAuthDiagnostic`; construtor padrão do MODUX mantém `WebView2Prototype`. A ferramenta não referencia WebView2, Supabase, banco operacional ou contas WhatsApp.
 - CI prepara executável Windows x64 autocontido como artefato interno de 14 dias, com instruções. Não cria instalador, release pública nem substitui 1.8.2. Validação real continua dependente da execução pelo responsável.
+- Diálogo OAuth bloqueia fechamento/troca de conta durante operações pendentes e protege também o carregamento inicial de calendários contra ações concorrentes.
 - Importação OAuth rejeita JSON sem objeto installed/client_id com mensagem controlada em vez de KeyNotFoundException.
 - Aguardando CI para compilação e artefato; nenhuma autenticação real declarada concluída.
 
