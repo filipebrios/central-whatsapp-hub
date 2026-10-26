@@ -3,5 +3,7 @@
   "tag": "modux-v1.9.0-beta1",
   "validated_run": 40372627924,
   "platform": "windows-x64",
-  "customer_response_page_required": true
+  "customer_response_page_required": true,
+  "response_page": "https://sbento.com.br/modux-resposta.html",
+  "attempt": 2
 }

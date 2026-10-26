@@ -69,7 +69,7 @@ internal static class AgendaWorkflowRules
         if (!Regex.IsMatch(token, "^[0-9a-f]{64}$"))
             throw new InvalidOperationException("Link de resposta inválido. Atualize a rotina.");
         var text = message.Text + "\n\nResponda por este link exclusivo do atendimento:\n" +
-            "https://www.sbento.com.br/modux-resposta.html#token=" + token;
+            "https://sbento.com.br/modux-resposta.html#token=" + token;
         if (text.Length > ComposeRequest.MaxTextLength)
             throw new InvalidOperationException("O modelo ficou longo demais com o link. Reduza o texto antes de preparar.");
         return message with { Text = text };

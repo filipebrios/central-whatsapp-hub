@@ -13,15 +13,15 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
     const url = new URL(route.request().url());
     if (url.origin === "https://snypbekmjseayljvltwq.supabase.co") {
       if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204,
-        headers: { "access-control-allow-origin": "https://www.sbento.com.br", "access-control-allow-methods": "POST", "access-control-allow-headers": "content-type" } });
+        headers: { "access-control-allow-origin": "https://sbento.com.br", "access-control-allow-methods": "POST", "access-control-allow-headers": "content-type" } });
       const data = route.request().postDataJSON(); calls.push(data);
       return route.fulfill({ status: 200, contentType: "application/json",
-        headers: { "access-control-allow-origin": "https://www.sbento.com.br" },
+        headers: { "access-control-allow-origin": "https://sbento.com.br" },
         body: JSON.stringify(data.operation === "lookup" ? reply : { status: "recorded" }) });
     }
     const types = { ".html": "text/html", ".css": "text/css", ".mjs": "text/javascript" };
     const filename = path.basename(url.pathname);
-    if (url.origin === "https://www.sbento.com.br" && /^modux-resposta\.(html|css|mjs)$/.test(filename))
+    if (url.origin === "https://sbento.com.br" && /^modux-resposta\.(html|css|mjs)$/.test(filename))
       return route.fulfill({ contentType: types[path.extname(filename)],
         body: await fs.readFile(path.join(__dirname, "../../client-response", filename), "utf8") });
     throw new Error("Unexpected external request: " + url.origin);
@@ -29,7 +29,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
   const open = async (hash = token) => {
     await page.goto("about:blank");
     calls = [];
-    await page.goto("https://www.sbento.com.br/modux-resposta.html" + (hash ? "#token=" + hash : ""));
+    await page.goto("https://sbento.com.br/modux-resposta.html" + (hash ? "#token=" + hash : ""));
     await page.waitForFunction(() => !document.getElementById("status").textContent.includes("Conferindo"));
   };
   try {

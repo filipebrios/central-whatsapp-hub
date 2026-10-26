@@ -61,6 +61,8 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- 26/10: página publicada no projeto Vercel sbento, commit `411572af`, e GET em `https://sbento.com.br/modux-resposta.html` retornou 200 com HTML correto; script também retornou 200. A variante www retornou 404, por isso links do app/pipeline usam o domínio canônico verificado sem www. Primeira tentativa do pacote foi bloqueada antes de gerar instalador; nova tentativa usa URL corrigida.
+
 - 26/10: CI #40372627924 aprovou revisão de horário antes de mensagens, Unicode da API, navegador móvel, temas/legenda e smoke Windows. Acionado pacote único 1.9.0 beta por manifesto explícito; pipeline ainda precisa validar novamente, conferir página pública, gerar/testar instalação e verificar assets/SHA-256 antes de liberar. NÃO considerar instalador publicado até confirmar release.
 
 - 26/10: CI #40371916359 aprovou C#/Node, página móvel e smoke Windows (grade 1028×155 nos dois temas). Capturas clara/escura conferidas internamente; refinados contraste da legenda e formato brasileiro de data. Convites e links permanecem sem envio real; página prévia sbento PR #26 compilou e GET autenticado retornou 200.
@@ -291,6 +293,12 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-26 — domínio canônico verificado
+
+- Página São Bento publicada; apex sbento.com.br retorna HTML/script 200. www retornou 404 (inclusive /bio), embora figurasse nos aliases; DNS não foi alterado.
+- Links do MODUX, teste de navegador e guarda do pacote usam `https://sbento.com.br/modux-resposta.html`. Pipeline anterior bloqueou antes de gerar instalador. Nova tentativa mantém beta1, ainda sem instalador publicado.
+
 
 ### 2026-10-26 — manifesto do instalador consolidado
 

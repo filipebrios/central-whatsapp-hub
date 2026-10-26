@@ -53,7 +53,7 @@ jobs:
           $ready = $false
           for ($attempt = 0; $attempt -lt 30; $attempt++) {
             try {
-              $page = Invoke-WebRequest "https://www.sbento.com.br/modux-resposta.html" -TimeoutSec 15
+              $page = Invoke-WebRequest "https://sbento.com.br/modux-resposta.html" -TimeoutSec 15
               if ($page.StatusCode -eq 200 -and $page.Content.Contains('id="confirmation"') -and $page.Content.Contains('modux-resposta.mjs')) { $ready = $true; break }
             } catch { Write-Host "Página pública ainda não disponível; aguardando publicação validada." }
             Start-Sleep -Seconds 10
