@@ -61,6 +61,8 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- 26/10: edição operacional passou nos testes/compilação Windows no CI #40343259988. Catálogo compartilhado inicial aplicado e conferido: 12 definições (10 serviços ativos + 2 categorias de legenda), seis cores históricas preservadas. Configuração de cores/rótulos por administrador e leitura compartilhada em validação.
+
 - 26/10: reconciliação vinculada/cancelamento passaram no CI #40342399727. Edição operacional PF/PJ em implementação: PATCH condicionado a empresa/ID/revisão; horários vinculados preservados, alteração pelo editor Google. Aguardar novo CI e validação integrada da UI.
 
 - 26/10: criação integrada recuperável e cancelamento OAuth passaram nos testes/compilação Windows no CI #40341480502. Reconciliação de horários/ETags e cancelamento vinculado em integração; migração remota `20261026143956_modux_google_calendar_reconciliation` e testes SQL com rollback aprovados. Não há novo instalador nem escrita na agenda operacional liberada.
@@ -108,6 +110,8 @@ Requisitos permanentes:
 - Alterações atribuídas ao Manus não estão no repositório conhecido.
 
 ## Pendências priorizadas
+
+- Validar CI do catálogo compartilhado e configuração de cores; depois concluir filtros/painel operacional, preparação de mensagens, redesign e empacotamento único. Configuração visual real e fluxo completo Windows serão testados na entrega consolidada.
 
 - Validar CI da edição operacional; concluir catálogo/cores compartilhados, busca/filtros, painel e mensagens preparadas, redesign e instalador consolidado. Não confundir fases Google/Supabase já testadas com entrega completa.
 
@@ -258,6 +262,15 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-26 — catálogo e cores compartilhados
+
+- CI #40343259988 aprovou edição operacional com CAS, regressões e compilação Windows.
+- Catálogo `agenda_service_types` preenchido por migração `20261026145133`, sem sobrescrever valores existentes: 10 serviços ativos e categorias de cancelado/não identificado para legenda. Consulta confirmou as seis cores históricas exatas; auxiliares mantêm cores propostas já usadas pelo MODUX.
+- `AgendaServiceCatalog` carrega apenas a empresa autorizada e aplica cores/rótulos ao formulário, grade e legendas. Administrador pode editar rótulo/cor com CAS por updated_at; RLS admin existente permanece como autorização real. Não altera cores no Google.
+- Contraste de texto calculado por luminância; logout limpa catálogo e legenda da empresa. Formulário usa catálogo compartilhado e preserva dados históricos de serviço quando não editados.
+- Renovação Supabase serializada para evitar duas trocas concorrentes do mesmo refresh token entre atualização periódica e diálogo de configuração.
+- Testes C# cobrem escopo, cores, contraste, prioridade de cancelado e conflito de configuração. Aguardando CI; nenhum novo instalador.
 
 ### 2026-10-26 — edição operacional e proteção do horário vinculado
 

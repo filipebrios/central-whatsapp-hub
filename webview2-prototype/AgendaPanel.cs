@@ -12,8 +12,9 @@ internal sealed class AgendaPanel : UserControl
     private const string ApiRoot = "https://snypbekmjseayljvltwq.supabase.co/";
     private const string PublicKey = "sb_publishable_X7TR995xLWtmFxrZBT65MA_yNUaizrC";
     private readonly HttpClient http = new() { BaseAddress = new Uri(ApiRoot), Timeout = TimeSpan.FromSeconds(25) };
-    private string? accessToken, refreshToken, companyId, currentUserId;
+    private string? accessToken, refreshToken, companyId, currentUserId, currentRole;
     private bool busy;
+    private readonly SemaphoreSlim sessionRenewal = new(1, 1);
 
     private readonly Panel loginPane = new() { Dock = DockStyle.Fill };
     private readonly Panel appointmentsPane = new() { Dock = DockStyle.Fill, Visible = false };
@@ -30,6 +31,8 @@ internal sealed class AgendaPanel : UserControl
     private readonly Button googleApiButton = MakeButton("Google (editar)");
     private readonly AgendaCalendarLinkStore linkStore;
     private readonly AgendaAppointmentStore appointmentStore;
+    private readonly AgendaServiceCatalog serviceCatalog;
+    private readonly Button catalogButton = MakeButton("Cores dos serviços");
     private readonly Button editLocalButton = MakeButton("Editar atendimento");
     private sealed record AgendaRowContext(GoogleEventSnapshot? Google, AgendaLocalSnapshot? Local);
     private readonly Button reconcileButton = MakeButton("Conferir vínculo");
@@ -72,6 +75,7 @@ internal sealed class AgendaPanel : UserControl
         googleApi = new GoogleCalendarApi(googleOAuth);
         linkStore = new AgendaCalendarLinkStore(Authorized);
         appointmentStore = new AgendaAppointmentStore(Authorized);
+        serviceCatalog = new AgendaServiceCatalog(Authorized);
         Dock = DockStyle.Fill;
         BackColor = Color.FromArgb(248, 250, 252);
         Font = new Font("Segoe UI", 10);
@@ -150,6 +154,8 @@ internal sealed class AgendaPanel : UserControl
         googleNewButton.Click += async (_, _) => await CreateGoogleEvent();
         bar.Controls.Add(refresh); bar.Controls.Add(add);
         bar.Controls.Add(editLocalButton);
+        bar.Controls.Add(catalogButton);
+        catalogButton.Click += async (_, _) => await ConfigureCatalog();
         editLocalButton.Click += async (_, _) => await EditSelectedAppointment();
         bar.Controls.Add(googleNewButton);
         bar.Controls.Add(linkButton);
@@ -218,6 +224,7 @@ internal sealed class AgendaPanel : UserControl
         busy = value;
         signIn.Enabled = refresh.Enabled = add.Enabled = signOut.Enabled = !value;
         googleButton.Enabled = googleApiButton.Enabled = !value;
+        catalogButton.Enabled = !value && currentRole == "admin";
         googleNewButton.Enabled = !value && googleOAuth.CanWriteSelectedCalendar;
         UpdateLinkButton();
     }
@@ -258,6 +265,7 @@ internal sealed class AgendaPanel : UserControl
                 return;
             }
             companyId = members.RootElement[0].GetProperty("company_id").GetString();
+            currentRole = members.RootElement[0].GetProperty("role").GetString();
             loginPane.Visible = false;
             appointmentsPane.Visible = true;
             password.Clear();
@@ -269,10 +277,11 @@ internal sealed class AgendaPanel : UserControl
     }
     private void Logout()
     {
-        accessToken = refreshToken = companyId = currentUserId = null;
+        accessToken = refreshToken = companyId = currentUserId = currentRole = null;
         password.Clear();
         grid.Rows.Clear(); cachedRows.Clear(); calendar.SetEntries([]);
         localAppointments.Clear(); calendarLinks = []; linksReady = false;
+        serviceCatalog.Clear(); calendar.SetLegend(AgendaServiceColors.Legend);
         googleEventCount = googleTestEventCount = supabaseEventCount = 0;
         filterDate = null;
         appointmentsPane.Visible = false; loginPane.Visible = true;
@@ -294,22 +303,29 @@ internal sealed class AgendaPanel : UserControl
     }
     private async Task<HttpResponseMessage> Authorized(HttpMethod method, string path, object? data = null)
     {
-        async Task<HttpResponseMessage> Send()
+        async Task<HttpResponseMessage> Send(string? token)
         {
             using var request = new HttpRequestMessage(method, path);
             request.Headers.Add("apikey", PublicKey);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             if (method == HttpMethod.Post || method == HttpMethod.Patch)
                 request.Headers.TryAddWithoutValidation("Prefer", "return=representation");
             if (data is not null) request.Content = Json(data);
             return await http.SendAsync(request);
         }
-        var response = await Send();
+        var observedToken = accessToken;
+        var response = await Send(observedToken);
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
             response.Dispose();
-            if (!await RenewToken()) throw new InvalidOperationException("Sessão expirada. Entre novamente.");
-            response = await Send();
+            await sessionRenewal.WaitAsync();
+            try
+            {
+                if (accessToken == observedToken && !await RenewToken())
+                    throw new InvalidOperationException("Sessão expirada. Entre novamente.");
+            }
+            finally { sessionRenewal.Release(); }
+            response = await Send(accessToken);
         }
         return response;
     }
@@ -329,6 +345,8 @@ internal sealed class AgendaPanel : UserControl
         SetBusy(true);
         try
         {
+            await serviceCatalog.Load(companyId);
+            calendar.SetLegend(AgendaServiceColors.Legend.Select(serviceCatalog.Apply).ToArray());
             var chosen = DateOnly.FromDateTime(startDate.Value);
             var first = period.SelectedIndex == 2
                 ? new DateOnly(chosen.Year, chosen.Month, 1) : chosen;
@@ -366,7 +384,7 @@ internal sealed class AgendaPanel : UserControl
                     var googleEvents = await googleFeed.Read(first, last);
                     foreach (var item in googleEvents)
                     {
-                        var category = AgendaServiceColors.Classify(item.Title, item.Description);
+                        var category = serviceCatalog.Apply(AgendaServiceColors.Classify(item.Title, item.Description));
                         cachedRows.Add(([
                             item.Date.ToString("yyyy-MM-dd"), item.Time,
                             item.Title, category.Label, "Google • leitura", "",
@@ -424,8 +442,8 @@ internal sealed class AgendaPanel : UserControl
                 var local = row.Local;
                 var google = row.Google;
                 var category = local is not null
-                    ? AgendaServiceColors.FromServiceIds(local.ServiceIds, local.Service, local.Status)
-                    : AgendaServiceColors.Classify(google!.Title, google.Description);
+                    ? serviceCatalog.Resolve(local)
+                    : serviceCatalog.Apply(AgendaServiceColors.Classify(google!.Title, google.Description));
                 var state = google is not null
                     ? row.Link is null ? "Google • TESTES"
                         : local is null ? "TESTES • vínculo pendente"
@@ -515,12 +533,73 @@ internal sealed class AgendaPanel : UserControl
             calendarLinks.Any(link => link.AppointmentId == linkedLocal.Id && link.CalendarId == googleOAuth.CalendarId);
     }
 
+    private async Task ConfigureCatalog()
+    {
+        if (busy || companyId is null || currentRole != "admin") return;
+        using var dialog = new Form
+        {
+            Text = "Cores compartilhadas da equipe", Width = 620, Height = 340,
+            StartPosition = FormStartPosition.CenterParent, Font = Font,
+            FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false
+        };
+        var layout = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill, Padding = new Padding(20), FlowDirection = FlowDirection.TopDown, WrapContents = false
+        };
+        var choice = new ComboBox { Width = 540, DropDownStyle = ComboBoxStyle.DropDownList };
+        choice.Items.AddRange(serviceCatalog.Items.Cast<object>().ToArray());
+        var label = new TextBox { Width = 540, MaxLength = 120 };
+        var color = MakeButton("Escolher cor");
+        var saveColor = MakeButton("Salvar para a equipe");
+        var hint = new Label { Width = 540, Height = 45,
+            Text = "Atualiza a configuração do MODUX para a equipe. Os eventos existentes no Google não serão recoloridos." };
+        var selectedHex = "#FFFFFF";
+        choice.SelectedIndexChanged += (_, _) =>
+        {
+            if (choice.SelectedItem is not AgendaServiceDefinition item) return;
+            label.Text = item.Label; selectedHex = item.ColorHex;
+            color.BackColor = item.Color;
+        };
+        color.Click += (_, _) =>
+        {
+            using var picker = new ColorDialog { Color = ColorTranslator.FromHtml(selectedHex), FullOpen = true };
+            if (picker.ShowDialog(dialog) == DialogResult.OK)
+            { selectedHex = $"#{picker.Color.R:X2}{picker.Color.G:X2}{picker.Color.B:X2}"; color.BackColor = picker.Color; }
+        };
+        var saving = false;
+        var changed = false;
+        dialog.FormClosing += (_, e) => { if (saving) e.Cancel = true; };
+        saveColor.Click += async (_, _) =>
+        {
+            if (saving || choice.SelectedItem is not AgendaServiceDefinition item) return;
+            saving = true; choice.Enabled = label.Enabled = color.Enabled = saveColor.Enabled = false;
+            try
+            {
+                await serviceCatalog.SaveAppearance(companyId, item, label.Text, selectedHex);
+                changed = true;
+            }
+            catch (Exception error) when (error is InvalidOperationException or HttpRequestException or TaskCanceledException or JsonException)
+            { MessageBox.Show(dialog, error.Message, "Catálogo não confirmado", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+            finally
+            {
+                saving = false;
+                choice.Enabled = label.Enabled = color.Enabled = saveColor.Enabled = true;
+                if (changed) dialog.DialogResult = DialogResult.OK;
+            }
+        };
+        layout.Controls.AddRange([hint, choice, label, color, saveColor]);
+        dialog.Controls.Add(layout);
+        if (choice.Items.Count > 0) choice.SelectedIndex = 0;
+        dialog.ShowDialog(this);
+        if (changed) await LoadAppointments();
+    }
+
     private async Task EditSelectedAppointment()
     {
         if (busy || companyId is null || grid.SelectedRows.Count != 1 ||
             grid.SelectedRows[0].Tag is not AgendaRowContext { Local: { } original }) return;
         var linked = calendarLinks.Any(link => link.AppointmentId == original.Id);
-        using var editor = new AgendaAppointmentDialog(calendar.SelectedDate, source: original, lockSchedule: linked);
+        using var editor = new AgendaAppointmentDialog(calendar.SelectedDate, source: original, lockSchedule: linked, sharedServices: serviceCatalog.Items);
         if (editor.ShowDialog(this) != DialogResult.OK || editor.Result is not { } proposed) return;
         SetBusy(true);
         try
@@ -750,7 +829,7 @@ internal sealed class AgendaPanel : UserControl
     private async Task CreateAppointment()
     {
         if (busy || companyId is null) return;
-        using var dialog = new AgendaAppointmentDialog(calendar.SelectedDate, googleOAuth.CanWriteSelectedCalendar);
+        using var dialog = new AgendaAppointmentDialog(calendar.SelectedDate, googleOAuth.CanWriteSelectedCalendar, sharedServices: serviceCatalog.Items);
         if (dialog.ShowDialog(this) != DialogResult.OK || dialog.Result is not { } value) return;
         SetBusy(true);
         var saved = false;

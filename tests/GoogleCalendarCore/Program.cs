@@ -478,6 +478,44 @@ var staleLocalStore = new AgendaAppointmentStore((_, _, _) => Task.FromResult(Ca
 await ExpectFailure(() => staleLocalStore.Update(company, localRecord, proposal, false), "atendimento mudou");
 Console.WriteLine("PASS: edição operacional com CAS, horário vinculado protegido e data de conclusão.");
 
+var catalogJson = JsonSerializer.Serialize(new[]
+{
+    new { id = "desinsetizacao", label = "Desinsetização", color = "#000000", sort_order = 10, is_active = true, updated_at = "2026-10-26T12:00:00+00:00" },
+    new { id = "cancelado", label = "Cancelado / reagendar", color = "#D50000", sort_order = 110, is_active = false, updated_at = "2026-10-26T12:00:00+00:00" }
+});
+var catalogWrites = 0;
+var sharedCatalog = new AgendaServiceCatalog((method, path, data) =>
+{
+    if (!path.Contains("company_id=eq." + company)) throw new Exception("Catálogo sem escopo de empresa.");
+    if (method == HttpMethod.Patch)
+    {
+        catalogWrites++;
+        if (!path.Contains("updated_at=eq.")) throw new Exception("Cor compartilhada sem trava de revisão.");
+        using var payload = JsonDocument.Parse(JsonSerializer.Serialize(data));
+        if (payload.RootElement.GetProperty("label").GetString() != "Nome atualizado" ||
+            payload.RootElement.GetProperty("color").GetString() != "#FFFFFF")
+            throw new Exception("Configuração compartilhada perdeu rótulo/cor.");
+        using var fixture = JsonDocument.Parse(catalogJson);
+        return Task.FromResult(CalendarTestHandler.Json("[" + fixture.RootElement[0].GetRawText() + "]"));
+    }
+    return Task.FromResult(CalendarTestHandler.Json(catalogJson));
+});
+await sharedCatalog.Load(company);
+var sharedColor = sharedCatalog.Resolve(localRecord);
+if (sharedColor.Color.ToArgb() != System.Drawing.Color.Black.ToArgb() ||
+    sharedColor.TextColor.ToArgb() != System.Drawing.Color.White.ToArgb())
+    throw new Exception("Cor compartilhada ou contraste de texto inválido.");
+if (sharedCatalog.Resolve(localRecord with { Status = "cancelado" }).Id != "cancelado")
+    throw new Exception("Cor de serviço apagou a situação cancelada.");
+await sharedCatalog.SaveAppearance(company, sharedCatalog.Items[0], "Nome atualizado", "#FFFFFF");
+if (catalogWrites != 1) throw new Exception("Configuração de cor gerou múltiplas escritas.");
+// Resposta de PATCH deve representar uma única linha, nunca aceitar alteração indefinida.
+var appearanceStore = new AgendaServiceCatalog((_, _, _) => Task.FromResult(CalendarTestHandler.Json("[]")));
+await ExpectFailure(() => appearanceStore.SaveAppearance(company, sharedCatalog.Items[0], "Nome", "#FFFFFF"), "catálogo mudou");
+sharedCatalog.Clear();
+if (sharedCatalog.Items.Count != 0) throw new Exception("Logout deixou configuração da empresa anterior.");
+Console.WriteLine("PASS: catálogo por empresa, cores compartilhadas, contraste, status e conflito de configuração.");
+
 static async Task ExpectFailure(Func<Task> operation, string message)
 {
     try { await operation(); }

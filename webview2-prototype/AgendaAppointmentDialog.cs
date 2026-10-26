@@ -57,9 +57,15 @@ internal sealed class AgendaAppointmentDialog : Form
     internal AgendaAppointmentInput? Result { get; private set; }
 
     internal AgendaAppointmentDialog(DateOnly initialDay, bool allowGoogle = false,
-        AgendaLocalSnapshot? source = null, bool lockSchedule = false)
+        AgendaLocalSnapshot? source = null, bool lockSchedule = false,
+        IReadOnlyList<AgendaServiceDefinition>? sharedServices = null)
     {
         original = source;
+        if (sharedServices is { Count: > 0 })
+        {
+            availableCatalog.Clear();
+            availableCatalog.AddRange(sharedServices.Where(x => x.Active).Select(x => (x.Id, x.Label)));
+        }
         Text = source is null ? "Novo agendamento • São Bento" : "Editar atendimento • São Bento";
         googleSync.Enabled = googleSync.Checked = allowGoogle && source is null;
         googleSync.Visible = source is null;

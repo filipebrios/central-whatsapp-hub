@@ -55,36 +55,38 @@ internal sealed class AgendaMonthView : UserControl
             SetMonth(new DateOnly(today.Year, today.Month, 1));
             DateSelected?.Invoke(today);
         };
-        foreach (var category in new[]
+        SetLegend(AgendaServiceColors.Legend);
+        Controls.Add(days); Controls.Add(legend); Controls.Add(header);
+        Render();
+    }
+
+    private IReadOnlyList<AgendaServiceCategory> legendEntries = AgendaServiceColors.Legend;
+
+    internal void SetLegend(IReadOnlyList<AgendaServiceCategory> categories)
+    {
+        legendEntries = categories;
+        foreach (Control child in legend.Controls.Cast<Control>().ToArray()) child.Dispose();
+        legend.Controls.Clear();
+        var mainIds = new[] { "desinsetizacao", "desratizacao", "orcamento", "confirmacao", "cancelado", "interno", "outros" };
+        foreach (var category in categories.Where(c => mainIds.Contains(c.Id)))
         {
-            AgendaServiceColors.Desinsetizacao, AgendaServiceColors.Desratizacao,
-            AgendaServiceColors.Orcamento, AgendaServiceColors.Confirmar,
-            AgendaServiceColors.Cancelado, AgendaServiceColors.Interno,
-            AgendaServiceColors.NaoClassificado
-        })
-        {
-            var name = new Label
+            var label = new Label
             {
-                AutoSize = true, Text = "■ " + category.Label,
-                Font = new Font("Segoe UI", 8f, FontStyle.Regular),
-                ForeColor = category.Color == AgendaServiceColors.NaoClassificado.Color
-                    ? Color.FromArgb(70, 78, 88) : category.Color,
+                AutoSize = true, Text = "■ " + category.Label, Font = new Font("Segoe UI", 8f),
+                ForeColor = category.Id == "outros" ? Color.FromArgb(70, 78, 88) : category.Color,
                 Margin = new Padding(2, 1, 10, 1)
             };
-            legend.Controls.Add(name);
-            eventTip.SetToolTip(name, category.Label + " • " + category.GoogleColorName);
+            legend.Controls.Add(label);
+            eventTip.SetToolTip(label, category.Label + " • " + category.GoogleColorName);
         }
         var more = new Button
         {
-            Text = "Ver todas", AutoSize = true, Height = 21,
-            BackColor = Color.White, ForeColor = Color.FromArgb(0, 103, 44),
-            FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 8f),
-            Padding = new Padding(4, 0, 4, 0), Margin = new Padding(0, 0, 0, 0)
+            Text = "Ver todas", AutoSize = true, Height = 21, BackColor = Color.White,
+            ForeColor = Color.FromArgb(0, 103, 44), FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 8f), Margin = new Padding(0)
         };
         more.Click += (_, _) => ShowLegend();
         legend.Controls.Add(more);
-        Controls.Add(days); Controls.Add(legend); Controls.Add(header);
-        Render();
     }
 
     private static Button Button(string text) => new()
@@ -249,7 +251,7 @@ internal sealed class AgendaMonthView : UserControl
             WrapContents = false, AutoScroll = true,
             Padding = new Padding(18)
         };
-        foreach (var category in AgendaServiceColors.Legend)
+        foreach (var category in legendEntries)
         {
             var item = new Label
             {
