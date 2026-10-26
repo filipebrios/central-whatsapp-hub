@@ -47,6 +47,7 @@ jobs:
       - name: Conferir interface nativa sem credenciais
         run: dotnet run --project tests/WindowsUiSmoke/WindowsUiSmoke.csproj -c Release
       - name: Guardar capturas da interface para revisão
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: MODUX-UI-interna

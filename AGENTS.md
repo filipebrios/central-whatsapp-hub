@@ -288,6 +288,12 @@ Antes de entregar uma versão:
 
 ## Registro de mudanças
 
+### 2026-10-26 — espaço útil da Agenda
+
+- Smoke encontrou grade sem altura após a barra reunir todas as ações. Barra principal passa a conter período/atualizar/cadastro/pendências e Mais ações; edição/vínculo/convite/configurações permanecem disponíveis em menu com habilitação do controle original.
+- Calendário ajusta altura em janelas menores, preservando área para a grade. Smoke imprime dimensões e guarda captura mesmo em falha para investigação. Aguardar novo CI antes de afirmar layout validado.
+
+
 ### 2026-10-26 — preparação do pacote único
 
 - Workflow de empacotamento 1.9 preparado, mas só é acionado por manifesto de release explícito ou despacho manual. Reutiliza validação C#/Node/navegador/smoke antes de gerar instalador autocontido; confere versão/remoção de dados, gera SHA-256 e cria release em rascunho para verificação de assets.

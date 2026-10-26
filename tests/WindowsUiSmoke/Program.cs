@@ -35,10 +35,11 @@ internal static class Program
             Pump();
             if (grid.Rows[row].Cells[3].Style.BackColor != serviceColor)
                 throw new Exception("Tema sobrescreveu cor do serviço.");
-            if (grid.Width < 500 || grid.Height < 40) throw new Exception("Grade operacional ficou sem espaço.");
+            Console.WriteLine($"LAYOUT: form={form.ClientSize}, module={panel.ClientSize}, agenda={agenda.ClientSize}, grid={grid.Size}");
             using var image = new Bitmap(form.ClientSize.Width, form.ClientSize.Height);
             form.DrawToBitmap(image, form.ClientRectangle);
             image.Save("ui-smoke-output/agenda-" + (dark ? "escura" : "clara") + ".png");
+            if (grid.Width < 500 || grid.Height < 40) throw new Exception("Grade operacional ficou sem espaço.");
         }
         form.Close();
         Console.WriteLine("PASS: painel Windows inicia, aplica temas, preserva cor de serviço e mantém grade operacional.");

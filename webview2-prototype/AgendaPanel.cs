@@ -139,7 +139,7 @@ internal sealed class AgendaPanel : UserControl
         bar.Controls.Add(new Label { Text = "A partir de:", AutoSize = true, Margin = new Padding(6, 10, 5, 0) });
         bar.Controls.Add(startDate); bar.Controls.Add(period);
         googleButton.BackColor = Color.FromArgb(24, 82, 139);
-        googleButton.Click += async (_, _) =>
+        async Task ConnectFeed()
         {
             if (busy) return;
             using var dialog = new GoogleCalendarConnectDialog(googleFeed);
@@ -148,10 +148,11 @@ internal sealed class AgendaPanel : UserControl
                 UpdateGoogleLabel();
                 await LoadAppointments();
             }
-        };
+        }
+        googleButton.Click += async (_, _) => await ConnectFeed();
         add.Text = "+ Agendamento";
         googleApiButton.BackColor = Color.FromArgb(3, 91, 54);
-        googleApiButton.Click += async (_, _) =>
+        async Task ManageGoogle()
         {
             if (busy) return;
             using var manager = new GoogleCalendarManageDialog(googleOAuth, googleApi);
@@ -159,27 +160,52 @@ internal sealed class AgendaPanel : UserControl
             if (!manager.Changed) return;
             UpdateGoogleLabel();
             await LoadAppointments();
-        };
+        }
+        googleApiButton.Click += async (_, _) => await ManageGoogle();
         googleNewButton.BackColor = Color.FromArgb(7, 106, 63);
         googleNewButton.Click += async (_, _) => await CreateGoogleEvent();
         bar.Controls.Add(refresh); bar.Controls.Add(add);
-        bar.Controls.Add(editLocalButton);
-        bar.Controls.Add(catalogButton);
         bar.Controls.Add(workflowButton);
         workflowButton.Click += async (_, _) => await ShowWorkflow();
         catalogButton.Click += async (_, _) => await ConfigureCatalog();
         editLocalButton.Click += async (_, _) => await EditSelectedAppointment();
-        bar.Controls.Add(googleNewButton);
-        bar.Controls.Add(linkButton);
-        bar.Controls.Add(completeGoogleButton);
-        bar.Controls.Add(reconcileButton);
-        bar.Controls.Add(inviteGoogleButton);
         inviteGoogleButton.Click += async (_, _) => await InviteSelectedGoogleEvent();
         reconcileButton.Click += async (_, _) => await ReconcileSelectedEvent();
         completeGoogleButton.Click += async (_, _) => await CompleteSelectedGoogleEvent();
         linkButton.Click += async (_, _) => await LinkSelectedGoogleEvent();
-        bar.Controls.Add(googleApiButton);
-        bar.Controls.Add(googleButton); bar.Controls.Add(signOut);
+        var more = MakeButton("Mais ações ▾");
+        var tools = new ContextMenuStrip();
+        void AddAction(Button source, Func<Task> action)
+        {
+            var item = new ToolStripMenuItem(source.Text) { Tag = source };
+            item.Click += async (_, _) => { if (!busy && source.Enabled) await action(); };
+            tools.Items.Add(item);
+        }
+        AddAction(editLocalButton, EditSelectedAppointment);
+        AddAction(googleNewButton, CreateGoogleEvent);
+        AddAction(linkButton, LinkSelectedGoogleEvent);
+        AddAction(completeGoogleButton, CompleteSelectedGoogleEvent);
+        AddAction(reconcileButton, ReconcileSelectedEvent);
+        AddAction(inviteGoogleButton, InviteSelectedGoogleEvent);
+        tools.Items.Add(new ToolStripSeparator());
+        AddAction(catalogButton, ConfigureCatalog);
+        AddAction(googleApiButton, ManageGoogle);
+        AddAction(googleButton, ConnectFeed);
+        tools.Opening += (_, _) =>
+        {
+            tools.BackColor = ModuxAppearance.Surface;
+            tools.ForeColor = ModuxAppearance.Text;
+            foreach (ToolStripItem item in tools.Items)
+            {
+                item.BackColor = ModuxAppearance.Surface; item.ForeColor = ModuxAppearance.Text;
+                if (item.Tag is Button source) { item.Enabled = source.Enabled && !busy; item.Text = source.Text; }
+            }
+        };
+        more.Click += (_, _) => { if (!busy) tools.Show(more, new Point(0, more.Height)); };
+        more.Disposed += (_, _) => tools.Dispose();
+        bar.Controls.Add(more);
+        bar.Controls.Add(signOut);
+        Resize += (_, _) => calendar.Height = Math.Clamp(ClientSize.Height - 340, 220, 430);
         UpdateGoogleLabel();
         googleRefreshTimer.Tick += async (_, _) =>
         {
