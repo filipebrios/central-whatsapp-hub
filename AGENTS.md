@@ -61,6 +61,8 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- 26/10: retomada na branch 1.9; verificação OAuth permite escolher a data do evento fictício e bloqueia troca/desconexão durante a consulta. Compilação pendente de CI; nenhum instalador novo.
+
 - Repositório público: `filipebrios/central-whatsapp-hub`.
 - Branch WebView2 com Agenda em manutenção: `feature/modux-agenda-sidebar-v17` (base `codex/electron-windows-mvp`); base Electron continua separada.
 - Pull request existente: PR #1, mantido como rascunho; não mesclar sem solicitação explícita.
@@ -96,6 +98,8 @@ Requisitos permanentes:
 - Alterações atribuídas ao Manus não estão no repositório conhecido.
 
 ## Pendências priorizadas
+
+- Etapa 2/8 continua dependente da autorização OAuth no Windows do responsável e da leitura real do calendário MODUX - TESTES; Google Cloud já configurado, não pedir novamente.
 
 - Usuário reportou em 06/10 que o rascunho recarrega o WhatsApp na mesma janela e aparece na conta da empresa. A seleção 1.6.0 podia usar conta ativa/primeira. Candidata 1.6.1 exige vínculo explícito e ignora a preferência antiga; validar escolha Criatta, abertura a frio/bandeja e envio manual no Windows.
 
@@ -236,6 +240,13 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-26 — retomada e diagnóstico OAuth reutilizável
+
+- Retomada a implementação correta WebView2 na branch `feature/modux-1.9-consolidated`; main contém outra base e não representa o progresso da versão Windows.
+- A data da verificação de leitura deixou de ser fixa: seletor mantém 23/10 como valor inicial para o evento preparado, permitindo testes posteriores sem recompilar.
+- Importação, seleção de calendário, autorização e desconexão ficam bloqueadas durante consulta/autorização, evitando mudanças de conta ou calendário no meio da verificação.
+- Código aguardando compilação Windows via CI; não equivale a OAuth real validado, não avança etapa 2 e não publica instalador intermediário.
 
 ### 2026-09-23 — candidata MODUX 1.5.2
 

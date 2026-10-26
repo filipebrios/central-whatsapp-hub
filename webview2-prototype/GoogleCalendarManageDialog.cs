@@ -24,6 +24,12 @@ internal sealed class GoogleCalendarManageDialog : Form
         select = Button("3. Usar calendário selecionado"),
         verify = Button("4. Verificar evento de teste"),
         disconnect = Button("Desconectar este Windows");
+    private readonly DateTimePicker testDate = new()
+    {
+        Format = DateTimePickerFormat.Custom, CustomFormat = "dd/MM/yyyy",
+        Value = new DateTime(2026, 10, 23), Width = 180
+    };
+    private bool busy;
     internal bool Changed { get; private set; }
 
     internal GoogleCalendarManageDialog(GoogleDesktopOAuth oauth, GoogleCalendarApi api)
@@ -65,6 +71,12 @@ internal sealed class GoogleCalendarManageDialog : Form
         calendars.SelectedIndexChanged += (_, _) => RefreshStatus();
         body.Controls.Add(calendars);
         body.Controls.Add(select);
+        body.Controls.Add(new Label
+        {
+            Text = "Data do compromisso fictício TESTE MODUX:",
+            AutoSize = true, Margin = new Padding(5, 10, 5, 4)
+        });
+        body.Controls.Add(testDate);
         body.Controls.Add(verify);
         body.Controls.Add(disconnect);
         state.Width = 540;
@@ -102,12 +114,13 @@ internal sealed class GoogleCalendarManageDialog : Form
 
     private void RefreshStatus()
     {
-        chooseFile.Enabled = true;
-        authorize.Enabled = oauth.Configured;
-        select.Enabled = oauth.Connected &&
+        chooseFile.Enabled = !busy;
+        authorize.Enabled = !busy && oauth.Configured;
+        calendars.Enabled = disconnect.Enabled = testDate.Enabled = !busy;
+        select.Enabled = !busy && oauth.Connected &&
             calendars.SelectedItem is GoogleCalendarChoice choice &&
             GoogleCalendarWriteGuard.IsWritableTestCalendar(choice.Name, choice.Id, true);
-        verify.Enabled = oauth.CanWriteSelectedCalendar;
+        verify.Enabled = !busy && oauth.CanWriteSelectedCalendar;
         state.Text = oauth.Connected
             ? oauth.CanWriteSelectedCalendar
                 ? "Conta autorizada. Teste controlado ativo em: " +
@@ -144,7 +157,9 @@ internal sealed class GoogleCalendarManageDialog : Form
 
     private async Task Authorize()
     {
-        chooseFile.Enabled = authorize.Enabled = select.Enabled = verify.Enabled = disconnect.Enabled = false;
+        if (busy) return;
+        busy = true;
+        RefreshStatus();
         state.Text = "Aguardando autorização no navegador padrão (até 4 minutos)...";
         try
         {
@@ -160,7 +175,7 @@ internal sealed class GoogleCalendarManageDialog : Form
         }
         finally
         {
-            disconnect.Enabled = true;
+            busy = false;
             RefreshStatus();
         }
     }
@@ -196,21 +211,24 @@ internal sealed class GoogleCalendarManageDialog : Form
                 "Google Agenda", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
-        verify.Enabled = false;
-        state.Text = "Conferindo leitura do evento fictício de 23/10/2026...";
+        if (busy) return;
+        var selectedDate = DateOnly.FromDateTime(testDate.Value);
+        var dateLabel = selectedDate.ToString("dd/MM/yyyy");
+        busy = true;
+        RefreshStatus();
+        state.Text = $"Conferindo leitura do evento fictício de {dateLabel}...";
         try
         {
-            var testDate = new DateOnly(2026, 10, 23);
-            var events = await api.Events(testDate, testDate);
+            var events = await api.Events(selectedDate, selectedDate);
             var expected = events.FirstOrDefault(e =>
-                e.Date == testDate &&
+                e.Date == selectedDate &&
                 e.Title.Contains("TESTE MODUX", StringComparison.OrdinalIgnoreCase));
             if (expected is null)
             {
                 state.Text = "Conexão autorizada, mas o evento TESTE MODUX não foi encontrado na agenda selecionada.";
                 MessageBox.Show(this,
-                    "A conexão Google funcionou, mas não encontrei o compromisso fictício de 23/10/2026. " +
-                    "Confirme em qual calendário ele foi salvo e use Atualizar.",
+                    $"A conexão Google funcionou, mas não encontrei o compromisso fictício de {dateLabel}. " +
+                    "Confira a data e o calendário do evento TESTE MODUX e tente novamente.",
                     "Teste de leitura", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             else
@@ -218,7 +236,7 @@ internal sealed class GoogleCalendarManageDialog : Form
                 state.Text = "Leitura Google confirmada no calendário de testes. Nenhum evento foi alterado.";
                 MessageBox.Show(this,
                     "Evento localizado no Google Agenda de testes:\n" +
-                    expected.Title + "\nData: 23/10/2026 | Hora: " + expected.Time +
+                    expected.Title + "\nData: " + dateLabel + " | Hora: " + expected.Time +
                     "\n\nEste teste apenas LEU os dados; não criou nem alterou eventos.",
                     "Teste de leitura aprovado", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
@@ -230,7 +248,14 @@ internal sealed class GoogleCalendarManageDialog : Form
             MessageBox.Show(this, error.Message, "Google Agenda",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
-        finally { verify.Enabled = oauth.CanWriteSelectedCalendar; }
+        finally
+        {
+            // Preserve o resultado da consulta ao reabilitar os controles.
+            var result = state.Text;
+            busy = false;
+            RefreshStatus();
+            state.Text = result;
+        }
     }
 
     private void SelectCalendar()
