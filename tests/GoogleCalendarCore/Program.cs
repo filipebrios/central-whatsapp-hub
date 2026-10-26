@@ -564,6 +564,21 @@ await ExpectFailure(() => workflow.SaveReviewTemplate(company, "https://google.c
 if (workflowCalls != 2) throw new Exception("Link externo inválido chegou ao servidor.");
 Console.WriteLine("PASS: pendências, lembretes, NPS sete dias, telefone, rascunho e envio manual separado.");
 
+string[] filterValues = ["2026-10-26", "08:00", "João da Silva", "Desinsetização", "TESTES • agendado", "(35) 99999-9999", "Rua Central"];
+if (!AgendaViewFilter.Matches(filterValues, todayAppointment, item, "desinsetizacao", "joao", 0, 4, "desinsetizacao"))
+    throw new Exception("Busca sem acento ou filtro vinculado falhou.");
+if (AgendaViewFilter.Matches(filterValues, todayAppointment, item, "desinsetizacao", "", 4, 0, null) ||
+    AgendaViewFilter.Matches(filterValues, todayAppointment, item, "desinsetizacao", "", 0, 3, null))
+    throw new Exception("Filtros de situação/origem misturaram registros.");
+var csv = AgendaExport.Csv(new IReadOnlyList<string>[]
+{
+    ["2026-10-26", "08:00", "=HYPERLINK(\"https://example.test\")", "Serviço; combinado", "agendado", "+5535999999999", "Rua\nNova"]
+});
+if (!csv.Contains("\"'=HYPERLINK(") || !csv.Contains("\"Serviço; combinado\"") ||
+    !csv.Contains("\"'+5535999999999\"") || !csv.Contains("Rua\nNova"))
+    throw new Exception("CSV perdeu escape de campo ou proteção contra fórmula.");
+Console.WriteLine("PASS: filtros por origem/situação/serviço, busca sem acento e CSV seguro.");
+
 static async Task ExpectFailure(Func<Task> operation, string message)
 {
     try { await operation(); }

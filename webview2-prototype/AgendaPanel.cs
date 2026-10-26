@@ -34,6 +34,11 @@ internal sealed class AgendaPanel : UserControl
     private readonly AgendaServiceCatalog serviceCatalog;
     internal event Action<ComposeRequest>? ComposeRequested;
     private readonly AgendaWorkflowStore workflowStore;
+    private readonly TextBox search = new() { Width = 250, PlaceholderText = "Buscar neste período: cliente, telefone, serviço..." };
+    private readonly ComboBox filterState = new() { Width = 170, DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox filterOrigin = new() { Width = 170, DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox filterService = new() { Width = 200, DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly Button exportButton = MakeButton("Exportar CSV");
     private readonly Button workflowButton = MakeButton("Pendências e pós-venda");
     private readonly Button catalogButton = MakeButton("Cores dos serviços");
     private readonly Button editLocalButton = MakeButton("Editar atendimento");
@@ -122,7 +127,7 @@ internal sealed class AgendaPanel : UserControl
             if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; await Login(); }
         };
 
-        period.Items.AddRange(["Hoje", "7 dias", "Mês"]);
+        period.Items.AddRange(["Hoje", "Semana", "Mês"]);
         period.SelectedIndex = 2;
         var bar = new FlowLayoutPanel
         {
@@ -192,7 +197,23 @@ internal sealed class AgendaPanel : UserControl
             if (e.RowIndex >= 0 && !busy)
                 await EditSelectedGoogleEvent(e.RowIndex);
         };
+        filterState.Items.AddRange(["Todas as situações", "A confirmar", "Agendado", "Confirmado", "Concluído", "Cancelado / reagendar", "Vínculo pendente"]);
+        filterOrigin.Items.AddRange(["Todas as origens", "Cadastros da equipe", "Google API", "Google iCal", "Vinculados"]);
+        filterService.Items.Add("Todos os serviços");
+        filterState.SelectedIndex = filterOrigin.SelectedIndex = filterService.SelectedIndex = 0;
+        search.TextChanged += (_, _) => ShowCachedRows();
+        filterState.SelectedIndexChanged += (_, _) => ShowCachedRows();
+        filterOrigin.SelectedIndexChanged += (_, _) => ShowCachedRows();
+        filterService.SelectedIndexChanged += (_, _) => ShowCachedRows();
+        var filters = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(10, 5, 10, 8), BackColor = Color.White
+        };
+        filters.Controls.AddRange([search, filterState, filterOrigin, filterService, exportButton]);
+        exportButton.Click += (_, _) => ExportVisibleRows();
         appointmentsPane.Controls.Add(grid);
+        appointmentsPane.Controls.Add(filters);
         appointmentsPane.Controls.Add(calendar);
         appointmentsPane.Controls.Add(bar);
         calendar.DateSelected += selected =>
@@ -229,6 +250,8 @@ internal sealed class AgendaPanel : UserControl
     {
         busy = value;
         signIn.Enabled = refresh.Enabled = add.Enabled = signOut.Enabled = !value;
+        calendar.Enabled = startDate.Enabled = period.Enabled = !value;
+        exportButton.Enabled = !value && companyId is not null;
         googleButton.Enabled = googleApiButton.Enabled = !value;
         catalogButton.Enabled = !value && currentRole == "admin";
         workflowButton.Enabled = !value && companyId is not null;
@@ -289,6 +312,8 @@ internal sealed class AgendaPanel : UserControl
         grid.Rows.Clear(); cachedRows.Clear(); calendar.SetEntries([]);
         localAppointments.Clear(); calendarLinks = []; linksReady = false;
         serviceCatalog.Clear(); calendar.SetLegend(AgendaServiceColors.Legend);
+        search.Clear(); filterState.SelectedIndex = filterOrigin.SelectedIndex = 0;
+        filterService.Items.Clear(); filterService.Items.Add("Todos os serviços"); filterService.SelectedIndex = 0;
         googleEventCount = googleTestEventCount = supabaseEventCount = 0;
         filterDate = null;
         appointmentsPane.Visible = false; loginPane.Visible = true;
@@ -354,6 +379,12 @@ internal sealed class AgendaPanel : UserControl
         {
             await serviceCatalog.Load(companyId);
             calendar.SetLegend(AgendaServiceColors.Legend.Select(serviceCatalog.Apply).ToArray());
+            var selectedService = (filterService.SelectedItem as AgendaServiceDefinition)?.Id;
+            filterService.Items.Clear(); filterService.Items.Add("Todos os serviços");
+            filterService.Items.AddRange(serviceCatalog.Items.Cast<object>().ToArray());
+            filterService.SelectedIndex = 0;
+            if (selectedService is not null && serviceCatalog.Items.FirstOrDefault(x => x.Id == selectedService) is { } previous)
+                filterService.SelectedItem = previous;
             var chosen = DateOnly.FromDateTime(startDate.Value);
             var first = period.SelectedIndex == 2
                 ? new DateOnly(chosen.Year, chosen.Month, 1) : chosen;
@@ -366,20 +397,24 @@ internal sealed class AgendaPanel : UserControl
             var query = "rest/v1/agenda_appointments?select=id,revision,client,phone,primary_service,service_ids,date,time,status,address,duration,notes,responsible,email,kind,technician,service_completed_date,feedback_score,feedback_note" +
                 "&company_id=eq." + Uri.EscapeDataString(companyId) + "&deleted_at=is.null" +
                 $"&date=gte.{first:yyyy-MM-dd}&date=lte.{last:yyyy-MM-dd}" +
-                "&order=date.asc,time.asc&limit=500";
-            using var response = await Authorized(HttpMethod.Get, query);
-            RequireSuccess(response);
-            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                "&order=date.asc,time.asc,id.asc&limit=250";
+            var loadedAppointments = new List<AgendaLocalSnapshot>();
+            for (var offset = 0; offset < 10000; offset += 250)
+            {
+                using var response = await Authorized(HttpMethod.Get, query + "&offset=" + offset);
+                RequireSuccess(response);
+                using var page = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                loadedAppointments.AddRange(page.RootElement.EnumerateArray().Select(AgendaLocalSnapshot.Parse));
+                if (page.RootElement.GetArrayLength() < 250) break;
+                if (offset == 9750) throw new InvalidOperationException("Atendimentos demais neste período. Reduza a consulta.");
+            }
             cachedRows.Clear();
             var calendarRows = new List<AgendaCalendarEntry>();
-            supabaseEventCount = 0;
             googleEventCount = googleTestEventCount = 0;
             string? googleWarning = null;
-            localAppointments.Clear();
-            localAppointments.AddRange(doc.RootElement.EnumerateArray().Select(AgendaLocalSnapshot.Parse));
+            localAppointments.Clear(); localAppointments.AddRange(loadedAppointments);
             supabaseEventCount = localAppointments.Count;
-            calendarLinks = [];
-            linksReady = false;
+            calendarLinks = []; linksReady = false;
             IReadOnlyList<GoogleEventSnapshot> testEvents = [];
             // No piloto, manter a agenda operacional iCal (somente leitura)
             // SEMPRE visível, mesmo depois de autorizar a API OAuth para MODUX - TESTES.
@@ -475,9 +510,19 @@ internal sealed class AgendaPanel : UserControl
                     right.Values[0] + right.Values[1]));
             calendar.SetEntries(calendarRows);
             ShowCachedRows();
+            string? backupWarning = null;
+            try
+            {
+                if (currentUserId is not null)
+                    AgendaLocalBackup.Save(companyId, currentUserId, first, last, localAppointments,
+                        calendarLinks, googleWarning is not null);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or
+                System.Security.Cryptography.CryptographicException or InvalidOperationException)
+            { backupWarning = "Não foi possível gerar o checkpoint local do período."; }
             Status($"{supabaseEventCount} cadastros locais • {googleEventCount} Google iCal (leitura) " +
                 $"• {googleTestEventCount} TESTES (editável) • {first:dd/MM} a {last:dd/MM}. " +
-                (googleWarning ?? (googleOAuth.CanWriteSelectedCalendar
+                (googleWarning ?? backupWarning ?? (googleOAuth.CanWriteSelectedCalendar
                     ? "Duplo clique apenas em evento TESTES para editar. Clientes reais protegidos."
                     : "Agenda operacional iCal: somente leitura. Sem envio WhatsApp.")));
         }
@@ -498,8 +543,14 @@ internal sealed class AgendaPanel : UserControl
     private void ShowCachedRows()
     {
         grid.Rows.Clear();
-        foreach (var (record, category, google, local) in cachedRows)
+        var selectedService = (filterService.SelectedItem as AgendaServiceDefinition)?.Id;
+        var visible = cachedRows.Where(row => AgendaViewFilter.Matches(row.Values, row.Local, row.Google,
+            row.Category.Id, search.Text, filterState.SelectedIndex, filterOrigin.SelectedIndex, selectedService)).ToArray();
+        var entries = new List<AgendaCalendarEntry>();
+        foreach (var (record, category, google, local) in visible)
         {
+            if (DateOnly.TryParse(record[0], out var day))
+                entries.Add(new AgendaCalendarEntry(day, record[1], record[2], record[3], record[4], category));
             if (filterDate is not null && record[0] != filterDate.Value.ToString("yyyy-MM-dd"))
                 continue;
             var index = grid.Rows.Add(record);
@@ -524,6 +575,27 @@ internal sealed class AgendaPanel : UserControl
             else if (state is "revisao" or "reagendar")
                 grid.Rows[index].DefaultCellStyle.BackColor = Color.FromArgb(255, 249, 223);
         }
+        calendar.SetEntries(entries);
+    }
+
+    private void ExportVisibleRows()
+    {
+        if (busy || companyId is null) return;
+        using var chooser = new SaveFileDialog
+        {
+            Title = "Exportar linhas visíveis da agenda", Filter = "Planilha CSV (*.csv)|*.csv",
+            FileName = "Agenda-Sao-Bento-" + DateTime.Today.ToString("yyyy-MM-dd") + ".csv"
+        };
+        if (chooser.ShowDialog(this) != DialogResult.OK) return;
+        try
+        {
+            var rows = grid.Rows.Cast<DataGridViewRow>().Select(row =>
+                (IReadOnlyList<string>)row.Cells.Cast<DataGridViewCell>().Select(c => c.Value?.ToString() ?? "").ToArray());
+            File.WriteAllText(chooser.FileName, AgendaExport.Csv(rows), new UTF8Encoding(true));
+            Status("Linhas visíveis exportadas. Nenhum dado da agenda foi alterado.");
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        { MessageBox.Show(this, "Não foi possível salvar o arquivo. Confira a pasta de destino.", "Exportação"); }
     }
 
     private void UpdateLinkButton()

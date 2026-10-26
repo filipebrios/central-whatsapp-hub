@@ -61,6 +61,8 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- 26/10: painel de pendências/fila manual/NPS e separação São Bento/Criatta passaram no CI #40347646462. Busca/filtros/CSV/checkpoints locais cifrados do período carregado em validação interna; sem novo instalador.
+
 - 26/10: catálogo compartilhado passou nos testes/compilação no CI #40344124246. Rotina manual de pendências/lembretes/NPS em integração: fila compartilhada idempotente, rascunho separado de envio confirmado pelo operador, conta São Bento independente da Criatta. Migrações `20261026150043`/`20261026151259` aplicadas e testes SQL com rollback aprovados; cliente Windows aguardando CI.
 
 - 26/10: edição operacional passou nos testes/compilação Windows no CI #40343259988. Catálogo compartilhado inicial aplicado e conferido: 12 definições (10 serviços ativos + 2 categorias de legenda), seis cores históricas preservadas. Configuração de cores/rótulos por administrador e leitura compartilhada em validação.
@@ -112,6 +114,8 @@ Requisitos permanentes:
 - Alterações atribuídas ao Manus não estão no repositório conhecido.
 
 ## Pendências priorizadas
+
+- Validar CI de busca/filtros/CSV e checkpoints; concluir links públicos/convites controlados, refinamento visual e empacotamento consolidado. Validação real da nova UI será na rodada única de feedback.
 
 - Aguardar CI de pendências/fila manual/NPS e integração com conta São Bento; depois concluir busca/filtros, refinamento visual, backup/exportação e instalador consolidado.
 - Links públicos de confirmação/cancelamento e convites Google controlados ainda não estão entregues. Modelos atuais de confirmação solicitam resposta manual; não anunciar clique de confirmação nem disparos automáticos.
@@ -268,6 +272,14 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-26 — busca, filtros, exportação e checkpoints
+
+- CI #40347646462 aprovou painel operacional, fila/NPS, origem São Bento separada, regressões de protocolo e compilação Windows.
+- Grade/calendário filtram por texto (sem distinguir acento/caixa), situação, origem e serviço; clique no dia restringe a grade preservando visão do mês. Períodos Hoje/Semana/Mês mantidos. Carregamento local paginado elimina corte silencioso em 500 atendimentos.
+- CSV exporta somente linhas visíveis, com UTF-8/BOM, escape de delimitador/aspas/quebras e neutralização de fórmulas em dados importados.
+- Após consulta bem-sucedida, salva checkpoint DPAPI CurrentUser dos dados operacionais/vínculos do período carregado, um por dia/período, no máximo 60. Não inclui tokens OAuth/Supabase nem URL privada iCal e não é backup completo do banco/Google. Falha de gravação é informada; não impede leitura da agenda.
+- Navegação por período/calendário desabilitada durante consulta evita mostrar mês novo com resposta antiga. Testes C# de filtros/CSV e compilação aguardando CI; nenhum instalador intermediário.
 
 ### 2026-10-26 — pendências e comunicação manual compartilhada
 
