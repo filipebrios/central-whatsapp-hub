@@ -27,6 +27,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
     throw new Error("Unexpected external request: " + url.origin);
   });
   const open = async (hash = token) => {
+    await page.goto("about:blank");
     calls = [];
     await page.goto("https://www.sbento.com.br/modux-resposta.html" + (hash ? "#token=" + hash : ""));
     await page.waitForFunction(() => !document.getElementById("status").textContent.includes("Conferindo"));

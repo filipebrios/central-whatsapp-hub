@@ -1,6 +1,7 @@
 const endpoint = "https://snypbekmjseayljvltwq.supabase.co/functions/v1/agenda-response";
 const token = new URLSearchParams(location.hash.slice(1)).get("token") ?? "";
 history.replaceState(null, "", location.pathname);
+window.addEventListener("hashchange", () => location.reload());
 const $ = id => document.getElementById(id);
 let busy = false;
 function lock(value) { busy = value; document.querySelectorAll("button,input,textarea").forEach(el => el.disabled = value); }

@@ -286,6 +286,11 @@ Antes de entregar uma versão:
 
 ## Registro de mudanças
 
+### 2026-10-26 — navegação entre links da página
+
+- Teste de navegador encontrou reutilização do mesmo documento ao trocar somente fragmento. A página recarrega ao receber outro fragmento para consultar o novo link; teste abre documento novo para cada cenário, evitando confundir navegação de âncora com carregamento inicial. Aguardar CI; página segue sem publicação de produção.
+
+
 ### 2026-10-26 — correção do teste de convites
 
 - CI identificou colisão do parâmetro `_` da lambda com descarte `out _` em teste HTTP. Renomeado o resultado local do TryGetProperty; falha era de compilação do teste, sem envio a calendário real. Aguardar nova execução.
