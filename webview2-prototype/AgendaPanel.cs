@@ -30,6 +30,7 @@ internal sealed class AgendaPanel : UserControl
     private readonly Button googleApiButton = MakeButton("Google (editar)");
     private readonly AgendaCalendarLinkStore linkStore;
     private sealed record AgendaRowContext(GoogleEventSnapshot? Google, AgendaLocalSnapshot? Local);
+    private readonly Button reconcileButton = MakeButton("Conferir vínculo");
     private readonly Button completeGoogleButton = MakeButton("Completar Google");
     private readonly Button linkButton = MakeButton("Vincular atendimento");
     private readonly List<AgendaLocalSnapshot> localAppointments = [];
@@ -114,7 +115,8 @@ internal sealed class AgendaPanel : UserControl
         period.SelectedIndex = 2;
         var bar = new FlowLayoutPanel
         {
-            Dock = DockStyle.Top, Height = 65, WrapContents = false,
+            Dock = DockStyle.Top, MinimumSize = new Size(0, 65), WrapContents = true,
+            AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Padding = new Padding(10, 13, 5, 5), BackColor = Color.White
         };
         bar.Controls.Add(new Label { Text = "A partir de:", AutoSize = true, Margin = new Padding(6, 10, 5, 0) });
@@ -147,6 +149,8 @@ internal sealed class AgendaPanel : UserControl
         bar.Controls.Add(googleNewButton);
         bar.Controls.Add(linkButton);
         bar.Controls.Add(completeGoogleButton);
+        bar.Controls.Add(reconcileButton);
+        reconcileButton.Click += async (_, _) => await ReconcileSelectedEvent();
         completeGoogleButton.Click += async (_, _) => await CompleteSelectedGoogleEvent();
         linkButton.Click += async (_, _) => await LinkSelectedGoogleEvent();
         bar.Controls.Add(googleApiButton);
@@ -421,7 +425,7 @@ internal sealed class AgendaPanel : UserControl
                     ? row.Link is null ? "Google • TESTES"
                         : local is null ? "TESTES • vínculo pendente"
                         : row.Link.ETag != google.ETag ? "TESTES • conferir alteração" : "TESTES • " + local.Status
-                    : row.Link is null ? local!.Status : "Vínculo • conferir Google";
+                    : row.Link is null || row.Link.SyncStatus == "excluido" ? local!.Status : "Vínculo • conferir Google";
                 cachedRows.Add(([
                     google?.Date.ToString("yyyy-MM-dd") ?? local!.Date,
                     google?.Time ?? local!.Time,
@@ -499,6 +503,39 @@ internal sealed class AgendaPanel : UserControl
         completeGoogleButton.Enabled = !busy && linksReady && googleOAuth.CanWriteSelectedCalendar &&
             grid.SelectedRows.Count == 1 && grid.SelectedRows[0].Tag is AgendaRowContext { Google: null, Local: { } local } &&
             !calendarLinks.Any(link => link.AppointmentId == local.Id && link.CalendarId == googleOAuth.CalendarId);
+        reconcileButton.Enabled = !busy && linksReady && googleOAuth.CanWriteSelectedCalendar &&
+            grid.SelectedRows.Count == 1 && grid.SelectedRows[0].Tag is AgendaRowContext { Local: { } linkedLocal } &&
+            calendarLinks.Any(link => link.AppointmentId == linkedLocal.Id && link.CalendarId == googleOAuth.CalendarId);
+    }
+
+    private async Task ReconcileSelectedEvent()
+    {
+        if (busy || !linksReady || companyId is null || !googleOAuth.CanWriteSelectedCalendar ||
+            grid.SelectedRows.Count != 1 || grid.SelectedRows[0].Tag is not AgendaRowContext { Local: { } local }) return;
+        var link = calendarLinks.FirstOrDefault(l => l.AppointmentId == local.Id && l.CalendarId == googleOAuth.CalendarId);
+        if (link is null) return;
+        SetBusy(true);
+        try
+        {
+            GoogleEventSnapshot? current = null;
+            try { current = await googleApi.Event(link.EventId); }
+            catch (GoogleEventUnavailableException)
+            {
+                if (MessageBox.Show(this, "O evento não foi localizado no Google. Confira no Google Agenda se ele foi excluído. " +
+                    "Deseja marcar somente este atendimento vinculado como cancelado?", "Conferir cancelamento",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+            }
+            if (current is not null && MessageBox.Show(this,
+                $"Atualizar o atendimento de {local.Client} com o horário atual do Google: {current.Date:dd/MM/yyyy} {current.Time}? " +
+                "Contatos, serviços, equipe e observações serão preservados.", "Conferir vínculo",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+            await linkStore.Reconcile(companyId, link, local, current, cancelled: current is null);
+            Status("Horário/status do atendimento reconciliado com o Google.");
+        }
+        catch (Exception error) when (error is InvalidOperationException or HttpRequestException or TaskCanceledException or JsonException)
+        { MessageBox.Show(this, error.Message, "Conferência não concluída", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        finally { SetBusy(false); }
+        await LoadAppointments();
     }
 
     private async Task CompleteSelectedGoogleEvent()
@@ -533,7 +570,8 @@ internal sealed class AgendaPanel : UserControl
         var draft = local.AsGoogleDraft(companyId);
         _ = draft.AsGoogleFields();
         var saved = await googleApi.EnsureOperationalEvent(draft);
-        await linkStore.Link(companyId, local, calendarId, saved);
+        var link = await linkStore.Link(companyId, local, calendarId, saved);
+        await linkStore.Reconcile(companyId, link, local, saved);
     }
 
     private async Task LinkSelectedGoogleEvent()
@@ -616,26 +654,41 @@ internal sealed class AgendaPanel : UserControl
             Status("Eventos de vários dias ainda devem ser editados no Google Agenda original.");
             return;
         }
-        using var editor = new GoogleCalendarEventDialog(google, google.Date);
+        var local = (grid.Rows[rowIndex].Tag as AgendaRowContext)?.Local;
+        var link = calendarLinks.FirstOrDefault(l => l.CalendarId == googleOAuth.CalendarId && l.EventId == google.Id);
+        using var editor = new GoogleCalendarEventDialog(google, google.Date, local is not null && link is not null);
         if (editor.ShowDialog(this) != DialogResult.OK) return;
         SetBusy(true);
+        var changedOnGoogle = false;
         try
         {
             if (editor.Action == GoogleEventUserAction.Save && editor.Draft is { } draft)
             {
-                await googleApi.Update(google, draft);
-                Status("Compromisso atualizado no Google Agenda.");
+                var updated = await googleApi.Update(google, draft);
+                changedOnGoogle = true;
+                if (local is not null && link is not null && companyId is not null)
+                    await linkStore.Reconcile(companyId, link, local, updated);
+                Status(local is not null && link is not null
+                    ? "Compromisso atualizado no Google e atendimento vinculado reconciliado."
+                    : "Compromisso atualizado no Google Agenda.");
             }
             else if (editor.Action == GoogleEventUserAction.Delete)
             {
                 await googleApi.Delete(google);
-                Status("Compromisso excluído do Google Agenda.");
+                changedOnGoogle = true;
+                if (local is not null && link is not null && companyId is not null)
+                    await linkStore.Reconcile(companyId, link, local, google, cancelled: true);
+                Status(local is not null && link is not null
+                    ? "Evento excluído do Google. Atendimento vinculado marcado como cancelado."
+                    : "Evento excluído do Google Agenda.");
             }
         }
         catch (Exception error) when (error is InvalidOperationException or
             HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {
-            MessageBox.Show(this, error.Message, "Google Agenda", MessageBoxButtons.OK,
+            MessageBox.Show(this, (changedOnGoogle
+                ? "A operação Google foi confirmada, mas o cadastro vinculado ficou pendente. Use Conferir vínculo. " : "") +
+                error.Message, "Google Agenda", MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
         }
         finally { SetBusy(false); }

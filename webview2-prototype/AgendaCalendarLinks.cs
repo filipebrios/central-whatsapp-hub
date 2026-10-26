@@ -39,13 +39,15 @@ internal sealed record AgendaLocalSnapshot(string Id, int Revision, string Clien
 }
 
 internal sealed record AgendaCalendarLink(string CompanyId, string AppointmentId,
-    string CalendarId, string EventId, string ETag)
+    string CalendarId, string EventId, string ETag, string SyncStatus = "vinculado")
 {
     internal static AgendaCalendarLink Parse(JsonElement row) => new(
         row.GetProperty("company_id").GetString()!, row.GetProperty("appointment_id").GetString()!,
         row.GetProperty("calendar_id").GetString()!, row.GetProperty("event_id").GetString()!,
         row.TryGetProperty("event_etag", out var etag) && etag.ValueKind == JsonValueKind.String
-            ? etag.GetString()! : "");
+            ? etag.GetString()! : "",
+        row.TryGetProperty("sync_status", out var status) && status.ValueKind == JsonValueKind.String
+            ? status.GetString()! : "vinculado");
 }
 
 internal sealed record AgendaUnifiedEvent(GoogleEventSnapshot? Google,
@@ -95,7 +97,7 @@ internal sealed class AgendaCalendarLinkStore(
         for (var offset = 0; offset < 10000; offset += 250)
         {
             using var response = await authorized(HttpMethod.Get,
-                "rest/v1/agenda_calendar_links?select=company_id,appointment_id,calendar_id,event_id,event_etag" +
+                "rest/v1/agenda_calendar_links?select=company_id,appointment_id,calendar_id,event_id,event_etag,sync_status" +
                 "&company_id=eq." + Uri.EscapeDataString(companyId) +
                 "&calendar_id=eq." + Uri.EscapeDataString(calendarId) +
                 "&order=event_id.asc&limit=250&offset=" + offset, null);
@@ -107,7 +109,7 @@ internal sealed class AgendaCalendarLinkStore(
         throw new InvalidOperationException("Vínculos demais para conferir com segurança. Contate o responsável.");
     }
 
-    internal async Task Link(string companyId, AgendaLocalSnapshot local,
+    internal async Task<AgendaCalendarLink> Link(string companyId, AgendaLocalSnapshot local,
         string calendarId, GoogleEventSnapshot google)
     {
         if (!Guid.TryParse(companyId, out _) || !Guid.TryParse(local.Id, out _) ||
@@ -119,6 +121,38 @@ internal sealed class AgendaCalendarLinkStore(
             p_company_id = companyId, p_appointment_id = local.Id,
             p_calendar_id = calendarId, p_event_id = google.Id,
             p_event_etag = google.ETag, p_expected_revision = local.Revision
+        });
+        await Check(response);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var row = document.RootElement;
+        if (row.ValueKind == JsonValueKind.Array && row.GetArrayLength() == 1) row = row[0];
+        if (row.ValueKind != JsonValueKind.Object)
+            throw new InvalidOperationException("Vínculo salvo, mas resposta incompleta. Atualize antes de repetir.");
+        var result = AgendaCalendarLink.Parse(row);
+        if (result.CompanyId != companyId || result.AppointmentId != local.Id ||
+            result.CalendarId != calendarId || result.EventId != google.Id)
+            throw new InvalidOperationException("A identidade retornada não corresponde ao vínculo. Atualize para conferir.");
+        return result;
+    }
+
+    internal async Task Reconcile(string companyId, AgendaCalendarLink link, AgendaLocalSnapshot local,
+        GoogleEventSnapshot? google, bool cancelled = false)
+    {
+        if (link.CompanyId != companyId || link.AppointmentId != local.Id || local.Revision < 1 ||
+            string.IsNullOrWhiteSpace(link.ETag) || (!cancelled && google is null) ||
+            (google is not null && google.Id != link.EventId))
+            throw new InvalidOperationException("Identidade incompleta para reconciliar. Atualize a agenda.");
+        if (!cancelled && (google!.SpansMultipleDays || google.Duration > 1440))
+            throw new InvalidOperationException("Eventos de vários dias exigem revisão no Google antes de vincular horários.");
+        using var response = await authorized(HttpMethod.Post, "rest/v1/rpc/agenda_reconcile_google_event", new
+        {
+            p_company_id = companyId, p_calendar_id = link.CalendarId, p_event_id = link.EventId,
+            p_expected_etag = link.ETag, p_observed_etag = google?.ETag ?? link.ETag,
+            p_expected_revision = local.Revision,
+            p_date = cancelled ? null : google!.Date.ToString("yyyy-MM-dd"),
+            p_time = cancelled ? null : google!.AllDay ? "00:00:00" :
+                TimeOnly.Parse(google.Time, System.Globalization.CultureInfo.InvariantCulture).ToString("HH:mm:ss"),
+            p_duration = cancelled ? (int?)null : google!.Duration, p_cancelled = cancelled
         });
         await Check(response);
     }

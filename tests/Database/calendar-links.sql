@@ -25,8 +25,9 @@ declare
   second_id uuid := gen_random_uuid();
   linked public.agenda_calendar_links;
 begin
-  insert into public.agenda_appointments(id,company_id,client) values
-    (first_id,company_a,'MODUX FIXTURE 1'),(second_id,company_a,'MODUX FIXTURE 2');
+  insert into public.agenda_appointments(id,company_id,client,phone,service_ids) values
+    (first_id,company_a,'MODUX FIXTURE 1','contato fictício',array['desinsetizacao']),
+    (second_id,company_a,'MODUX FIXTURE 2','',array[]::text[]);
   linked := public.agenda_link_google_event(company_a,first_id,'fixture@group.calendar.google.com','event1','"v1"',1);
   if linked.appointment_id<>first_id or linked.event_etag<>'"v1"' then raise exception 'Vínculo inicial incorreto'; end if;
   -- Repetir mesmo pedido: uma única linha, sem alterar a revisão do atendimento.
@@ -50,6 +51,36 @@ begin
     perform public.agenda_link_google_event(company_a,second_id,'fixture@group.calendar.google.com','event2','"v1"',1);
     raise exception 'Revisão antiga foi aceita';
   exception when serialization_failure then null; end;
+  perform public.agenda_reconcile_google_event(company_a,'fixture@group.calendar.google.com','event1',
+    '"v1"','"v2"',1,'2026-10-27','10:00',90,false);
+  if not exists(select 1 from public.agenda_appointments where id=first_id and date='2026-10-27'
+    and time='10:00' and duration=90 and phone='contato fictício' and service_ids=array['desinsetizacao'] and revision=2) then
+    raise exception 'Reconciliação perdeu dados operacionais ou não atualizou horário';
+  end if;
+  perform public.agenda_reconcile_google_event(company_a,'fixture@group.calendar.google.com','event1',
+    '"v1"','"v2"',1,'2026-10-27','10:00',90,false);
+  if (select revision from public.agenda_appointments where id=first_id)<>2 then
+    raise exception 'Retentativa de reconciliação incrementou revisão';
+  end if;
+  begin
+    perform public.agenda_reconcile_google_event(company_a,'fixture@group.calendar.google.com','event1',
+      '"v1"','"v3"',2,'2026-10-28','11:00',60,false);
+    raise exception 'ETag antigo sobrescreveu reconciliação';
+  exception when serialization_failure then null; end;
+  begin
+    perform public.agenda_reconcile_google_event(company_a,'fixture@group.calendar.google.com','event1',
+      '"v2"','"v3"',1,'2026-10-28','11:00',60,false);
+    raise exception 'Revisão antiga sobrescreveu reconciliação';
+  exception when serialization_failure then null; end;
+  perform public.agenda_reconcile_google_event(company_a,'fixture@group.calendar.google.com','event1',
+    '"v2"','"v2"',2,null,null,null,true);
+  if not exists(select 1 from public.agenda_appointments where id=first_id and status='cancelado'
+    and phone='contato fictício' and revision=3) then raise exception 'Cancelamento perdeu cadastro ou status'; end if;
+  perform public.agenda_reconcile_google_event(company_a,'fixture@group.calendar.google.com','event1',
+    '"v2"','"v2"',2,null,null,null,true);
+  if (select revision from public.agenda_appointments where id=first_id)<>3 then
+    raise exception 'Retentativa de cancelamento duplicou revisão';
+  end if;
   begin
     perform public.agenda_link_google_event(company_b,current_setting('modux_test.foreign')::uuid,
       'fixture@group.calendar.google.com','foreign','"v1"',1);
@@ -81,6 +112,6 @@ begin
   exception when insufficient_privilege then null; end;
 end $$;
 rollback;
-select 'PASS: vínculo, idempotência, conflitos, revisão, RLS, privilégios e rollback' as result,
+select 'PASS: vínculos, reconciliação, cancelamento, idempotência, preservação, revisão/ETag, RLS e rollback' as result,
        (select count(*) from public.agenda_calendar_links) as persisted_links,
        (select count(*) from public.agenda_companies where name like 'MODUX FIXTURE%') as leftover_fixtures;

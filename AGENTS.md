@@ -61,6 +61,8 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- 26/10: criação integrada recuperável e cancelamento OAuth passaram nos testes/compilação Windows no CI #40341480502. Reconciliação de horários/ETags e cancelamento vinculado em integração; migração remota `20261026143956_modux_google_calendar_reconciliation` e testes SQL com rollback aprovados. Não há novo instalador nem escrita na agenda operacional liberada.
+
 - 26/10: usuário concluiu no Windows a autorização OAuth, leitura do evento preparado e criação, edição e exclusão de um evento descartável no calendário secundário **MODUX - TESTES**, usando o verificador do CI #40318275302. Etapa 2 aprovada para o piloto; CRUD básico real confirmado. Isso não autoriza gravações na agenda operacional nem comprova recorrências/séries, convites ou sincronização Supabase.
 - 26/10: vínculo explícito Google/Supabase em implementação na branch 1.9. Migração remota `20261026142854_modux_google_calendar_links` aplicada: unicidade por evento/atendimento/calendário, RPC invoker com revisão/lock, RLS e privilégios mínimos. Testes transacionais de idempotência, conflito, revisão, isolamento e anonimato passaram com rollback integral (0 fixtures/vínculos persistidos). Código de vínculo/projeção passou nos testes C# e compilação Windows no CI #40340412410. Criação integrada recuperável em implementação; não há novo instalador.
 
@@ -104,6 +106,8 @@ Requisitos permanentes:
 - Alterações atribuídas ao Manus não estão no repositório conhecido.
 
 ## Pendências priorizadas
+
+- Aguardar CI da reconciliação vinculada no cliente: horários/duração por revisão+ETag, cancelamento preservando cadastro e recuperação explícita de pendências. A validação integrada de UI permanece para a entrega consolidada.
 
 - Validar CI da criação integrada recuperável (ID Google derivado do atendimento, propriedades privadas de origem, consulta antes de criar, recuperação de disputa 409 sem sobrescrever). Depois concluir reconciliação de datas/ETags e edição operacional.
 
@@ -250,6 +254,15 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-26 — reconciliação otimista e cancelamento vinculado
+
+- CI #40341480502 aprovou identidade estável/criação recuperável, regressões Google/vínculos/cores/protocolo, compilação Windows e ferramenta isolada.
+- RPC `agenda_reconcile_google_event`, invoker/RLS, confere ETag do vínculo e revisão do atendimento sob lock no mesmo sentido da associação. Atualiza somente data/hora/duração ou status cancelado; preserva contatos, serviços, equipe, observações e auditoria. Retentativas já concluídas não incrementam revisão.
+- Privilégios de UPDATE nos vínculos limitados às colunas event_etag/sync_status; identidade permanece imutável. Migração criada por CLI e alinhada à versão remota `20261026143956`.
+- Testes SQL transacionais passaram para mudança de horário, ETag/revisão antigos, preservação de contatos/serviços, cancelamento idempotente, isolamento e anonimato. Rollback removeu todos os fixtures (0 registros persistidos). Advisors sem novos avisos.
+- Cliente passa a obter a identidade real retornada pelo RPC de vínculo e reconciliar o horário após criação/edição confirmada. Exclusão Google marca o atendimento vinculado como cancelado após confirmação explícita, preservando cadastro. Falha parcial é informada como pendência e pode ser revisada em `Conferir vínculo`; evento ausente exige conferência humana antes de cancelar.
+- Barra de ações ajusta linhas à largura da janela para manter os controles acessíveis. Testes C#/compilação desta alteração aguardando CI; nenhum novo instalador.
 
 ### 2026-10-26 — criação integrada recuperável e cancelamento OAuth
 

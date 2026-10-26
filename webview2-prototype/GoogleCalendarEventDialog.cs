@@ -22,7 +22,7 @@ internal sealed class GoogleCalendarEventDialog : Form
     internal GoogleEventUserAction Action { get; private set; }
     internal GoogleEventDraft? Draft { get; private set; }
 
-    internal GoogleCalendarEventDialog(GoogleEventSnapshot? source, DateOnly initialDay)
+    internal GoogleCalendarEventDialog(GoogleEventSnapshot? source, DateOnly initialDay, bool linkedAppointment = false)
     {
         original = source;
         Text = source is null ? "Criar evento no Google Agenda" : "Editar evento do Google Agenda";
@@ -84,7 +84,9 @@ internal sealed class GoogleCalendarEventDialog : Form
             delete.Click += (_, _) =>
             {
                 if (MessageBox.Show(this,
-                    "Excluir este evento do Google Agenda? Essa ação também removerá o compromisso do calendário original.",
+                    linkedAppointment
+                        ? "Excluir este evento do Google e marcar o atendimento vinculado como cancelado? O cadastro e histórico serão preservados."
+                        : "Excluir este evento do Google Agenda? Essa ação removerá o compromisso do calendário original.",
                     "Confirmar exclusão", MessageBoxButtons.YesNo,
                     MessageBoxIcon.Warning) != DialogResult.Yes) return;
                 Action = GoogleEventUserAction.Delete;

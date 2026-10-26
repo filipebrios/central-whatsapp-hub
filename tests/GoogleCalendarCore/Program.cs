@@ -298,7 +298,11 @@ var store = new AgendaCalendarLinkStore((method, path, data) =>
         payload.RootElement.GetProperty("p_event_id").GetString() != item.Id ||
         payload.RootElement.GetProperty("p_appointment_id").GetString() != localRecord.Id)
         throw new Exception("Vínculo perdeu identidade ou revisão.");
-    return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK));
+    return Task.FromResult(CalendarTestHandler.Json(JsonSerializer.Serialize(new
+    {
+        company_id = company, appointment_id = localRecord.Id, calendar_id = calendarId,
+        event_id = item.Id, event_etag = item.ETag, sync_status = "vinculado"
+    })));
 });
 await store.Link(company, localRecord, calendarId, item);
 if (linkCalls != 1) throw new Exception("Vínculo enviou múltiplos pedidos.");
@@ -413,6 +417,34 @@ using (var api = new GoogleCalendarApi(auth, new HttpClient(transport)))
         throw new Exception("Criação integrada ambígua foi repetida.");
 }
 Console.WriteLine("PASS: criação integrada recuperável, identidade por atendimento, conflito concorrente, origem e exclusão protegidas.");
+
+var reconciledPosts = 0;
+var reconcileStore = new AgendaCalendarLinkStore((method, path, payload) =>
+{
+    reconciledPosts++;
+    if (method != HttpMethod.Post || path != "rest/v1/rpc/agenda_reconcile_google_event")
+        throw new Exception("Reconciliação deve usar RPC transacional.");
+    using var json = JsonDocument.Parse(JsonSerializer.Serialize(payload));
+    if (json.RootElement.GetProperty("p_expected_revision").GetInt32() != localRecord.Revision ||
+        json.RootElement.GetProperty("p_expected_etag").GetString() != association.ETag)
+        throw new Exception("Reconciliação sem revisão/ETag esperado.");
+    if (!json.RootElement.GetProperty("p_cancelled").GetBoolean())
+    {
+        if (json.RootElement.GetProperty("p_date").GetString() != "2026-10-22" ||
+            json.RootElement.GetProperty("p_time").GetString() != "08:00:00" ||
+            json.RootElement.GetProperty("p_duration").GetInt32() != 90)
+            throw new Exception("Reconciliação perdeu horário/duração do Google.");
+    }
+    else if (json.RootElement.GetProperty("p_date").ValueKind != JsonValueKind.Null)
+        throw new Exception("Cancelamento não deve inventar horário novo.");
+    return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK));
+});
+await reconcileStore.Reconcile(company, association, localRecord, item);
+await reconcileStore.Reconcile(company, association, localRecord, null, cancelled: true);
+await ExpectFailure(() => reconcileStore.Reconcile("outra empresa", association, localRecord, item), "Identidade incompleta");
+await ExpectFailure(() => reconcileStore.Reconcile(company, association, localRecord, item with { SpansMultipleDays = true }), "vários dias");
+if (reconciledPosts != 2) throw new Exception("Reconciliação inválida chegou à API.");
+Console.WriteLine("PASS: reconciliação/cancelamento RPC, revisão/ETag e guarda multidiária.");
 
 static async Task ExpectFailure(Func<Task> operation, string message)
 {
