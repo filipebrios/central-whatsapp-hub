@@ -12,7 +12,22 @@ permissions:
   contents: read
 
 jobs:
+  stop-stale-preparation:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Encerrar apenas execuções antigas desta entrega
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for run in 40375340663 40375340490; do
+            status=$(gh run view "$run" --repo filipebrios/central-whatsapp-hub --json status --jq .status)
+            if [ "$status" != "completed" ]; then gh run cancel "$run" --repo filipebrios/central-whatsapp-hub; fi
+          done
   verify:
+    needs: stop-stale-preparation
     uses: ./.github/workflows/validate-modux-19.yml
   package:
     needs: verify

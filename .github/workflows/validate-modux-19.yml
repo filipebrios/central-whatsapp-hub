@@ -73,11 +73,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Instalar navegador isolado para testes da página
-        run: |
-          npm install --prefix .modux-browser-tests --no-save --package-lock=false playwright@1.62.1
-          .modux-browser-tests/node_modules/.bin/playwright install --with-deps chromium
+      - name: Preparar testes com Chrome já instalado no runner
+        timeout-minutes: 5
+        run: npm install --prefix .modux-browser-tests --no-save --package-lock=false playwright@1.62.1
       - name: Testar respostas sem dados reais
         env:
+          MODUX_BROWSER_CHANNEL: chrome
           PLAYWRIGHT_MODULE: ${{ github.workspace }}/.modux-browser-tests/node_modules/playwright
         run: node tests/ClientResponse/browser.test.cjs

@@ -294,6 +294,12 @@ Antes de entregar uma versão:
 
 ## Registro de mudanças
 
+### 2026-10-26 — desbloqueio da preparação do navegador
+
+- Etapa de instalação do navegador remoto permaneceu preparando ambiente por vários minutos, embora Windows já tivesse passado. Runner Ubuntu oficial inclui Google Chrome; Playwright passa a usar channel chrome, sem apt/download de outro navegador, mantendo os mesmos cenários funcionais.
+- Etapa npm limitada a cinco minutos. Novo pacote encerra somente as execuções anteriores conhecidas desta entrega (40375340663/40375340490) e repete as validações antes de gerar instalador. Nenhuma release/instalador foi publicada nessa preparação.
+
+
 ### 2026-10-26 — domínio canônico verificado
 
 - Página São Bento publicada; apex sbento.com.br retorna HTML/script 200. www retornou 404 (inclusive /bio), embora figurasse nos aliases; DNS não foi alterado.

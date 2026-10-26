@@ -3,7 +3,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 (async () => {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, ...(process.env.MODUX_BROWSER_CHANNEL ? { channel: process.env.MODUX_BROWSER_CHANNEL } : {}) });
   const errors = [];
   const token = "a".repeat(64);
   let calls = [], reply = { status: "available", kind: "confirmacao", service: "<img src=x onerror=alert(1)>", date: "2026-10-27", time: "10:00" };
