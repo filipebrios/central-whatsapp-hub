@@ -61,6 +61,8 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- 26/10: links/rascunhos passaram nos testes C#/Node e compilação Windows CI #40369817886. Página preparada em sbento PR #26, aguardando validação/publicação; não declarar link público entregue. Convites Google em validação interna: ação separada, padrão Não, If-Match e preservação dos convidados; nenhum convite real enviado.
+
 - 26/10: handler de resposta pública passou em cinco testes Node (origem/método, limites, consulta sem consumo, nota zero, não vazamento). Edge `agenda-response` v1 ativa com autenticação própria por capacidade; teste HTTP inválido retornou 400/no-store. Página e integração de rascunho no cliente em validação de CI; publicação da página ainda pendente, sem link real enviado.
 
 - 26/10: ativação operacional e deduplicação iCal passaram no CI #40350635367. Backend de respostas públicas aprovado em testes SQL com rollback: token SHA-256, validade, uso único, horário exato, NPS e isolamento. Migração `20261026172943_modux_public_responses` aplicada; zero tokens/fixtures reais persistidos. Página pública e integração do cliente ainda em implementação; nenhum link foi enviado e nenhum instalador novo foi criado.
@@ -283,6 +285,13 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-26 — convites Google explícitos
+
+- API lê evento/ETag e preserva lista completa de convidados, respostas e campos editáveis antes de acrescentar apenas o e-mail escolhido. Recusa lista omitida, revisão antiga e endereço composto; participante já existente não gera PATCH/reenvio.
+- `sendUpdates=all` restrito à ação separada Convidar por e-mail; formulário identifica evento e destinatário, informa notificação aos convidados existentes e exige confirmação com padrão Não. Edição/criação comum continuam sem convite intencional.
+- If-Match protege alteração concorrente; timeout não provoca repetição automática e informa conferência no Google. Testes isolados de preservação/idempotência/guarda/lista incompleta/rede em CI; sem envio de convite real.
+
 
 ### 2026-10-26 — API e página de resposta pública
 

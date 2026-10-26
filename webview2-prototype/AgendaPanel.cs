@@ -43,6 +43,7 @@ internal sealed class AgendaPanel : UserControl
     private readonly Button catalogButton = MakeButton("Cores dos serviços");
     private readonly Button editLocalButton = MakeButton("Editar atendimento");
     private sealed record AgendaRowContext(GoogleEventSnapshot? Google, AgendaLocalSnapshot? Local);
+    private readonly Button inviteGoogleButton = MakeButton("Convidar por e-mail");
     private readonly Button reconcileButton = MakeButton("Conferir vínculo");
     private readonly Button completeGoogleButton = MakeButton("Completar Google");
     private readonly Button linkButton = MakeButton("Vincular atendimento");
@@ -172,6 +173,8 @@ internal sealed class AgendaPanel : UserControl
         bar.Controls.Add(linkButton);
         bar.Controls.Add(completeGoogleButton);
         bar.Controls.Add(reconcileButton);
+        bar.Controls.Add(inviteGoogleButton);
+        inviteGoogleButton.Click += async (_, _) => await InviteSelectedGoogleEvent();
         reconcileButton.Click += async (_, _) => await ReconcileSelectedEvent();
         completeGoogleButton.Click += async (_, _) => await CompleteSelectedGoogleEvent();
         linkButton.Click += async (_, _) => await LinkSelectedGoogleEvent();
@@ -613,6 +616,8 @@ internal sealed class AgendaPanel : UserControl
 
     private void UpdateLinkButton()
     {
+        inviteGoogleButton.Enabled = !busy && googleOAuth.CanWriteSelectedCalendar &&
+            grid.SelectedRows.Count == 1 && grid.SelectedRows[0].Tag is AgendaRowContext { Google: not null };
         editLocalButton.Enabled = !busy && grid.SelectedRows.Count == 1 &&
             grid.SelectedRows[0].Tag is AgendaRowContext { Local: not null };
         linkButton.Enabled = !busy && linksReady && googleOAuth.CanWriteSelectedCalendar &&
@@ -623,6 +628,48 @@ internal sealed class AgendaPanel : UserControl
         reconcileButton.Enabled = !busy && linksReady && googleOAuth.CanWriteSelectedCalendar &&
             grid.SelectedRows.Count == 1 && grid.SelectedRows[0].Tag is AgendaRowContext { Local: { } linkedLocal } &&
             calendarLinks.Any(link => link.AppointmentId == linkedLocal.Id && link.CalendarId == googleOAuth.CalendarId);
+    }
+
+    private async Task InviteSelectedGoogleEvent()
+    {
+        if (busy || !googleOAuth.CanWriteSelectedCalendar || grid.SelectedRows.Count != 1 ||
+            grid.SelectedRows[0].Tag is not AgendaRowContext { Google: { } google } context) return;
+        using var prompt = new Form
+        {
+            Text = "Convite Google • " + googleOAuth.CalendarName, Width = 660, Height = 310,
+            StartPosition = FormStartPosition.CenterParent, Font = Font,
+            FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false
+        };
+        var address = new TextBox { Dock = DockStyle.Top, MaxLength = 254, Text = context.Local?.Email ?? "" };
+        var hint = new Label
+        {
+            Dock = DockStyle.Top, Height = 145, Padding = new Padding(12),
+            Text = "Evento: " + google.Title + "\n" + google.Date.ToString("dd/MM/yyyy") + " • " + google.Time +
+                "\n\nConfira o e-mail do cliente. O Google enviará o convite e poderá notificar todos os convidados existentes." +
+                (string.IsNullOrEmpty(google.RecurringEventId) ? "" : "\nSomente esta ocorrência será alterada.")
+        };
+        var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 54, FlowDirection = FlowDirection.RightToLeft };
+        var next = new Button { Text = "Revisar convite", AutoSize = true, DialogResult = DialogResult.OK };
+        var close = new Button { Text = "Voltar", AutoSize = true, DialogResult = DialogResult.Cancel };
+        buttons.Controls.AddRange([close, next]);
+        prompt.Controls.Add(address); prompt.Controls.Add(hint); prompt.Controls.Add(buttons);
+        prompt.CancelButton = close;
+        if (prompt.ShowDialog(this) != DialogResult.OK) return;
+        var target = address.Text.Trim();
+        if (MessageBox.Show(this, "Enviar convite Google para " + target + "?\n\n" +
+            "Os demais convidados também podem receber atualização. Se o e-mail já estiver convidado, nenhum novo envio será solicitado.",
+            "Confirmar convite", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
+            MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+        SetBusy(true);
+        try
+        {
+            await googleApi.Invite(google, target);
+            Status("Lista de convidados confirmada pelo Google. Nenhuma mensagem de WhatsApp foi enviada.");
+        }
+        catch (Exception error) when (error is InvalidOperationException or HttpRequestException or TaskCanceledException or JsonException)
+        { MessageBox.Show(this, error.Message, "Conferir convite", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        finally { SetBusy(false); }
+        await LoadAppointments();
     }
 
     private async Task ShowWorkflow()

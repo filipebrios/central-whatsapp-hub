@@ -231,6 +231,62 @@ internal sealed class GoogleCalendarApi : IDisposable
             throw new InvalidOperationException("Alteração concluída no Google; atualize a agenda para confirmar.");
     }
 
+    internal async Task<GoogleEventSnapshot> Invite(GoogleEventSnapshot original, string email,
+        CancellationToken ct = default)
+    {
+        auth.DemandSafeWrite();
+        if (string.IsNullOrWhiteSpace(original.ETag))
+            throw new InvalidOperationException("Atualize o evento antes de convidar.");
+        if (!System.Net.Mail.MailAddress.TryCreate(email, out var parsedEmail) ||
+            !string.Equals(email, parsedEmail.Address, StringComparison.OrdinalIgnoreCase) ||
+            email.Length > 254 || email.Any(char.IsControl))
+            throw new InvalidOperationException("Informe apenas um e-mail válido para o convite.");
+        using var currentResponse = await Request(HttpMethod.Get, EventPath(original.Id), ct: ct);
+        using var currentJson = JsonDocument.Parse(await currentResponse.Content.ReadAsStringAsync(ct));
+        var source = currentJson.RootElement;
+        var current = GoogleEventSnapshot.Parse(source) ??
+            throw new InvalidOperationException("Evento indisponível para convidar.");
+        if (current.ETag != original.ETag)
+            throw new InvalidOperationException("O compromisso mudou no Google. Atualize antes de convidar.");
+        if (source.TryGetProperty("attendeesOmitted", out var omitted) && omitted.ValueKind == JsonValueKind.True)
+            throw new InvalidOperationException("A lista de convidados está incompleta. Use o Google Agenda para este convite.");
+        var guests = new JsonArray();
+        if (source.TryGetProperty("attendees", out var attendees))
+        {
+            if (attendees.ValueKind != JsonValueKind.Array)
+                throw new InvalidOperationException("Lista de convidados inválida. Confira no Google Agenda.");
+            foreach (var attendee in attendees.EnumerateArray())
+            {
+                if (attendee.TryGetProperty("email", out var existing) &&
+                    string.Equals(existing.GetString(), email, StringComparison.OrdinalIgnoreCase))
+                    return current; // Idempotência: convidado existente não provoca outro envio.
+                var guest = new JsonObject();
+                foreach (var field in new[] { "email", "displayName", "optional", "resource",
+                    "responseStatus", "comment", "additionalGuests" })
+                    if (attendee.TryGetProperty(field, out var value))
+                        guest[field] = JsonNode.Parse(value.GetRawText());
+                guests.Add(guest);
+            }
+        }
+        guests.Add(new JsonObject { ["email"] = parsedEmail.Address });
+        try
+        {
+            // Arrays replace the existing list: preserve every current guest and response.
+            // sendUpdates=all is reserved for this separately confirmed operation.
+            using var response = await Request(new HttpMethod("PATCH"),
+                EventPath(original.Id) + "?sendUpdates=all",
+                new JsonObject { ["attendees"] = guests }, original.ETag, ct);
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+            return GoogleEventSnapshot.Parse(json.RootElement) ??
+                throw new InvalidOperationException("Convite processado pelo Google; atualize o evento para conferir.");
+        }
+        catch (Exception error) when (error is HttpRequestException or TaskCanceledException)
+        {
+            throw new InvalidOperationException("A conexão falhou e o Google pode ter processado o convite. " +
+                "Confira os convidados no Google antes de repetir; nenhum reenvio automático foi feito.", error);
+        }
+    }
+
     internal async Task Delete(GoogleEventSnapshot original, CancellationToken ct = default)
     {
         auth.DemandSafeWrite();

@@ -624,6 +624,66 @@ await ExpectFailure(() => responseStore.IssueResponseToken(company, responseWork
 if (issuanceCalls != 1) throw new Exception("Rotina inadequada chegou ao servidor.");
 Console.WriteLine("PASS: link exclusivo em fragmento, emissão por revisão/empresa e rascunho sem envio.");
 
+
+// Explicit Google invitations preserve existing attendees and never retry ambiguous sends.
+var invitationJson = System.Text.Json.Nodes.JsonNode.Parse(source)!.AsObject();
+invitationJson["attendees"] = new System.Text.Json.Nodes.JsonArray(
+    new System.Text.Json.Nodes.JsonObject { ["email"] = "existing@example.test", ["responseStatus"] = "accepted", ["optional"] = true });
+using (var transport = new CalendarTestHandler((method, uri, _, body) =>
+{
+    if (method == "GET") return CalendarTestHandler.Json(invitationJson.ToJsonString());
+    if (method != "PATCH" || uri.Query != "?sendUpdates=all") throw new Exception("Convite não usou operação explícita.");
+    using var payload = JsonDocument.Parse(body!);
+    var guests = payload.RootElement.GetProperty("attendees");
+    if (guests.GetArrayLength() != 2 || guests[0].GetProperty("responseStatus").GetString() != "accepted" ||
+        !guests[0].GetProperty("optional").GetBoolean() || guests[1].GetProperty("email").GetString() != "client@example.test" ||
+        payload.RootElement.TryGetProperty("summary", out _))
+        throw new Exception("Convite perdeu convidados/respostas ou alterou o evento.");
+    return CalendarTestHandler.Json(source);
+}))
+using (var api = new GoogleCalendarApi(auth, new HttpClient(transport)))
+{
+    await api.Invite(item!, "client@example.test");
+    if (transport.Calls != 2 || transport.LastETag != item!.ETag) throw new Exception("Convite sem ETag.");
+}
+using (var transport = new CalendarTestHandler((method, _, _, _) =>
+{
+    if (method != "GET") throw new Exception("Repetição reenviou convite existente.");
+    return CalendarTestHandler.Json(invitationJson.ToJsonString());
+}))
+using (var api = new GoogleCalendarApi(auth, new HttpClient(transport)))
+{
+    await api.Invite(item!, "EXISTING@example.test");
+    if (transport.Calls != 1) throw new Exception("Convite existente não foi idempotente.");
+}
+invitationJson["attendeesOmitted"] = true;
+using (var transport = new CalendarTestHandler((method, _, _, _) =>
+{
+    if (method != "GET") throw new Exception("Lista incompleta foi sobrescrita.");
+    return CalendarTestHandler.Json(invitationJson.ToJsonString());
+}))
+using (var api = new GoogleCalendarApi(auth, new HttpClient(transport)))
+    await ExpectFailure(() => api.Invite(item!, "client@example.test"), "incompleta");
+using (var transport = new CalendarTestHandler((_, _, _, _) => throw new Exception("E-mail inválido chegou à rede.")))
+using (var api = new GoogleCalendarApi(auth, new HttpClient(transport)))
+{
+    await ExpectFailure(() => api.Invite(item!, "Nome <client@example.test>"), "e-mail válido");
+    await ExpectFailure(() => api.Invite(item!, "client@example.test,other@example.test"), "e-mail válido");
+}
+auth.AllowWrite = false;
+using (var transport = new CalendarTestHandler((_, _, _, _) => throw new Exception("Guarda de convite falhou.")))
+using (var api = new GoogleCalendarApi(auth, new HttpClient(transport)))
+    await ExpectFailure(() => api.Invite(item!, "client@example.test"), "calendário de testes");
+auth.AllowWrite = true;
+using (var transport = new CalendarTestHandler((method, _, _, _) => method == "GET"
+    ? CalendarTestHandler.Json(source) : throw new HttpRequestException("fixture timeout")))
+using (var api = new GoogleCalendarApi(auth, new HttpClient(transport)))
+{
+    await ExpectFailure(() => api.Invite(item!, "client@example.test"), "pode ter processado");
+    if (transport.Calls != 2) throw new Exception("Falha ambígua foi reenviada.");
+}
+Console.WriteLine("PASS: convites explícitos, preservação de participantes, ETag, repetição e falha sem reenvio.");
+
 static async Task ExpectFailure(Func<Task> operation, string message)
 {
     try { await operation(); }
