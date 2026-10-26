@@ -42,8 +42,8 @@ Type: files; Name: "{group}\\Central WhatsApp.lnk"
 Source: "publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\Central WhatsApp"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\Central WhatsApp"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{group}\MODUX"; Filename: "{app}\{#MyAppExeName}"
+Name: "{autodesktop}\MODUX"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Registry]
 Root: HKCU; Subkey: "Software\Classes\modux"; ValueType: string; ValueData: "URL:MODUX Compose"; Flags: uninsdeletekey

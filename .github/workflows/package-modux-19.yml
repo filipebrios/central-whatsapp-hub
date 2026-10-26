@@ -1,0 +1,74 @@
+name: MODUX 1.9.0 - pacote consolidado
+
+on:
+  push:
+    branches:
+      - feature/modux-1.9-consolidated
+    paths:
+      - "modux-agenda/RELEASE-1.9.0.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    uses: ./.github/workflows/validate-modux-19.yml
+  package:
+    needs: verify
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Conferir intenção de pacote único
+        shell: pwsh
+        run: |
+          $release = Get-Content modux-agenda/RELEASE-1.9.0.json -Raw | ConvertFrom-Json
+          if ($release.version -ne "1.9.0" -or $release.tag -ne "modux-v1.9.0-beta1") { throw "Manifesto de release inválido" }
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Aplicar integração e versão consolidada
+        run: python modux-agenda/apply_sidebar.py
+      - name: Compilar pacote Windows autocontido
+        run: dotnet publish webview2-prototype/CentralWhatsApp.WebView2.csproj -c Release -r win-x64 --self-contained true -o webview2-prototype/publish
+      - name: Conferir versão e preservação dos perfis
+        shell: pwsh
+        run: |
+          $version = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path "webview2-prototype/publish/MODUX.exe")).ProductVersion
+          if (-not $version.StartsWith("1.9.0")) { throw "Versão incorreta: $version" }
+          $script = Get-Content webview2-prototype/CentralWhatsApp.iss -Raw
+          if ($script -match '\[UninstallDelete\]' -or $script -match 'Type: filesandordirs') { throw "Revisar remoção de dados no instalador" }
+      - name: Preparar Inno Setup
+        shell: pwsh
+        run: |
+          $compiler = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $compiler)) { choco install innosetup --no-progress -y }
+          if (-not (Test-Path $compiler)) { throw "Inno Setup indisponível" }
+      - name: Gerar o instalador consolidado
+        shell: pwsh
+        working-directory: webview2-prototype
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "CentralWhatsApp.iss"'
+      - name: Calcular SHA-256
+        shell: pwsh
+        run: |
+          $asset = "webview2-prototype/installer-output/MODUX-Setup-1.9.0.exe"
+          $hash = (Get-FileHash $asset -Algorithm SHA256).Hash.ToLower()
+          "$hash  MODUX-Setup-1.9.0.exe" | Set-Content webview2-prototype/installer-output/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MODUX-Setup-1.9.0-consolidado
+          path: webview2-prototype/installer-output/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preparar release em rascunho para conferência final
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "modux-v1.9.0-beta1"
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -eq 0) { throw "A release já existe e será preservada. Confira o artefato desta execução." }
+          gh release create $tag webview2-prototype/installer-output/MODUX-Setup-1.9.0.exe webview2-prototype/installer-output/SHA256SUMS.txt --target ${{ github.sha }} --title "MODUX 1.9.0 beta • Windows x64" --notes-file modux-agenda/RELEASE-1.9.0.md --prerelease --draft

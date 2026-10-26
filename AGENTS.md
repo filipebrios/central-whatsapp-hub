@@ -288,6 +288,12 @@ Antes de entregar uma versão:
 
 ## Registro de mudanças
 
+### 2026-10-26 — preparação do pacote único
+
+- Workflow de empacotamento 1.9 preparado, mas só é acionado por manifesto de release explícito ou despacho manual. Reutiliza validação C#/Node/navegador/smoke antes de gerar instalador autocontido; confere versão/remoção de dados, gera SHA-256 e cria release em rascunho para verificação de assets.
+- Instalador mantém AppId/diretório da instalação/perfis e passa a criar atalhos com nome MODUX. Notas identificam Windows x64 beta e limites de recorrência/multidia, envio manual, cancelamento solicitado e checkpoints parciais. Nenhum manifesto de release foi criado nesta alteração; nenhum instalador novo gerado.
+
+
 ### 2026-10-26 — tema do contêiner integrado
 
 - Smoke Windows detectou que UserControl exige tratamento próprio além de Panel. Tema passa a alcançar o contêiner AgendaPanel, mantendo aplicação aos controles internos. Testes de calendário/convites/protocolo e compilação anteriores passaram; repetir smoke antes de empacotar.
