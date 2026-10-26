@@ -152,3 +152,147 @@ GoogleCalendarWriteGuard.DemandTestCalendar("  MODUX - TESTES  ", "example@group
 if (GoogleCalendarWriteGuard.IsTestCalendar("Agendamento São Bento"))
     throw new Exception("O calendário operacional não pode ser reconhecido como testes.");
 Console.WriteLine("PASS: trava da agenda operacional, calendarId e OAuth testados.");
+
+// Testes do cliente HTTP completo. O handler abaixo nunca acessa a rede.
+var auth = new FakeCalendarAuthorization();
+var draft = new GoogleEventDraft("Teste controlado", "Observação", "Itajubá",
+    new DateOnly(2026, 10, 23), new TimeOnly(8, 0), 60, false);
+using (var transport = new CalendarTestHandler((method, uri, headers, body) =>
+{
+    if (method != "POST" || !uri.AbsolutePath.EndsWith("/events") ||
+        uri.Query != "?sendUpdates=none" || headers != "Bearer test-only-token")
+        throw new Exception("Criação enviada com método, destino ou autenticação incorretos.");
+    using var payload = JsonDocument.Parse(body!);
+    if (payload.RootElement.GetProperty("id").GetString() != draft.CreateRequestId ||
+        payload.RootElement.TryGetProperty("attendees", out _))
+        throw new Exception("Criação perdeu a identidade estável ou adicionou convidados.");
+    return CalendarTestHandler.Json(source);
+}))
+using (var api = new GoogleCalendarApi(auth, new HttpClient(transport)))
+{
+    var created = await api.Create(draft);
+    if (created.Id != "event-987" || transport.Calls != 1)
+        throw new Exception("Criação deve fazer exatamente uma requisição.");
+}
+
+// Uma agenda operacional deve ser barrada antes de qualquer chamada HTTP.
+auth.AllowWrite = false;
+using (var transport = new CalendarTestHandler((_, _, _, _) =>
+    throw new Exception("Uma escrita bloqueada tentou acessar a rede.")))
+using (var api = new GoogleCalendarApi(auth, new HttpClient(transport)))
+{
+    await ExpectFailure(() => api.Create(draft), "calendário de testes");
+    await ExpectFailure(() => api.Update(item!, draft), "calendário de testes");
+    await ExpectFailure(() => api.Delete(item!), "calendário de testes");
+    if (transport.Calls != 0) throw new Exception("Guarda permitiu requisição HTTP.");
+}
+auth.AllowWrite = true;
+
+// GET prévio + PATCH com If-Match, sem substituir recorrência/convidados.
+using (var transport = new CalendarTestHandler((method, _, _, body) =>
+{
+    if (method == "GET") return CalendarTestHandler.Json(source);
+    if (method != "PATCH" || body is null) throw new Exception("Método de edição incorreto.");
+    return CalendarTestHandler.Json(source);
+}))
+using (var api = new GoogleCalendarApi(auth, new HttpClient(transport)))
+{
+    _ = await api.Update(item!, draft);
+    if (transport.Calls != 2 || transport.LastETag != item!.ETag)
+        throw new Exception("PATCH sem verificação prévia ou sem If-Match.");
+}
+
+// Mudança por outro operador entre leitura e edição: nenhum PATCH deve sair.
+using (var transport = new CalendarTestHandler((method, _, _, _) =>
+{
+    if (method != "GET") throw new Exception("Conflito não bloqueou a escrita.");
+    return CalendarTestHandler.Json(source.Replace("v42", "v43"));
+}))
+using (var api = new GoogleCalendarApi(auth, new HttpClient(transport)))
+{
+    await ExpectFailure(() => api.Update(item!, draft), "alterado no Google");
+    await ExpectFailure(() => api.Delete(item!), "mudou no Google");
+    if (transport.Calls != 2) throw new Exception("Conflito gerou escrita inesperada.");
+}
+
+// Conflito depois do GET ainda deve ser barrado pelo If-Match no servidor.
+using (var transport = new CalendarTestHandler((method, _, _, _) => method == "GET"
+    ? CalendarTestHandler.Json(source)
+    : new HttpResponseMessage(System.Net.HttpStatusCode.PreconditionFailed)))
+using (var api = new GoogleCalendarApi(auth, new HttpClient(transport)))
+{
+    await ExpectFailure(() => api.Update(item!, draft), "alterado por outra pessoa");
+    if (transport.Calls != 2 || transport.LastETag != item!.ETag)
+        throw new Exception("Conflito tardio sem ETag.");
+}
+
+using (var transport = new CalendarTestHandler((method, _, _, _) => method == "GET"
+    ? CalendarTestHandler.Json(source)
+    : new HttpResponseMessage(System.Net.HttpStatusCode.NoContent)))
+using (var api = new GoogleCalendarApi(auth, new HttpClient(transport)))
+{
+    await api.Delete(item!);
+    if (transport.Calls != 2 || transport.LastETag != item!.ETag)
+        throw new Exception("Exclusão sem comparação da versão.");
+}
+
+foreach (var failure in new[] {
+    (System.Net.HttpStatusCode.Unauthorized, "expirou"),
+    (System.Net.HttpStatusCode.Forbidden, "permissão"),
+    (System.Net.HttpStatusCode.InternalServerError, "HTTP 500") })
+{
+    using var transport = new CalendarTestHandler((_, _, _, _) => new HttpResponseMessage(failure.Item1));
+    using var api = new GoogleCalendarApi(auth, new HttpClient(transport));
+    await ExpectFailure(() => api.Events(new DateOnly(2026, 10, 23), new DateOnly(2026, 10, 23)), failure.Item2);
+    if (transport.Calls != 1) throw new Exception("Erro HTTP gerou repetição automática.");
+}
+
+foreach (var timeout in new[] { false, true })
+{
+    using var transport = new CalendarTestHandler((_, _, _, _) =>
+    {
+        if (timeout) throw new TaskCanceledException("timeout simulado");
+        throw new HttpRequestException("falha de rede simulada");
+    });
+    using var api = new GoogleCalendarApi(auth, new HttpClient(transport));
+    await ExpectFailure(() => api.Create(draft), "pode ter salvo");
+    if (transport.Calls != 1) throw new Exception("Criação ambígua foi repetida automaticamente.");
+}
+Console.WriteLine("PASS: cliente HTTP isolado, CRUD, bloqueio operacional, ETag, erros e ausência de reenvio cego.");
+
+static async Task ExpectFailure(Func<Task> operation, string message)
+{
+    try { await operation(); }
+    catch (InvalidOperationException error) when (error.Message.Contains(message, StringComparison.OrdinalIgnoreCase))
+    { return; }
+    throw new Exception("Operação deveria falhar com mensagem: " + message);
+}
+
+sealed class FakeCalendarAuthorization : IGoogleCalendarAuthorization
+{
+    public string? CalendarId => "isolated-test@group.calendar.google.com";
+    internal bool AllowWrite { get; set; } = true;
+    public Task<string> AccessTokenAsync(CancellationToken ct) => Task.FromResult("test-only-token");
+    public void DemandSafeWrite()
+    {
+        if (!AllowWrite) throw new InvalidOperationException("Selecione o calendário de testes.");
+    }
+}
+
+sealed class CalendarTestHandler(
+    Func<string, Uri, string?, string?, HttpResponseMessage> respond) : HttpMessageHandler
+{
+    internal int Calls { get; private set; }
+    internal string? LastETag { get; private set; }
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+    {
+        Calls++;
+        LastETag = request.Headers.TryGetValues("If-Match", out var values) ? values.Single() : null;
+        var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(ct);
+        return respond(request.Method.Method, request.RequestUri!, request.Headers.Authorization?.ToString(), body);
+    }
+    internal static HttpResponseMessage Json(string body) => new(System.Net.HttpStatusCode.OK)
+    {
+        Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json")
+    };
+}

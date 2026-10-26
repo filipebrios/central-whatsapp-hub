@@ -10,7 +10,7 @@ namespace CentralWhatsApp.WebView2;
 
 /// <summary>Autorização instalada Google OAuth 2.0 com PKCE e credenciais locais DPAPI.
 /// Nenhuma credencial é distribuída no binário, e o login ocorre no navegador padrão.</summary>
-internal sealed class GoogleDesktopOAuth : IDisposable
+internal sealed class GoogleDesktopOAuth : IDisposable, IGoogleCalendarAuthorization
 {
     internal const string EventScope = "https://www.googleapis.com/auth/calendar.events";
     internal const string ListScope = "https://www.googleapis.com/auth/calendar.calendarlist.readonly";
@@ -218,6 +218,10 @@ internal sealed class GoogleDesktopOAuth : IDisposable
 
     private static string Base64Url(byte[] bytes) =>
         Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    string? IGoogleCalendarAuthorization.CalendarId => CalendarId;
+    Task<string> IGoogleCalendarAuthorization.AccessTokenAsync(CancellationToken ct) => AccessTokenAsync(ct);
+    void IGoogleCalendarAuthorization.DemandSafeWrite() => DemandSafeWrite();
 
     public void Dispose() => http.Dispose();
 }

@@ -61,6 +61,7 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- 26/10: a correção da verificação OAuth passou nos testes e na compilação Windows (CI #40314893833). Ampliação dos testes HTTP de CRUD/ETag em implementação, sem autenticar conta real.
 - 26/10: retomada na branch 1.9; verificação OAuth permite escolher a data do evento fictício e bloqueia troca/desconexão durante a consulta. Compilação pendente de CI; nenhum instalador novo.
 
 - Repositório público: `filipebrios/central-whatsapp-hub`.
@@ -98,6 +99,8 @@ Requisitos permanentes:
 - Alterações atribuídas ao Manus não estão no repositório conhecido.
 
 ## Pendências priorizadas
+
+- Conferir CI dos testes HTTP de integração isolada (criação/edição/exclusão, conflitos ETag, autorização, falhas ambíguas), sem confundir mocks com teste Google real.
 
 - Etapa 2/8 continua dependente da autorização OAuth no Windows do responsável e da leitura real do calendário MODUX - TESTES; Google Cloud já configurado, não pedir novamente.
 
@@ -240,6 +243,12 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-26 — testes HTTP isolados do cliente Google Calendar
+
+- `GoogleCalendarApi` aceita autorização e HttpClient injetáveis internamente; o construtor de produção continua usando OAuth Desktop e transporte real. `GoogleDesktopOAuth` implementa a interface mínima explicitamente, sem expor tokens à UI.
+- Testes executam os métodos reais de criação, edição e exclusão com transporte simulado: verificam método/destino, Bearer fictício, ID estável no POST, If-Match, conflitos antes e depois da leitura, bloqueio antes de HTTP, erros 401/403/500 e falha de rede/timeout sem reenvio.
+- Nenhuma credencial, evento real ou envio de WhatsApp envolvido. Aguardando CI Windows; etapa 2 continua parcial e sem instalador intermediário.
 
 ### 2026-10-26 — retomada e diagnóstico OAuth reutilizável
 

@@ -12,14 +12,21 @@ namespace CentralWhatsApp.WebView2;
 /// </summary>
 internal sealed class GoogleCalendarApi : IDisposable
 {
-    private readonly GoogleDesktopOAuth auth;
-    private readonly HttpClient http = new()
-    {
-        BaseAddress = new Uri("https://www.googleapis.com/calendar/v3/"),
-        Timeout = TimeSpan.FromSeconds(35)
-    };
+    private readonly IGoogleCalendarAuthorization auth;
+    private readonly HttpClient http;
 
-    internal GoogleCalendarApi(GoogleDesktopOAuth auth) => this.auth = auth;
+    internal GoogleCalendarApi(GoogleDesktopOAuth auth)
+        : this(auth, new HttpClient()) { }
+
+    // O transporte injetável permite testar todo o fluxo HTTP sem credenciais,
+    // token real, navegador ou acesso ao calendário do usuário.
+    internal GoogleCalendarApi(IGoogleCalendarAuthorization auth, HttpClient http)
+    {
+        this.auth = auth;
+        this.http = http;
+        http.BaseAddress = new Uri("https://www.googleapis.com/calendar/v3/");
+        http.Timeout = TimeSpan.FromSeconds(35);
+    }
 
     private async Task<HttpResponseMessage> Request(
         HttpMethod method, string url, object? body = null, string? etag = null,
@@ -291,4 +298,12 @@ internal sealed record GoogleEventDraft(string Title, string Description, string
             end = new { dateTime = finish.ToString("yyyy-MM-ddTHH:mm:sszzz"), timeZone = "America/Sao_Paulo" }
         };
     }
+}
+
+/// <summary>Autorização mínima do cliente Calendar, substituível apenas em testes internos.</summary>
+internal interface IGoogleCalendarAuthorization
+{
+    string? CalendarId { get; }
+    Task<string> AccessTokenAsync(CancellationToken ct);
+    void DemandSafeWrite();
 }
