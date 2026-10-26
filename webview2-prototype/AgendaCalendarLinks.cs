@@ -6,7 +6,8 @@ namespace CentralWhatsApp.WebView2;
 internal sealed record AgendaLocalSnapshot(string Id, int Revision, string Client,
     string Service, string[] ServiceIds, string Date, string Time, string Status,
     string Phone, string Address, int Duration = 60, string Notes = "",
-    string Responsible = "", string Email = "", string Kind = "pf", string Technician = "")
+    string Responsible = "", string Email = "", string Kind = "pf", string Technician = "",
+    string? CompletedDate = null, int? FeedbackScore = null, string FeedbackNote = "")
 {
     internal static AgendaLocalSnapshot Parse(JsonElement row)
     {
@@ -23,7 +24,9 @@ internal sealed record AgendaLocalSnapshot(string Id, int Revision, string Clien
             Read(row, "status"), Read(row, "phone"), Read(row, "address"),
             row.TryGetProperty("duration", out var duration) ? duration.GetInt32() : 60,
             Read(row, "notes"), Read(row, "responsible"), Read(row, "email"),
-            Read(row, "kind"), Read(row, "technician"));
+            Read(row, "kind"), Read(row, "technician"), Read(row, "service_completed_date"),
+            row.TryGetProperty("feedback_score", out var score) && score.ValueKind == JsonValueKind.Number
+                ? score.GetInt32() : null, Read(row, "feedback_note"));
     }
     internal GoogleEventDraft AsGoogleDraft(string companyId)
     {

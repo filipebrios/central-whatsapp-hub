@@ -6,6 +6,17 @@ namespace CentralWhatsApp.WebView2;
 internal sealed class AgendaAppointmentStore(
     Func<HttpMethod, string, object?, Task<HttpResponseMessage>> authorized)
 {
+    internal async Task<bool> HasCalendarLink(string companyId, string appointmentId)
+    {
+        using var response = await authorized(HttpMethod.Get,
+            "rest/v1/agenda_calendar_links?select=event_id&company_id=eq." + Uri.EscapeDataString(companyId) +
+            "&appointment_id=eq." + Uri.EscapeDataString(appointmentId) + "&limit=1", null);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException("Não foi possível conferir os vínculos do atendimento. Atualize antes de editar horários.");
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return json.RootElement.GetArrayLength() > 0;
+    }
+
     internal async Task<AgendaLocalSnapshot> Update(string companyId, AgendaLocalSnapshot original,
         AgendaAppointmentInput proposed, bool linkedSchedule)
     {
@@ -25,8 +36,14 @@ internal sealed class AgendaAppointmentStore(
             fields["date"] = proposed.Date; fields["time"] = proposed.Time;
             fields["duration"] = proposed.Duration;
         }
-        if (proposed.Status == "concluido" && original.Status != "concluido")
-            fields["service_completed_date"] = DateTime.Today.ToString("yyyy-MM-dd");
+        if (proposed.Status == "concluido")
+        {
+            var completed = proposed.CompletedDate ?? original.CompletedDate ?? DateTime.Today.ToString("yyyy-MM-dd");
+            if (!DateOnly.TryParseExact(completed, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var day) || day > DateOnly.FromDateTime(DateTime.Today))
+                throw new InvalidOperationException("Confira a data real de conclusão do serviço.");
+            fields["service_completed_date"] = completed;
+        }
         using var response = await authorized(HttpMethod.Patch,
             "rest/v1/agenda_appointments?id=eq." + Uri.EscapeDataString(original.Id) +
             "&company_id=eq." + Uri.EscapeDataString(companyId) +

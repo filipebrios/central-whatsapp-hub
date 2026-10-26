@@ -11,6 +11,8 @@
     <Compile Include="../../webview2-prototype/GoogleCalendarWriteGuard.cs" Link="GoogleCalendarWriteGuard.cs" />
     <Compile Include="../../webview2-prototype/GoogleDesktopOAuth.cs" Link="GoogleDesktopOAuth.cs" />
     <Compile Include="../../webview2-prototype/GoogleCalendarApi.cs" Link="GoogleCalendarApi.cs" />
+    <Compile Include="../../webview2-prototype/ComposeRequest.cs" Link="ComposeRequest.cs" />
+    <Compile Include="../../webview2-prototype/AgendaWorkflow.cs" Link="AgendaWorkflow.cs" />
     <Compile Include="../../webview2-prototype/AgendaServiceColors.cs" Link="AgendaServiceColors.cs" />
     <Compile Include="../../webview2-prototype/AgendaServiceCatalog.cs" Link="AgendaServiceCatalog.cs" />
     <Compile Include="../../webview2-prototype/AgendaAppointmentInput.cs" Link="AgendaAppointmentInput.cs" />

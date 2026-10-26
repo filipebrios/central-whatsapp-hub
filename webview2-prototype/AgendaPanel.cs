@@ -32,6 +32,9 @@ internal sealed class AgendaPanel : UserControl
     private readonly AgendaCalendarLinkStore linkStore;
     private readonly AgendaAppointmentStore appointmentStore;
     private readonly AgendaServiceCatalog serviceCatalog;
+    internal event Action<ComposeRequest>? ComposeRequested;
+    private readonly AgendaWorkflowStore workflowStore;
+    private readonly Button workflowButton = MakeButton("Pendências e pós-venda");
     private readonly Button catalogButton = MakeButton("Cores dos serviços");
     private readonly Button editLocalButton = MakeButton("Editar atendimento");
     private sealed record AgendaRowContext(GoogleEventSnapshot? Google, AgendaLocalSnapshot? Local);
@@ -76,6 +79,7 @@ internal sealed class AgendaPanel : UserControl
         linkStore = new AgendaCalendarLinkStore(Authorized);
         appointmentStore = new AgendaAppointmentStore(Authorized);
         serviceCatalog = new AgendaServiceCatalog(Authorized);
+        workflowStore = new AgendaWorkflowStore(Authorized);
         Dock = DockStyle.Fill;
         BackColor = Color.FromArgb(248, 250, 252);
         Font = new Font("Segoe UI", 10);
@@ -155,6 +159,8 @@ internal sealed class AgendaPanel : UserControl
         bar.Controls.Add(refresh); bar.Controls.Add(add);
         bar.Controls.Add(editLocalButton);
         bar.Controls.Add(catalogButton);
+        bar.Controls.Add(workflowButton);
+        workflowButton.Click += async (_, _) => await ShowWorkflow();
         catalogButton.Click += async (_, _) => await ConfigureCatalog();
         editLocalButton.Click += async (_, _) => await EditSelectedAppointment();
         bar.Controls.Add(googleNewButton);
@@ -225,6 +231,7 @@ internal sealed class AgendaPanel : UserControl
         signIn.Enabled = refresh.Enabled = add.Enabled = signOut.Enabled = !value;
         googleButton.Enabled = googleApiButton.Enabled = !value;
         catalogButton.Enabled = !value && currentRole == "admin";
+        workflowButton.Enabled = !value && companyId is not null;
         googleNewButton.Enabled = !value && googleOAuth.CanWriteSelectedCalendar;
         UpdateLinkButton();
     }
@@ -356,7 +363,7 @@ internal sealed class AgendaPanel : UserControl
                 1 => first.AddDays(6),
                 _ => first.AddMonths(1).AddDays(-1)
             };
-            var query = "rest/v1/agenda_appointments?select=id,revision,client,phone,primary_service,service_ids,date,time,status,address,duration,notes,responsible,email,kind,technician" +
+            var query = "rest/v1/agenda_appointments?select=id,revision,client,phone,primary_service,service_ids,date,time,status,address,duration,notes,responsible,email,kind,technician,service_completed_date,feedback_score,feedback_note" +
                 "&company_id=eq." + Uri.EscapeDataString(companyId) + "&deleted_at=is.null" +
                 $"&date=gte.{first:yyyy-MM-dd}&date=lte.{last:yyyy-MM-dd}" +
                 "&order=date.asc,time.asc&limit=500";
@@ -420,7 +427,7 @@ internal sealed class AgendaPanel : UserControl
                         if (group.Any(id => !Guid.TryParse(id, out _)))
                             throw new InvalidOperationException("Vínculo contém identificação inválida.");
                         using var extra = await Authorized(HttpMethod.Get,
-                            "rest/v1/agenda_appointments?select=id,revision,client,phone,primary_service,service_ids,date,time,status,address,duration,notes,responsible,email,kind,technician" +
+                            "rest/v1/agenda_appointments?select=id,revision,client,phone,primary_service,service_ids,date,time,status,address,duration,notes,responsible,email,kind,technician,service_completed_date,feedback_score,feedback_note" +
                             "&company_id=eq." + Uri.EscapeDataString(companyId) +
                             "&deleted_at=is.null&id=in.(" + string.Join(",", group) + ")");
                         RequireSuccess(extra);
@@ -533,6 +540,15 @@ internal sealed class AgendaPanel : UserControl
             calendarLinks.Any(link => link.AppointmentId == linkedLocal.Id && link.CalendarId == googleOAuth.CalendarId);
     }
 
+    private async Task ShowWorkflow()
+    {
+        if (busy || companyId is null) return;
+        using var dialog = new AgendaWorkflowDialog(workflowStore, companyId, currentRole == "admin");
+        dialog.ShowDialog(this);
+        if (dialog.EditRequested is { } appointment) await EditAppointment(appointment);
+        else if (dialog.Prepared is { } message) ComposeRequested?.Invoke(message);
+    }
+
     private async Task ConfigureCatalog()
     {
         if (busy || companyId is null || currentRole != "admin") return;
@@ -598,7 +614,18 @@ internal sealed class AgendaPanel : UserControl
     {
         if (busy || companyId is null || grid.SelectedRows.Count != 1 ||
             grid.SelectedRows[0].Tag is not AgendaRowContext { Local: { } original }) return;
-        var linked = calendarLinks.Any(link => link.AppointmentId == original.Id);
+        await EditAppointment(original);
+    }
+
+    private async Task EditAppointment(AgendaLocalSnapshot original)
+    {
+        if (companyId is null || busy) return;
+        bool linked;
+        SetBusy(true);
+        try { linked = await appointmentStore.HasCalendarLink(companyId, original.Id); }
+        catch (Exception error) when (error is InvalidOperationException or HttpRequestException or TaskCanceledException or JsonException)
+        { MessageBox.Show(this, error.Message, "Conferir vínculos"); return; }
+        finally { SetBusy(false); }
         using var editor = new AgendaAppointmentDialog(calendar.SelectedDate, source: original, lockSchedule: linked, sharedServices: serviceCatalog.Items);
         if (editor.ShowDialog(this) != DialogResult.OK || editor.Result is not { } proposed) return;
         SetBusy(true);

@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace CentralWhatsApp.WebView2;
 
 // An external link can only prepare a draft, never send or execute arbitrary URLs.
-internal sealed record ComposeRequest(string Phone, string Text)
+internal sealed record ComposeRequest(string Phone, string Text, string Source = "criatta")
 {
     public const int MaxUriLength = 8000;
     public const int MaxTextLength = 1800;
@@ -24,12 +24,12 @@ internal sealed record ComposeRequest(string Phone, string Text)
                 if (pair.Length != 2 || !fields.TryAdd(Uri.UnescapeDataString(pair[0]), Uri.UnescapeDataString(pair[1])))
                     return null;
             }
-            if (fields.Count != 3 || fields.GetValueOrDefault("source") != "criatta" ||
+            if (fields.Count != 3 || fields.GetValueOrDefault("source") is not ("criatta" or "saobento") ||
                 !fields.TryGetValue("phone", out var phone) || !Regex.IsMatch(phone, @"^55[0-9]{10,11}$") ||
                 !fields.TryGetValue("text", out var text) || string.IsNullOrWhiteSpace(text) ||
                 text.Length > MaxTextLength || text.Any(c => char.IsControl(c) && c != '\n' && c != '\r' && c != '\t'))
                 return null;
-            return new ComposeRequest(phone, text);
+            return new ComposeRequest(phone, text, fields["source"]);
         }
         catch (UriFormatException) { return null; }
     }

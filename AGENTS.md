@@ -61,6 +61,8 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- 26/10: catálogo compartilhado passou nos testes/compilação no CI #40344124246. Rotina manual de pendências/lembretes/NPS em integração: fila compartilhada idempotente, rascunho separado de envio confirmado pelo operador, conta São Bento independente da Criatta. Migrações `20261026150043`/`20261026151259` aplicadas e testes SQL com rollback aprovados; cliente Windows aguardando CI.
+
 - 26/10: edição operacional passou nos testes/compilação Windows no CI #40343259988. Catálogo compartilhado inicial aplicado e conferido: 12 definições (10 serviços ativos + 2 categorias de legenda), seis cores históricas preservadas. Configuração de cores/rótulos por administrador e leitura compartilhada em validação.
 
 - 26/10: reconciliação vinculada/cancelamento passaram no CI #40342399727. Edição operacional PF/PJ em implementação: PATCH condicionado a empresa/ID/revisão; horários vinculados preservados, alteração pelo editor Google. Aguardar novo CI e validação integrada da UI.
@@ -110,6 +112,10 @@ Requisitos permanentes:
 - Alterações atribuídas ao Manus não estão no repositório conhecido.
 
 ## Pendências priorizadas
+
+- Aguardar CI de pendências/fila manual/NPS e integração com conta São Bento; depois concluir busca/filtros, refinamento visual, backup/exportação e instalador consolidado.
+- Links públicos de confirmação/cancelamento e convites Google controlados ainda não estão entregues. Modelos atuais de confirmação solicitam resposta manual; não anunciar clique de confirmação nem disparos automáticos.
+- Link exato de avaliações Google não foi recuperado com certeza; administrador pode configurar a URL oficial no próprio painel, sem link inventado ou de outra empresa.
 
 - Validar CI do catálogo compartilhado e configuração de cores; depois concluir filtros/painel operacional, preparação de mensagens, redesign e empacotamento único. Configuração visual real e fluxo completo Windows serão testados na entrega consolidada.
 
@@ -262,6 +268,17 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-26 — pendências e comunicação manual compartilhada
+
+- CI #40344124246 aprovou catálogo compartilhado, cores/contraste/CAS, regressões e compilação Windows.
+- `AgendaWorkflow`/`AgendaWorkflowDialog` consultam revisões, contatos faltantes, confirmações hoje/amanhã, lembretes D-1/D0 e NPS após sete dias da conclusão real (janela de 90 dias). Nota fica não informada até registro explícito; convite Google fica disponível conforme regra >=8 e modelo/link configurado por administrador.
+- Fila `agenda_message_queue` usa ocorrência estável e RPC invoker/RLS com revisão do atendimento. Preparar não significa enviar; `enviada_manual` exige confirmação do operador. Registro guarda quem preparou e quem declarou atendimento/envio, com horários do servidor.
+- Migrações de fila/consistência aplicadas: rascunhos de horário antigo ou serviço cancelado são cancelados, envios já registrados preservados; retorno NPS encerra pendência correspondente. Modelos e cores recebem versão/autoria do servidor, mantendo CAS.
+- Testes SQL com rollback aprovaram repetição sem duplicatas, envio manual separado, preservação de histórico enviado, invalidação por reagendamento/cancelamento e retorno NPS. Zero registros de mensagens reais criados/enviados pelos testes.
+- Rascunhos São Bento usam origem `saobento` e preferência `saobento-account-v1.txt`, sem reutilizar conta da Criatta. O operador escolhe a conta, revisa/edita texto e prepara na sessão existente; envio permanece manual. Perfil, WaSeller e navegação externa preservados.
+- Edição operacional consulta vínculos em qualquer calendário antes de liberar horário; formulário registra data real de conclusão. Avaliações de nota baixa continuam acessíveis em Mostrar tratadas.
+- Aguardando CI Windows desta alteração. Sem instalador intermediário; sem Meta API, robô 24h ou envio autônomo.
 
 ### 2026-10-26 — catálogo e cores compartilhados
 

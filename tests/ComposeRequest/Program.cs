@@ -23,3 +23,8 @@ Check(ComposeAccountSelection.Resolve("removed", ids) is null, "Removed account 
 Check(ComposeAccountSelection.Resolve("criatta", ids) == "criatta", "Explicit Criatta binding is preserved");
 Check(ComposeAccountSelection.Resolve("criatta", ids.Reverse()) == "criatta", "Account reordering does not change binding");
 Console.WriteLine("MODUX account selection checks passed.");
+
+var agendaRequest = ComposeRequest.Parse(link.Replace("source=criatta", "source=saobento"));
+Check(agendaRequest?.Source == "saobento", "Agenda source stays separate from Criatta");
+Check(request.Source == "criatta", "Existing Criatta source preserved");
+Console.WriteLine("MODUX separate message origins passed.");

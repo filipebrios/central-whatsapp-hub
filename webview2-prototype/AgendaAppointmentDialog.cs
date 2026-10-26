@@ -6,6 +6,7 @@ internal sealed class AgendaAppointmentDialog : Form
     private readonly AgendaLocalSnapshot? original;
     private readonly List<(string Id, string Label)> availableCatalog = Catalog.ToList();
     private bool serviceChanged;
+    private readonly DateTimePicker completedDay = new() { Format = DateTimePickerFormat.Short, Dock = DockStyle.Top, Value = DateTime.Today };
     private readonly ComboBox appointmentStatus = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Top };
     private readonly ComboBox kind = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Top };
     private readonly TextBox client = new() { Dock = DockStyle.Top, PlaceholderText = "Nome completo ou razão social" };
@@ -106,10 +107,15 @@ internal sealed class AgendaAppointmentDialog : Form
                 otherService.Text = known.Length > 0 && source.Service.StartsWith(known + " + ", StringComparison.Ordinal)
                     ? source.Service[(known.Length + 3)..] : source.Service;
             }
+            if (DateOnly.TryParse(source.CompletedDate, out var finished)) completedDay.Value = finished.ToDateTime(TimeOnly.MinValue);
+            else if (DateOnly.TryParse(source.Date, out var planned) && planned <= DateOnly.FromDateTime(DateTime.Today))
+                completedDay.Value = planned.ToDateTime(TimeOnly.MinValue);
             var statusIndex = appointmentStatus.Items.IndexOf(source.Status);
             if (statusIndex >= 0) appointmentStatus.SelectedIndex = statusIndex;
             save.Text = "Salvar alterações locais";
         }
+        completedDay.Enabled = appointmentStatus.SelectedItem?.ToString() == "concluido";
+        appointmentStatus.SelectedIndexChanged += (_, _) => completedDay.Enabled = appointmentStatus.SelectedItem?.ToString() == "concluido";
         services.ItemCheck += (_, _) => serviceChanged = true;
         otherService.TextChanged += (_, _) => serviceChanged = true;
         day.Enabled = time.Enabled = duration.Enabled = !lockSchedule;
@@ -117,7 +123,7 @@ internal sealed class AgendaAppointmentDialog : Form
         var fields = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Padding = new Padding(20, 12, 20, 16),
-            ColumnCount = 2, RowCount = 14, AutoScroll = true
+            ColumnCount = 2, RowCount = 15, AutoScroll = true
         };
         fields.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 174));
         fields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -135,6 +141,7 @@ internal sealed class AgendaAppointmentDialog : Form
         AddRow(fields, 11, "Técnico / equipe", technician, 46);
         AddRow(fields, 12, "Observações", notes, 94);
         AddRow(fields, 13, "Situação local", appointmentStatus, 46);
+        AddRow(fields, 14, "Data da conclusão", completedDay, 46);
 
         var buttons = new FlowLayoutPanel
         {
@@ -206,6 +213,8 @@ internal sealed class AgendaAppointmentDialog : Form
                 "Agenda São Bento", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
+        if (appointmentStatus.SelectedItem?.ToString() == "concluido" && completedDay.Value.Date > DateTime.Today)
+        { MessageBox.Show(this, "A conclusão não pode estar no futuro.", "Conferir conclusão"); return; }
         var ids = selected.Select(x => x.Id).ToList();
         if (custom.Length > 0) ids.Add("outro");
         Result = new AgendaAppointmentInput(
@@ -215,7 +224,8 @@ internal sealed class AgendaAppointmentDialog : Form
             original is not null && !serviceChanged ? original.Service :
                 string.Join(" + ", selected.Select(x => x.Label).Concat(custom.Length > 0 ? [custom] : [])),
             technician.Text.Trim(), notes.Text.Trim(),
-            day.Value.ToString("yyyy-MM-dd"), time.Value.ToString("HH:mm:ss"), (int)duration.Value, appointmentStatus.SelectedItem?.ToString() ?? "agendado");
+            day.Value.ToString("yyyy-MM-dd"), time.Value.ToString("HH:mm:ss"), (int)duration.Value, appointmentStatus.SelectedItem?.ToString() ?? "agendado",
+            appointmentStatus.SelectedItem?.ToString() == "concluido" ? completedDay.Value.ToString("yyyy-MM-dd") : null);
         DialogResult = DialogResult.OK;
     }
 }

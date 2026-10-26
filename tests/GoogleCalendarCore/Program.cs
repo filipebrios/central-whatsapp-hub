@@ -516,6 +516,54 @@ sharedCatalog.Clear();
 if (sharedCatalog.Items.Count != 0) throw new Exception("Logout deixou configuração da empresa anterior.");
 Console.WriteLine("PASS: catálogo por empresa, cores compartilhadas, contraste, status e conflito de configuração.");
 
+var workflowToday = new DateOnly(2026, 10, 26);
+var todayAppointment = localRecord with { Date = "2026-10-26", Time = "08:00", Phone = "(35) 99999-9999" };
+var todayWork = AgendaWorkflowRules.Plan([todayAppointment], workflowToday);
+if (todayWork.Count != 2 || !todayWork.Any(w => w.TemplateKey == "confirmacao") ||
+    !todayWork.Any(w => w.TemplateKey == "lembrete_d0")) throw new Exception("Rotina de hoje incorreta.");
+if (AgendaWorkflowRules.Plan([todayAppointment with { Status = "cancelado" }], workflowToday).Count != 0)
+    throw new Exception("Cancelado entrou na rotina de mensagem.");
+var tomorrowWork = AgendaWorkflowRules.Plan([todayAppointment with { Date = "2026-10-27", Status = "confirmado" }], workflowToday);
+if (tomorrowWork.Count != 1 || tomorrowWork[0].TemplateKey != "lembrete_d1")
+    throw new Exception("Confirmado deve manter lembrete sem nova confirmação.");
+var completedAppointment = todayAppointment with { Status = "concluido", CompletedDate = "2026-10-19" };
+if (AgendaWorkflowRules.Plan([completedAppointment], workflowToday).Single().TemplateKey != "pos_venda" ||
+    AgendaWorkflowRules.Plan([completedAppointment with { CompletedDate = "2026-10-20" }], workflowToday).Count != 0)
+    throw new Exception("Regra de sete dias deve usar a conclusão real.");
+if (AgendaWorkflowRules.Plan([completedAppointment with { FeedbackScore = 7 }], workflowToday).Count != 0 ||
+    AgendaWorkflowRules.Plan([completedAppointment with { FeedbackScore = 8 }], workflowToday).Single().TemplateKey != "avaliacao_google")
+    throw new Exception("Regra de retorno/convite da avaliação incorreta.");
+if (AgendaWorkflowRules.Phone("(55) 99999-9999") != "5555999999999" ||
+    AgendaWorkflowRules.Phone("+55 35 99999-9999") != "5535999999999" || AgendaWorkflowRules.Phone("123") is not null)
+    throw new Exception("Normalização do telefone brasileiro incorreta.");
+var reminderWork = todayWork.Single(x => x.TemplateKey == "lembrete_d0");
+var preparedMessage = AgendaWorkflowRules.Message(reminderWork, "Olá, {cliente}! {servico} em {data} às {hora}.");
+if (preparedMessage.Source != "saobento" || preparedMessage.Phone != "5535999999999" ||
+    !preparedMessage.Text.Contains("26/10/2026") || !preparedMessage.WhatsAppUrl.StartsWith("https://web.whatsapp.com/send?"))
+    throw new Exception("Rascunho perdeu origem, telefone ou data.");
+var workflowCalls = 0;
+var workflow = new AgendaWorkflowStore((method, path, data) =>
+{
+    workflowCalls++;
+    if (method == HttpMethod.Post && path == "rest/v1/rpc/agenda_prepare_manual_message")
+        return Task.FromResult(CalendarTestHandler.Json(JsonSerializer.Serialize(new
+        {
+            id = "44444444-4444-4444-4444-444444444444", appointment_id = todayAppointment.Id,
+            template_key = reminderWork.TemplateKey, occurrence_key = reminderWork.Occurrence, state = "preparada"
+        })));
+    if (method != HttpMethod.Patch || !path.Contains("company_id=eq." + company) || !path.Contains("state=eq.preparada"))
+        throw new Exception("Registro de envio manual sem CAS/empresa.");
+    return Task.FromResult(CalendarTestHandler.Json("[{}]"));
+});
+var preparedJob = await workflow.Prepare(company, reminderWork);
+if (preparedJob.State != "preparada" || workflowCalls != 1)
+    throw new Exception("Preparar mensagem não pode marcar como enviada.");
+await workflow.Mark(company, preparedJob, "enviada_manual");
+if (workflowCalls != 2) throw new Exception("Confirmação manual não foi uma ação separada.");
+await ExpectFailure(() => workflow.SaveReviewTemplate(company, "https://google.com.example.test/avaliar"), "link HTTPS oficial");
+if (workflowCalls != 2) throw new Exception("Link externo inválido chegou ao servidor.");
+Console.WriteLine("PASS: pendências, lembretes, NPS sete dias, telefone, rascunho e envio manual separado.");
+
 static async Task ExpectFailure(Func<Task> operation, string message)
 {
     try { await operation(); }

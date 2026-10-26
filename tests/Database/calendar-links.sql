@@ -94,6 +94,67 @@ begin
     update public.agenda_calendar_links set appointment_id=second_id where company_id=company_a;
     raise exception 'Identidade do vínculo permitiu reassociação direta';
   exception when insufficient_privilege then null; end;
+  declare
+    message_appointment uuid := gen_random_uuid();
+    nps_appointment uuid := gen_random_uuid();
+    moved_appointment uuid := gen_random_uuid();
+    job public.agenda_message_queue;
+    today date := (now() at time zone 'America/Sao_Paulo')::date;
+  begin
+    insert into public.agenda_appointments(id,company_id,client,date,time,status)
+    values(message_appointment,company_a,'MODUX FIXTURE mensagem',today,'10:00','agendado');
+    job := public.agenda_prepare_manual_message(company_a,message_appointment,'lembrete_d0',1);
+    if job.state<>'preparada' or job.created_by<>(select auth.uid()) then
+      raise exception 'Preparação anunciou envio ou perdeu autoria';
+    end if;
+    perform public.agenda_prepare_manual_message(company_a,message_appointment,'lembrete_d0',1);
+    if (select count(*) from public.agenda_message_queue where appointment_id=message_appointment)<>1 then
+      raise exception 'Preparação repetida duplicou mensagem';
+    end if;
+    update public.agenda_message_queue set state='enviada_manual' where id=job.id;
+    if not exists(select 1 from public.agenda_message_queue where id=job.id
+      and handled_by=(select auth.uid()) and handled_at is not null and state='enviada_manual') then
+      raise exception 'Envio manual não registrou operador/horário';
+    end if;
+    job := public.agenda_prepare_manual_message(company_a,message_appointment,'lembrete_d0',1);
+    if job.state<>'enviada_manual' then raise exception 'Repetição apagou envio registrado'; end if;
+    begin
+      update public.agenda_message_queue set appointment_id=first_id where id=job.id;
+      raise exception 'Identidade da mensagem pôde ser alterada';
+    exception when insufficient_privilege then null; end;
+    begin
+      perform public.agenda_prepare_manual_message(company_a,message_appointment,'pos_venda',1);
+      raise exception 'Pós-venda liberado sem conclusão e sete dias';
+    exception when invalid_parameter_value then null; end;
+    perform public.agenda_prepare_manual_message(company_a,message_appointment,'confirmacao',1);
+    update public.agenda_appointments set status='cancelado' where id=message_appointment;
+    if not exists(select 1 from public.agenda_message_queue where appointment_id=message_appointment
+      and template_key='confirmacao' and state='cancelada') or
+      not exists(select 1 from public.agenda_message_queue where appointment_id=message_appointment
+      and template_key='lembrete_d0' and state='enviada_manual') then
+      raise exception 'Cancelamento não distinguiu rascunho de mensagem enviada';
+    end if;
+    insert into public.agenda_appointments(id,company_id,client,date,time,status)
+    values(moved_appointment,company_a,'MODUX FIXTURE remarcado',today,'10:00','agendado');
+    job := public.agenda_prepare_manual_message(company_a,moved_appointment,'lembrete_d0',1);
+    update public.agenda_appointments set time='11:00' where id=moved_appointment;
+    if not exists(select 1 from public.agenda_message_queue where id=job.id and state='cancelada') then
+      raise exception 'Rascunho com horário antigo permaneceu ativo';
+    end if;
+    insert into public.agenda_appointments(id,company_id,client,status,service_completed_date,feedback_score)
+    values(nps_appointment,company_a,'MODUX FIXTURE NPS','concluido',today-7,8);
+    job := public.agenda_prepare_manual_message(company_a,nps_appointment,'pos_venda',1);
+    if job.occurrence_key<>(today-7)::text then raise exception 'Ocorrência NPS não usa conclusão real'; end if;
+    job := public.agenda_prepare_manual_message(company_a,nps_appointment,'avaliacao_google',1);
+    if job.state<>'preparada' then raise exception 'Convite não ficou pendente de revisão humana'; end if;
+    update public.agenda_appointments set feedback_score=7 where id=nps_appointment;
+    if not exists(select 1 from public.agenda_message_queue where appointment_id=nps_appointment
+      and template_key='pos_venda' and state='tratada_manual') or
+      not exists(select 1 from public.agenda_message_queue where appointment_id=nps_appointment
+      and template_key='avaliacao_google' and state='cancelada') then
+      raise exception 'Retorno do cliente não encerrou pendências corretamente';
+    end if;
+  end;
   perform set_config('request.jwt.claims',jsonb_build_object('sub',gen_random_uuid(),'role','authenticated')::text,true);
   if exists(select 1 from public.agenda_calendar_links where company_id=company_a) then
     raise exception 'RLS expôs vínculos a usuário não membro';
@@ -112,6 +173,6 @@ begin
   exception when insufficient_privilege then null; end;
 end $$;
 rollback;
-select 'PASS: vínculos, reconciliação, cancelamento, idempotência, preservação, revisão/ETag, RLS e rollback' as result,
+select 'PASS: vínculos/reconciliação/fila manual/NPS, idempotência, conflitos, RLS e rollback' as result,
        (select count(*) from public.agenda_calendar_links) as persisted_links,
        (select count(*) from public.agenda_companies where name like 'MODUX FIXTURE%') as leftover_fixtures;

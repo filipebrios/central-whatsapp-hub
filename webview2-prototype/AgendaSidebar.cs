@@ -55,7 +55,11 @@ public sealed partial class MainForm
     private void ShowAgendaFeature()
     {
         // Sobrepõe o painel existente, sem navegar nem descartar os WebView2.
-        agendaPanel ??= new AgendaPanel();
+        if (agendaPanel is null)
+        {
+            agendaPanel = new AgendaPanel();
+            agendaPanel.ComposeRequested += QueueCompose;
+        }
         if (!browserHost.Controls.Contains(agendaPanel))
             browserHost.Controls.Add(agendaPanel);
         showingAgenda = true;
