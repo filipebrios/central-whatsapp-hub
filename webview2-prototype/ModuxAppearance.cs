@@ -6,7 +6,7 @@ namespace CentralWhatsApp.WebView2;
 // Styles only native Windows controls. WebView2 documents, profiles and extensions are untouched.
 internal static class ModuxAppearance
 {
-    private sealed class State { internal int Version = -1; internal bool Hooked; }
+    private sealed class State { public State() { } internal int Version = -1; internal bool Hooked; }
     private static readonly ConditionalWeakTable<Control, State> states = new();
     private static int version;
     private static bool installed;
@@ -114,6 +114,9 @@ internal static class ModuxAppearance
                     if (label.ForeColor.R == label.ForeColor.G && label.ForeColor.G == label.ForeColor.B ||
                         Math.Abs(label.ForeColor.R - label.ForeColor.G) < 45 && Math.Abs(label.ForeColor.G - label.ForeColor.B) < 45)
                         label.ForeColor = Text;
+                    break;
+                case UserControl module:
+                    module.BackColor = Surface; module.ForeColor = Text;
                     break;
                 case Panel panel:
                     panel.BackColor = Surface;

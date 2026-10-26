@@ -1,4 +1,4 @@
-"""Aplica SOMENTE o encaixe Agenda ao MODUX 1.6.1 durante o build da candidata 1.7.
+"""Encaixa a Agenda consolidada e identifica o build Windows MODUX 1.9.0.
 Não modifica o WhatsApp, perfis, dados nem extensões. Idempotente.
 """
 from pathlib import Path
@@ -43,6 +43,6 @@ assert p.count("<Version>1.6.1</Version>") == 1, "csproj version wrong"
 assert i.count('#define MyAppVersion "1.6.1"') == 1, "Inno version wrong"
 
 path.write_text(s, encoding="utf-8")
-project.write_text(p.replace("<Version>1.6.1</Version>", "<Version>1.8.2</Version>", 1), encoding="utf-8")
-installer.write_text(i.replace('#define MyAppVersion "1.6.1"', '#define MyAppVersion "1.8.2"', 1), encoding="utf-8")
-print("Encaixe Agenda São Bento v1.8.2 aplicado com sucesso")
+project.write_text(p.replace("<Version>1.6.1</Version>", "<Version>1.9.0</Version>", 1), encoding="utf-8")
+installer.write_text(i.replace('#define MyAppVersion "1.6.1"', '#define MyAppVersion "1.9.0"', 1), encoding="utf-8")
+print("Encaixe Agenda São Bento v1.9.0 aplicado com sucesso")

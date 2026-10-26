@@ -288,6 +288,11 @@ Antes de entregar uma versão:
 
 ## Registro de mudanças
 
+### 2026-10-26 — tema do contêiner integrado
+
+- Smoke Windows detectou que UserControl exige tratamento próprio além de Panel. Tema passa a alcançar o contêiner AgendaPanel, mantendo aplicação aos controles internos. Testes de calendário/convites/protocolo e compilação anteriores passaram; repetir smoke antes de empacotar.
+
+
 ### 2026-10-26 — aparência nativa e smoke Windows
 
 - Camada visual aplica paleta clara/escura aos controles Windows e formulários abertos, com foco nativo, botões arredondados, campos/tabelas de contraste e cores semânticas preservadas. Controles WebView2 são excluídos; nenhuma mudança em DOM, perfis ou extensão.
