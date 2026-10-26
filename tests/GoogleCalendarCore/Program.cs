@@ -684,6 +684,30 @@ using (var api = new GoogleCalendarApi(auth, new HttpClient(transport)))
 }
 Console.WriteLine("PASS: convites explícitos, preservação de participantes, ETag, repetição e falha sem reenvio.");
 
+
+var scheduleReads = 0;
+var scheduleStore = new AgendaWorkflowStore((method, path, _) =>
+{
+    if (method != HttpMethod.Get || !path.Contains("company_id=eq." + company) ||
+        !path.Contains("appointment_id=eq." + todayAppointment.Id))
+        throw new Exception("Conferência perdeu escopo do atendimento.");
+    return Task.FromResult(CalendarTestHandler.Json(System.Text.Json.JsonSerializer.Serialize(new[]
+    {
+        new { company_id = company, appointment_id = todayAppointment.Id, calendar_id = "fixture-calendar",
+            event_id = item!.Id, event_etag = item.ETag, sync_status = "sincronizado" }
+    })));
+});
+var scheduledWork = responseWork with { Appointment = todayAppointment with
+{ Date = item!.Date.ToString("yyyy-MM-dd"), Time = item.Time, Duration = item.Duration } };
+await scheduleStore.ValidateSchedule(company, scheduledWork, "fixture-calendar", id =>
+{ scheduleReads++; return Task.FromResult(item!); });
+await ExpectFailure(() => scheduleStore.ValidateSchedule(company, scheduledWork, "other-calendar", id =>
+    throw new Exception("Calendário errado chegou ao Google.")), "calendário vinculado");
+await ExpectFailure(() => scheduleStore.ValidateSchedule(company, scheduledWork, "fixture-calendar",
+    id => Task.FromResult(item! with { ETag = "changed" })), "Conferir vínculo");
+if (scheduleReads != 1) throw new Exception("Conferência inesperada do calendário.");
+Console.WriteLine("PASS: confirmação/lembretes conferem evento vinculado antes de emitir link ou rascunho.");
+
 static async Task ExpectFailure(Func<Task> operation, string message)
 {
     try { await operation(); }

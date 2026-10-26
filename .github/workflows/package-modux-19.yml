@@ -51,6 +51,21 @@ jobs:
         shell: pwsh
         working-directory: webview2-prototype
         run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "CentralWhatsApp.iss"'
+      - name: Testar instalação e preservação de dados fictícios
+        shell: pwsh
+        run: |
+          $profiles = Join-Path $env:LOCALAPPDATA "CentralWhatsApp\WebView2Prototype"
+          New-Item -ItemType Directory -Force $profiles | Out-Null
+          $sentinel = Join-Path $profiles "modux-ci-sentinel.txt"
+          Set-Content $sentinel "fixture de preservação"
+          $destination = Join-Path $env:RUNNER_TEMP "modux-install-test"
+          $setup = Resolve-Path "webview2-prototype/installer-output/MODUX-Setup-1.9.0.exe"
+          $process = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", '/TASKS=""', "/DIR=`"$destination`"" -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Instalação falhou: $($process.ExitCode)" }
+          if (-not (Test-Path (Join-Path $destination "MODUX.exe")) -or -not (Test-Path $sentinel)) { throw "Instalação ou perfil não preservado" }
+          $uninstall = Join-Path $destination "unins000.exe"
+          $process = Start-Process $uninstall -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
+          if ($process.ExitCode -ne 0 -or -not (Test-Path $sentinel)) { throw "Desinstalação afetou dados do perfil" }
       - name: Calcular SHA-256
         shell: pwsh
         run: |
@@ -72,3 +87,18 @@ jobs:
           gh release view $tag 2>$null
           if ($LASTEXITCODE -eq 0) { throw "A release já existe e será preservada. Confira o artefato desta execução." }
           gh release create $tag webview2-prototype/installer-output/MODUX-Setup-1.9.0.exe webview2-prototype/installer-output/SHA256SUMS.txt --target ${{ github.sha }} --title "MODUX 1.9.0 beta • Windows x64" --notes-file modux-agenda/RELEASE-1.9.0.md --prerelease --draft
+      - name: Conferir assets publicados e liberar beta consolidada
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "modux-v1.9.0-beta1"
+          $release = gh release view $tag --json isDraft,assets | ConvertFrom-Json
+          if (-not $release.isDraft -or $release.assets.Count -ne 2) { throw "Conferir estado/assets antes de publicar" }
+          gh release download $tag --dir release-check --pattern "MODUX-Setup-1.9.0.exe" --pattern "SHA256SUMS.txt"
+          if ($LASTEXITCODE -ne 0) { throw "Download de conferência falhou" }
+          $expected = (Get-Content release-check/SHA256SUMS.txt -Raw).Split(" ")[0].Trim()
+          $actual = (Get-FileHash release-check/MODUX-Setup-1.9.0.exe -Algorithm SHA256).Hash.ToLower()
+          if ($expected -ne $actual) { throw "SHA-256 do asset não confere" }
+          gh release edit $tag --draft=false --prerelease --latest=false
+          if ($LASTEXITCODE -ne 0) { throw "Não foi possível publicar a beta" }

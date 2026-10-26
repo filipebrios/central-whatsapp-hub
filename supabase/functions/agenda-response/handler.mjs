@@ -10,7 +10,7 @@ export function createHandler(respond) {
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: { ...headers, ...cors, "Access-Control-Allow-Methods": "POST", "Access-Control-Allow-Headers": "content-type" } });
     if (req.method !== "POST") return result({ status: "unavailable" }, 405);
     if (!req.headers.get("content-type")?.startsWith("application/json")) return result({ status: "unavailable" }, 415);
-    if (Number(req.headers.get("content-length")) > 8192) return result({ status: "unavailable" }, 413);
+    if (Number(req.headers.get("content-length")) > 16384) return result({ status: "unavailable" }, 413);
     try {
       // Bound streaming bodies too; Content-Length is not trusted.
       const reader = req.body?.getReader();
@@ -20,7 +20,7 @@ export function createHandler(respond) {
         const { done, value } = await reader.read();
         if (done) break;
         size += value.byteLength;
-        if (size > 8192) { await reader.cancel(); return result({ status: "unavailable" }, 413); }
+        if (size > 16384) { await reader.cancel(); return result({ status: "unavailable" }, 413); }
         parts.push(value);
       }
       const bytes = new Uint8Array(size); let offset = 0;

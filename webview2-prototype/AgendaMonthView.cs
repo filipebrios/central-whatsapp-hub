@@ -70,19 +70,24 @@ internal sealed class AgendaMonthView : UserControl
         var mainIds = new[] { "desinsetizacao", "desratizacao", "orcamento", "confirmacao", "cancelado", "interno", "outros" };
         foreach (var category in categories.Where(c => mainIds.Contains(c.Id)))
         {
+            var item = new FlowLayoutPanel
+            {
+                AutoSize = true, WrapContents = false, Margin = new Padding(2, 1, 10, 1),
+                BackColor = ModuxAppearance.Surface
+            };
+            var swatch = new Panel { Width = 8, Height = 8, BackColor = category.Color, Margin = new Padding(0, 5, 5, 0) };
             var label = new Label
             {
-                AutoSize = true, Text = "■ " + category.Label, Font = new Font("Segoe UI", 8f),
-                ForeColor = category.Id == "outros" ? Color.FromArgb(70, 78, 88) : category.Color,
-                Margin = new Padding(2, 1, 10, 1)
+                AutoSize = true, Text = category.Label, Font = new Font("Segoe UI", 8f),
+                ForeColor = ModuxAppearance.Text, Margin = Padding.Empty
             };
-            legend.Controls.Add(label);
+            item.Controls.Add(swatch); item.Controls.Add(label); legend.Controls.Add(item);
             eventTip.SetToolTip(label, category.Label + " • " + category.GoogleColorName);
         }
         var more = new Button
         {
-            Text = "Ver todas", AutoSize = true, Height = 21, BackColor = Color.White,
-            ForeColor = Color.FromArgb(0, 103, 44), FlatStyle = FlatStyle.Flat,
+            Text = "Ver todas", AutoSize = true, Height = 21, BackColor = ModuxAppearance.Field,
+            ForeColor = ModuxAppearance.Text, FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 8f), Margin = new Padding(0)
         };
         more.Click += (_, _) => ShowLegend();
@@ -131,6 +136,7 @@ internal sealed class AgendaMonthView : UserControl
         days.BackColor = ModuxAppearance.Border;
         legend.BackColor = ModuxAppearance.Surface;
         caption.ForeColor = ModuxAppearance.Text;
+        SetLegend(legendEntries);
         foreach (Control control in Controls)
             if (control is FlowLayoutPanel panel) panel.BackColor = ModuxAppearance.Surface;
         foreach (var button in new[] { previous, next, current })
@@ -276,7 +282,7 @@ internal sealed class AgendaMonthView : UserControl
                 AutoSize = false, Width = 350, Height = 29,
                 BackColor = category.Color, ForeColor = category.TextColor,
                 Padding = new Padding(9, 4, 3, 2),
-                Text = category.Label + "  (" + category.GoogleColorName + ")",
+                Text = category.Label + "  (" + category.GoogleColorName + ")", Tag = "service-color",
                 Margin = new Padding(3, 2, 3, 4)
             };
             container.Controls.Add(item);

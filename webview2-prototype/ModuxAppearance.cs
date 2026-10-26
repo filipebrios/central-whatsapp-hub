@@ -101,6 +101,10 @@ internal static class ModuxAppearance
                 case NumericUpDown number:
                     number.BackColor = Field; number.ForeColor = Text;
                     break;
+                case DateTimePicker date:
+                    if (date.Format == DateTimePickerFormat.Short)
+                    { date.Format = DateTimePickerFormat.Custom; date.CustomFormat = "dd/MM/yyyy"; }
+                    break;
                 case CheckBox check:
                     check.ForeColor = Text;
                     break;
@@ -108,6 +112,7 @@ internal static class ModuxAppearance
                     group.ForeColor = Text;
                     break;
                 case Label label:
+                    if (label.Tag as string == "service-color") break;
                     // Keep service swatches and deliberate warning/success colors.
                     if (label.BackColor.R > 210 && label.BackColor.G > 210 && label.BackColor.B > 210)
                         label.BackColor = Color.Transparent;

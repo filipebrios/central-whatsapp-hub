@@ -161,6 +161,30 @@ internal sealed class AgendaWorkflowStore(
         return job;
     }
 
+    internal async Task ValidateSchedule(string companyId, AgendaWorkItem work, string? calendarId,
+        Func<string, Task<GoogleEventSnapshot>> readEvent)
+    {
+        if (work.TemplateKey is not ("confirmacao" or "lembrete_d1" or "lembrete_d0")) return;
+        using var response = await authorized(HttpMethod.Get,
+            "rest/v1/agenda_calendar_links?select=company_id,appointment_id,calendar_id,event_id,event_etag,sync_status" +
+            "&company_id=eq." + Uri.EscapeDataString(companyId) +
+            "&appointment_id=eq." + Uri.EscapeDataString(work.Appointment.Id) + "&limit=2", null);
+        Check(response);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        if (json.RootElement.GetArrayLength() == 0) return;
+        if (json.RootElement.GetArrayLength() > 1)
+            throw new InvalidOperationException("Há vínculos em mais de um calendário. Confira o horário antes de preparar a mensagem.");
+        var link = AgendaCalendarLink.Parse(json.RootElement[0]);
+        if (link.CompanyId != companyId || link.AppointmentId != work.Appointment.Id ||
+            link.CalendarId != calendarId || string.IsNullOrWhiteSpace(link.ETag))
+            throw new InvalidOperationException("Conecte o calendário vinculado e confira o atendimento antes de preparar a mensagem.");
+        var current = await readEvent(link.EventId);
+        if (current.Id != link.EventId || current.ETag != link.ETag || current.AllDay || current.SpansMultipleDays ||
+            current.Date.ToString("yyyy-MM-dd") != work.Appointment.Date || current.Time != work.Appointment.Time ||
+            current.Duration != work.Appointment.Duration || link.SyncStatus == "excluido")
+            throw new InvalidOperationException("O evento Google mudou ou precisa de revisão. Use Conferir vínculo e atualize as pendências antes de preparar a mensagem.");
+    }
+
     internal async Task<string> IssueResponseToken(string companyId, AgendaWorkItem work)
     {
         if (work.TemplateKey is not ("confirmacao" or "pos_venda"))

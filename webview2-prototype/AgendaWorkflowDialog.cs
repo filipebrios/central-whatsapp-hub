@@ -4,6 +4,7 @@ internal sealed class AgendaWorkflowDialog : Form
 {
     private readonly AgendaWorkflowStore store;
     private readonly string company;
+    private readonly Func<AgendaWorkItem, Task>? validateSchedule;
     private readonly bool admin;
     private readonly ListBox list = new() { Dock = DockStyle.Fill, IntegralHeight = false, HorizontalScrollbar = true };
     private readonly Button refresh = new() { Text = "Atualizar", AutoSize = true };
@@ -19,9 +20,9 @@ internal sealed class AgendaWorkflowDialog : Form
     internal ComposeRequest? Prepared { get; private set; }
     internal AgendaLocalSnapshot? EditRequested { get; private set; }
 
-    internal AgendaWorkflowDialog(AgendaWorkflowStore store, string company, bool admin)
+    internal AgendaWorkflowDialog(AgendaWorkflowStore store, string company, bool admin, Func<AgendaWorkItem, Task>? validateSchedule = null)
     {
-        this.store = store; this.company = company; this.admin = admin;
+        this.store = store; this.company = company; this.admin = admin; this.validateSchedule = validateSchedule;
         Text = "Pendências, lembretes e pós-venda • São Bento";
         Width = 1050; Height = 620; MinimumSize = new Size(830, 480);
         StartPosition = FormStartPosition.CenterParent; Font = new Font("Segoe UI", 10);
@@ -43,6 +44,7 @@ internal sealed class AgendaWorkflowDialog : Form
             await Run(async () =>
             {
                 if (list.SelectedItem is not Row row || !store.Templates.TryGetValue(row.Work.TemplateKey, out var template)) return;
+                if (validateSchedule is not null) await validateSchedule(row.Work);
                 var message = AgendaWorkflowRules.Message(row.Work, template);
                 var job = await store.Prepare(company, row.Work);
                 if (job.State is "enviada_manual" or "tratada_manual" or "cancelada")

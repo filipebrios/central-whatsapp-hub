@@ -25,7 +25,7 @@ test("input validation fails closed without consuming capabilities", async () =>
     { token, operation: "feedback", score: 9, note: "x".repeat(4001) }]) {
     assert.equal((await handler(request(data))).status, 400);
   }
-  assert.equal((await handler(request({ token, operation: "confirm" }, { body: "x".repeat(9000) }))).status, 413);
+  assert.equal((await handler(request({ token, operation: "confirm" }, { body: "x".repeat(20000) }))).status, 413);
   assert.equal((await handler(request({ token, operation: "confirm" }, { body: "{" }))).status, 400);
   assert.equal(calls, 0);
 });
@@ -48,6 +48,9 @@ test("feedback preserves zero and passes only validated response fields", async 
   const response = await handler(request({ token, operation: "feedback", score: 0, note: "Teste" }));
   assert.equal(args.p_score, 0); assert.equal(args.p_note, "Teste");
   assert.deepEqual(await response.json(), { status: "recorded" });
+  const unicode = await handler(request({ token, operation: "feedback", score: 10, note: "漢".repeat(4000) }));
+  assert.equal(unicode.status, 200);
+  assert.equal(args.p_note.length, 4000);
 });
 test("server failures never echo capability or internal error", async () => {
   const handler = createHandler(() => { throw new Error("secret " + token); });

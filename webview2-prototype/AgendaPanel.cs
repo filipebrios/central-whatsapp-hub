@@ -271,7 +271,7 @@ internal sealed class AgendaPanel : UserControl
         add.Click += async (_, _) => await CreateAppointment();
         signOut.Click += (_, _) => Logout();
         Controls.Add(loginPane); Controls.Add(appointmentsPane); Controls.Add(status);
-        Status("Agenda compartilhada. WhatsApp e Google Agenda não são sincronizados por esta versão.");
+        Status("Entre para consultar a agenda da equipe. Mensagens de WhatsApp exigem revisão e envio manual.");
     }
 
     private void Status(string message) => status.Text = message;
@@ -701,7 +701,8 @@ internal sealed class AgendaPanel : UserControl
     private async Task ShowWorkflow()
     {
         if (busy || companyId is null) return;
-        using var dialog = new AgendaWorkflowDialog(workflowStore, companyId, currentRole == "admin");
+        using var dialog = new AgendaWorkflowDialog(workflowStore, companyId, currentRole == "admin",
+            work => workflowStore.ValidateSchedule(companyId!, work, googleOAuth.CalendarId, id => googleApi.Event(id)));
         dialog.ShowDialog(this);
         if (dialog.EditRequested is { } appointment) await EditAppointment(appointment);
         else if (dialog.Prepared is { } message) ComposeRequested?.Invoke(message);

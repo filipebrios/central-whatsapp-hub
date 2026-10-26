@@ -61,6 +61,8 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- 26/10: CI #40371916359 aprovou C#/Node, página móvel e smoke Windows (grade 1028×155 nos dois temas). Capturas clara/escura conferidas internamente; refinados contraste da legenda e formato brasileiro de data. Convites e links permanecem sem envio real; página prévia sbento PR #26 compilou e GET autenticado retornou 200.
+
 - 26/10: refinamento nativo de aparência em validação: temas alcançam Agenda/formulários, botões arredondados, tabelas e calendário; mantém DOM/sessões/WebView2/WaSeller. Novo smoke Windows sem login/credenciais prepara capturas clara/escura. Não declarar revisão visual concluída antes de executar e conferir.
 
 - 26/10: links/rascunhos passaram nos testes C#/Node e compilação Windows CI #40369817886. Página preparada em sbento PR #26, aguardando validação/publicação; não declarar link público entregue. Convites Google em validação interna: ação separada, padrão Não, If-Match e preservação dos convidados; nenhum convite real enviado.
@@ -287,6 +289,14 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-26 — revisão final do fluxo de mensagem
+
+- Confirmações/lembretes consultam vínculo atual e evento Google antes de preparar rascunho/link. Calendário diferente, múltiplos vínculos, ETag/horário/duração divergentes ou evento excluído exigem Conferir vínculo e atualizar a fila. Consulta não escreve no Google e NPS usa conclusão operacional.
+- Legenda usa texto neutro legível com amostra da cor, preservando faixas/semântica; data curta padronizada em dd/MM/yyyy. Capturas anteriores de claro/escuro foram inspecionadas.
+- Edge v2 mantém corpo limitado (16 KiB) e aceita notas Unicode de até 4000 caracteres; cinco testes Node locais passaram, incluindo Unicode. Sem credenciais administrativas no cliente.
+- Empacotamento preparado testa instalação/desinstalação com perfil fictício e confere assets baixados/SHA-256 antes de publicar a beta; ainda aguarda manifesto explícito. CI da revisão pendente.
+
 
 ### 2026-10-26 — espaço útil da Agenda
 
