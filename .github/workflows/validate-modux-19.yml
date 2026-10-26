@@ -7,6 +7,7 @@ on:
     paths:
       - "webview2-prototype/**"
       - "modux-agenda/**"
+      - "tools/GoogleCalendarDiagnostic/**"
       - "tests/GoogleCalendarCore/**"
       - "tests/AgendaServiceColors/**"
       - ".github/workflows/validate-modux-19.yml"
@@ -33,3 +34,14 @@ jobs:
         run: dotnet run --project tests/ComposeRequest/ComposeRequest.csproj -c Release
       - name: Compilar MODUX Windows SEM empacotar ou publicar instalador
         run: dotnet build webview2-prototype/CentralWhatsApp.WebView2.csproj -c Release -r win-x64
+      - name: Compilar verificador isolado Google (portátil, sem instalador)
+        run: dotnet publish tools/GoogleCalendarDiagnostic/GoogleCalendarDiagnostic.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o diagnostic-output
+      - name: Incluir instruções da verificação
+        run: Copy-Item tools/GoogleCalendarDiagnostic/LEIA-ME.txt diagnostic-output/
+      - name: Guardar verificador para teste OAuth no Windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: MODUX-Verificar-Google-Windows-x64
+          path: diagnostic-output/
+          retention-days: 14
+          if-no-files-found: error

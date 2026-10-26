@@ -1,0 +1,25 @@
+MODUX 1.9 — Verificação isolada Google (desenvolvimento)
+
+Ferramenta técnica para validar OAuth e operações reais antes da entrega consolidada.
+Não é o instalador nem a versão final do MODUX.
+
+1. Extraia o ZIP em uma pasta e execute MODUX-Verificar-Google.exe no Windows 10/11 x64.
+2. Clique em Conectar Google e importe LOCALMENTE o JSON OAuth Desktop já baixado do Google Cloud.
+3. Clique em Autorizar no navegador, escolha a conta testadora e conceda as permissões.
+4. Selecione exclusivamente a agenda secundária MODUX - TESTES.
+5. Escolha 23/10/2026 para conferir o evento fictício já preparado, ou a data usada por você.
+6. Consulte o dia. Confira o mesmo evento no Google Agenda.
+7. Para testar escrita, crie um evento com título TESTE MODUX - DESCARTAVEL.
+8. Confirme que apareceu no Google. Depois edite o horário e confira novamente.
+9. Exclua apenas esse evento descartável e confirme que saiu do calendário de testes.
+
+As operações de escrita pedem confirmação. A agenda operacional é bloqueada.
+Nenhum envio WhatsApp é feito. As contas e sessões do MODUX instalado não são abertas.
+Credenciais e tokens são cifrados por usuário Windows na pasta:
+%LOCALAPPDATA%\CentralWhatsApp\GoogleOAuthDiagnostic
+Use Desconectar no diálogo para remover as credenciais locais desta ferramenta.
+O MODUX instalado usa outra pasta; a ferramenta não migra nem altera seus perfis.
+
+Nunca envie JSON OAuth, códigos de autorização ou tokens no chat.
+Informe apenas se autorização, leitura, criação, edição e exclusão funcionaram e a mensagem de erro, se houver.
+Não confunda testes automáticos com esta validação real da sua conta.

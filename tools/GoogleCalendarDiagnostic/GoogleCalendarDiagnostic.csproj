@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>MODUX-Verificar-Google</AssemblyName>
+    <Version>1.9.0</Version>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+    <Compile Include="../../webview2-prototype/GoogleCalendarWriteGuard.cs" Link="GoogleCalendarWriteGuard.cs" />
+    <Compile Include="../../webview2-prototype/GoogleDesktopOAuth.cs" Link="GoogleDesktopOAuth.cs" />
+    <Compile Include="../../webview2-prototype/GoogleCalendarApi.cs" Link="GoogleCalendarApi.cs" />
+    <Compile Include="../../webview2-prototype/GoogleCalendarManageDialog.cs" Link="GoogleCalendarManageDialog.cs" />
+    <Compile Include="../../webview2-prototype/GoogleCalendarEventDialog.cs" Link="GoogleCalendarEventDialog.cs" />
+  </ItemGroup>
+</Project>

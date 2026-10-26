@@ -61,7 +61,9 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
-- 26/10: a correção da verificação OAuth passou nos testes e na compilação Windows (CI #40314893833). Ampliação dos testes HTTP de CRUD/ETag em implementação, sem autenticar conta real.
+- 26/10: preparado verificador Google portátil independente em `tools/GoogleCalendarDiagnostic`, usando os mesmos componentes OAuth/API/formulários da 1.9. Armazena tokens na pasta própria `GoogleOAuthDiagnostic`, sem abrir sessões WhatsApp/WaSeller nem alterar o aplicativo instalado. Não é instalador nem release 1.9. Aguardar compilação/artefato CI antes de entregar link.
+
+- 26/10: a correção da verificação OAuth passou nos testes e na compilação Windows (CI #40314893833). Testes HTTP de CRUD/ETag e compilação também passaram no CI #40317911528, sem autenticar conta real.
 - 26/10: retomada na branch 1.9; verificação OAuth permite escolher a data do evento fictício e bloqueia troca/desconexão durante a consulta. Compilação pendente de CI; nenhum instalador novo.
 
 - Repositório público: `filipebrios/central-whatsapp-hub`.
@@ -99,6 +101,8 @@ Requisitos permanentes:
 - Alterações atribuídas ao Manus não estão no repositório conhecido.
 
 ## Pendências priorizadas
+
+- Usar o verificador isolado no Windows do responsável para OAuth real e leitura/CRUD de eventos fictícios exclusivamente em MODUX - TESTES. Não é possível executar o consentimento local nesta máquina Linux nem comprovar autenticação apenas com mocks.
 
 - Conferir CI dos testes HTTP de integração isolada (criação/edição/exclusão, conflitos ETag, autorização, falhas ambíguas), sem confundir mocks com teste Google real.
 
@@ -244,11 +248,19 @@ Antes de entregar uma versão:
 
 ## Registro de mudanças
 
+### 2026-10-26 — verificador portátil para desbloquear o teste real OAuth
+
+- Criada ferramenta WinForms separada com a implementação Google compartilhada da 1.9, contendo conexão, consulta por dia e CRUD confirmado de eventos fictícios. Guarda do calendário de testes se aplica também antes da leitura nesta ferramenta.
+- Credenciais/tokens cifrados em `%LOCALAPPDATA%\CentralWhatsApp\GoogleOAuthDiagnostic`; construtor padrão do MODUX mantém `WebView2Prototype`. A ferramenta não referencia WebView2, Supabase, banco operacional ou contas WhatsApp.
+- CI prepara executável Windows x64 autocontido como artefato interno de 14 dias, com instruções. Não cria instalador, release pública nem substitui 1.8.2. Validação real continua dependente da execução pelo responsável.
+- Importação OAuth rejeita JSON sem objeto installed/client_id com mensagem controlada em vez de KeyNotFoundException.
+- Aguardando CI para compilação e artefato; nenhuma autenticação real declarada concluída.
+
 ### 2026-10-26 — testes HTTP isolados do cliente Google Calendar
 
 - `GoogleCalendarApi` aceita autorização e HttpClient injetáveis internamente; o construtor de produção continua usando OAuth Desktop e transporte real. `GoogleDesktopOAuth` implementa a interface mínima explicitamente, sem expor tokens à UI.
 - Testes executam os métodos reais de criação, edição e exclusão com transporte simulado: verificam método/destino, Bearer fictício, ID estável no POST, If-Match, conflitos antes e depois da leitura, bloqueio antes de HTTP, erros 401/403/500 e falha de rede/timeout sem reenvio.
-- Nenhuma credencial, evento real ou envio de WhatsApp envolvido. Aguardando CI Windows; etapa 2 continua parcial e sem instalador intermediário.
+- Nenhuma credencial, evento real ou envio de WhatsApp envolvido. Testes e compilação Windows passaram no CI #40317911528; etapa 2 continua parcial e sem instalador intermediário.
 
 ### 2026-10-26 — retomada e diagnóstico OAuth reutilizável
 

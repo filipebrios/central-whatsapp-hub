@@ -43,10 +43,10 @@ internal sealed class GoogleDesktopOAuth : IDisposable, IGoogleCalendarAuthoriza
         GoogleCalendarWriteGuard.DemandTestCalendar(
             config?.CalendarName, config?.CalendarId, Connected);
 
-    internal GoogleDesktopOAuth()
+    internal GoogleDesktopOAuth(bool diagnostic = false)
     {
         var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "CentralWhatsApp", "WebView2Prototype");
+            "CentralWhatsApp", diagnostic ? "GoogleOAuthDiagnostic" : "WebView2Prototype");
         Directory.CreateDirectory(folder);
         storageFile = Path.Combine(folder, "google-oauth.dpapi");
         if (!File.Exists(storageFile)) return;
@@ -65,9 +65,13 @@ internal sealed class GoogleDesktopOAuth : IDisposable, IGoogleCalendarAuthoriza
     internal void LoadDesktopCredentials(string json)
     {
         using var doc = JsonDocument.Parse(json);
-        if (!doc.RootElement.TryGetProperty("installed", out var installed))
+        if (doc.RootElement.ValueKind != JsonValueKind.Object ||
+            !doc.RootElement.TryGetProperty("installed", out var installed) ||
+            installed.ValueKind != JsonValueKind.Object ||
+            !installed.TryGetProperty("client_id", out var clientNode) ||
+            clientNode.ValueKind != JsonValueKind.String)
             throw new InvalidOperationException("Selecione um JSON OAuth do tipo Aplicativo para computador.");
-        var clientId = installed.GetProperty("client_id").GetString() ?? "";
+        var clientId = clientNode.GetString() ?? "";
         var secret = installed.TryGetProperty("client_secret", out var node) ? node.GetString() ?? "" : "";
         if (!clientId.EndsWith(".apps.googleusercontent.com", StringComparison.OrdinalIgnoreCase)
             || clientId.Length > 300 || secret.Length > 600)
