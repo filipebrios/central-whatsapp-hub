@@ -61,7 +61,7 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
-- 26/10: preparado verificador Google portátil independente em `tools/GoogleCalendarDiagnostic`, usando os mesmos componentes OAuth/API/formulários da 1.9. Armazena tokens na pasta própria `GoogleOAuthDiagnostic`, sem abrir sessões WhatsApp/WaSeller nem alterar o aplicativo instalado. Não é instalador nem release 1.9. Aguardar compilação/artefato CI antes de entregar link.
+- 26/10: preparado verificador Google portátil independente em `tools/GoogleCalendarDiagnostic`, usando os mesmos componentes OAuth/API/formulários da 1.9. Armazena tokens na pasta própria `GoogleOAuthDiagnostic`, sem abrir sessões WhatsApp/WaSeller nem alterar o aplicativo instalado. Não é instalador nem release 1.9. CI #40318275302 concluiu testes, compilação Windows e verificador autocontido; artefato #12647269936 disponível até 09/11/2026. Execução visual/OAuth real ainda pendente.
 
 - 26/10: a correção da verificação OAuth passou nos testes e na compilação Windows (CI #40314893833). Testes HTTP de CRUD/ETag e compilação também passaram no CI #40317911528, sem autenticar conta real.
 - 26/10: retomada na branch 1.9; verificação OAuth permite escolher a data do evento fictício e bloqueia troca/desconexão durante a consulta. Compilação pendente de CI; nenhum instalador novo.
@@ -255,7 +255,7 @@ Antes de entregar uma versão:
 - CI prepara executável Windows x64 autocontido como artefato interno de 14 dias, com instruções. Não cria instalador, release pública nem substitui 1.8.2. Validação real continua dependente da execução pelo responsável.
 - Diálogo OAuth bloqueia fechamento/troca de conta durante operações pendentes e protege também o carregamento inicial de calendários contra ações concorrentes.
 - Importação OAuth rejeita JSON sem objeto installed/client_id com mensagem controlada em vez de KeyNotFoundException.
-- Aguardando CI para compilação e artefato; nenhuma autenticação real declarada concluída.
+- CI #40318275302 (commit c222952) passou: testes HTTP/Google, cores, protocolo, compilação MODUX Windows e publicação do artefato interno #12647269936 (ZIP de 66.227.457 bytes). Nenhum instalador/release nova criado. Nenhuma autenticação real declarada concluída.
 
 ### 2026-10-26 — testes HTTP isolados do cliente Google Calendar
 
