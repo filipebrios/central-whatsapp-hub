@@ -18,18 +18,31 @@ internal sealed class GoogleCalendarEventDialog : Form
     private readonly CheckBox allDay = new()
     { Text = "Dia inteiro", Dock = DockStyle.Top, AutoSize = true };
     private readonly GoogleEventSnapshot? original;
+    private readonly ComboBox serviceType = new() { Dock = DockStyle.Top, DropDownStyle = ComboBoxStyle.DropDownList };
+    private bool serviceTypeChanged;
 
     internal GoogleEventUserAction Action { get; private set; }
     internal GoogleEventDraft? Draft { get; private set; }
 
-    internal GoogleCalendarEventDialog(GoogleEventSnapshot? source, DateOnly initialDay, bool linkedAppointment = false)
+    internal GoogleCalendarEventDialog(GoogleEventSnapshot? source, DateOnly initialDay, bool linkedAppointment = false,
+        IEnumerable<GoogleEventTypeChoice>? eventTypes = null)
     {
         original = source;
         Text = source is null ? "Criar evento no Google Agenda" : "Editar evento do Google Agenda";
-        Width = 680; Height = 660; MinimumSize = new Size(540, 590);
+        Width = 720; Height = 730; MinimumSize = new Size(620, 670);
         Font = new Font("Segoe UI", 10);
         StartPosition = FormStartPosition.CenterParent;
         BackColor = Color.White;
+        serviceType.Items.Add("Manter tipo e cor atuais");
+        if (eventTypes is not null)
+            foreach (var type in eventTypes) serviceType.Items.Add(type);
+        serviceType.SelectedIndex = 0;
+        for (var i = 1; i < serviceType.Items.Count; i++)
+            if (serviceType.Items[i] is GoogleEventTypeChoice type && type.Id == source?.ServiceTypeId)
+                serviceType.SelectedIndex = i;
+        serviceType.Enabled = !linkedAppointment && serviceType.Items.Count > 1;
+        if (linkedAppointment) serviceType.Items[0] = "Tipo definido no atendimento vinculado";
+        serviceType.SelectedIndexChanged += (_, _) => serviceTypeChanged = true;
 
         if (source is not null)
         {
@@ -52,10 +65,10 @@ internal sealed class GoogleCalendarEventDialog : Form
 
         var layout = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 7,
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 8,
             Padding = new Padding(24, 16, 24, 14), AutoScroll = true
         };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 148));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         AddRow(layout, 0, "Título *", title, 48);
         AddRow(layout, 1, "Endereço / local", location, 48);
@@ -63,7 +76,8 @@ internal sealed class GoogleCalendarEventDialog : Form
         AddRow(layout, 3, "Hora", time, 48);
         AddRow(layout, 4, "Duração (min)", minutes, 48);
         AddRow(layout, 5, "Período", allDay, 48);
-        AddRow(layout, 6, "Observações", description, 135);
+        AddRow(layout, 6, "Tipo de serviço ou evento", serviceType, 48);
+        AddRow(layout, 7, "Observações", description, 135);
 
         var footer = new FlowLayoutPanel
         {
@@ -134,10 +148,12 @@ internal sealed class GoogleCalendarEventDialog : Form
         var proposal = new GoogleEventDraft(
             title.Text.Trim(), description.Text.Trim(), location.Text.Trim(), day, clock,
             allDay.Checked ? 1440 : (int)minutes.Value, allDay.Checked);
+        if (serviceTypeChanged && serviceType.SelectedItem is GoogleEventTypeChoice type)
+            proposal = proposal with { ServiceTypeId = type.Id, SelectedColorId = type.ColorId };
         try
         {
             // Não enviar nada ao Google antes da confirmação do usuário.
-            _ = proposal.AsGoogleFields();
+            _ = proposal.GooglePayload();
         }
         catch (InvalidOperationException e)
         {

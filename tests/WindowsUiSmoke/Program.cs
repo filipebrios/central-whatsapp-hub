@@ -41,6 +41,28 @@ internal static class Program
             image.Save("ui-smoke-output/agenda-" + (dark ? "escura" : "clara") + ".png");
             if (grid.Width < 500 || grid.Height < 40) throw new Exception("Grade operacional ficou sem espaço.");
         }
+        var editorType = assembly.GetType("CentralWhatsApp.WebView2.GoogleCalendarEventDialog", true)!;
+        var choiceType = assembly.GetType("CentralWhatsApp.WebView2.GoogleEventTypeChoice", true)!;
+        var choices = Array.CreateInstance(choiceType, 2);
+        choices.SetValue(Activator.CreateInstance(choiceType, ["desratizacao", "Desratização", "9"]), 0);
+        choices.SetValue(Activator.CreateInstance(choiceType, ["orcamento", "Orçamento", "5"]), 1);
+        using var editor = (Form)Activator.CreateInstance(editorType,
+            BindingFlags.Instance | BindingFlags.NonPublic, null,
+            [null, new DateOnly(2026, 10, 27), false, choices], null)!;
+        editor.Show(); Pump();
+        var selector = (ComboBox)editorType.GetField("serviceType", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(editor)!;
+        if (!selector.Visible || !selector.Enabled || selector.Items.Count != 3 ||
+            selector.DropDownStyle != ComboBoxStyle.DropDownList)
+            throw new Exception("Seletor do tipo de evento não está acessível.");
+        selector.SelectedIndex = 2;
+        foreach (var dark in new[] { false, true })
+        {
+            configure.Invoke(null, [dark]); Pump();
+            using var capture = new Bitmap(editor.Width, editor.Height);
+            editor.DrawToBitmap(capture, new Rectangle(Point.Empty, editor.Size));
+            capture.Save("ui-smoke-output/editor-tipo-" + (dark ? "escuro" : "claro") + ".png");
+        }
+        editor.Close();
         form.Close();
         Console.WriteLine("PASS: painel Windows inicia, aplica temas, preserva cor de serviço e mantém grade operacional.");
         return 0;

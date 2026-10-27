@@ -708,6 +708,44 @@ await ExpectFailure(() => scheduleStore.ValidateSchedule(company, scheduledWork,
 if (scheduleReads != 1) throw new Exception("Conferência inesperada do calendário.");
 Console.WriteLine("PASS: confirmação/lembretes conferem evento vinculado antes de emitir link ou rascunho.");
 
+// Google colors must come from the API, including IDs beyond the historic eleven.
+using (var colorTransport = new CalendarTestHandler((method, uri, bearer, body) =>
+{
+    if (method != "GET" || body is not null) throw new Exception("Leitura de cores escreveu dados.");
+    if (uri.AbsolutePath.EndsWith("/colors"))
+        return CalendarTestHandler.Json("""{"event":{"9":{"background":"#3F51B5"},"24":{"background":"#123456"},"bad":{"background":"invalid"}}}""");
+    if (uri.AbsolutePath.Contains("/calendarList/"))
+        return CalendarTestHandler.Json("""{"backgroundColor":"#0B8043"}""");
+    throw new Exception("Endpoint de cores inesperado.");
+}))
+using (var colorApi = new GoogleCalendarApi(new FakeCalendarAuthorization(), new HttpClient(colorTransport)))
+{
+    await colorApi.LoadColors();
+    if (colorApi.EventColorHex(item! with { ColorId = "24" }) != "#123456" ||
+        colorApi.EventColorHex(item! with { ColorId = "" }) != "#0B8043" ||
+        colorApi.EventColorHex(item! with { ColorId = "0" }) != "#0B8043" ||
+        colorApi.EventColorHex(item! with { ColorId = "unknown" }) is not null ||
+        colorApi.ClosestColor("#3F51B5") != "9" || colorApi.EventColors.ContainsKey("bad"))
+        throw new Exception("Cor individual, herdada ou paleta dinâmica incorreta.");
+}
+var typedDraft = change with { ServiceTypeId = "orcamento", SelectedColorId = "5" };
+var typedPayload = typedDraft.GooglePayload(new Dictionary<string, string>
+{ ["other_app"] = "preserve", ["modux_company_id"] = "fixture-company", ["modux_appointment_id"] = "fixture-appointment" });
+if (typedPayload["colorId"]!.GetValue<string>() != "5" ||
+    typedPayload["summary"]!.GetValue<string>() != change.Title ||
+    typedPayload["extendedProperties"]!["private"]!["other_app"]!.GetValue<string>() != "preserve" ||
+    typedPayload["extendedProperties"]!["private"]!["modux_company_id"]!.GetValue<string>() != "fixture-company" ||
+    typedPayload["extendedProperties"]!["private"]!["modux_service_id"]!.GetValue<string>() != "orcamento" ||
+    change.GooglePayload().ContainsKey("colorId") || change.GooglePayload().ContainsKey("extendedProperties") ||
+    (typedDraft with { SelectedColorId = null }).GooglePayload().ContainsKey("colorId"))
+    throw new Exception("Tipo alterou título, perdeu metadados ou recoloriu sem escolha explícita.");
+using var typedJson = JsonDocument.Parse(source.Replace("\"colorId\":\"9\"",
+    "\"extendedProperties\":{\"private\":{\"modux_service_id\":\"orcamento\",\"other_app\":\"preserve\"}},\"colorId\":\"9\""));
+var typedEvent = GoogleEventSnapshot.Parse(typedJson.RootElement)!;
+if (typedEvent.ServiceTypeId != "orcamento" || typedEvent.PrivateProperties["other_app"] != "preserve")
+    throw new Exception("Tipo explícito não sobreviveu à leitura Google.");
+Console.WriteLine("PASS: cores reais/herdadas, paleta dinâmica e tipo explícito sem recoloração automática/perda de metadados.");
+
 static async Task ExpectFailure(Func<Task> operation, string message)
 {
     try { await operation(); }

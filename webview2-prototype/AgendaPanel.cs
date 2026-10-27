@@ -479,6 +479,9 @@ internal sealed class AgendaPanel : UserControl
                 // no modo editável. Operacional continua identificado como leitura.
                 try
                 {
+                    try { await googleApi.LoadColors(); }
+                    catch (Exception error) when (error is InvalidOperationException or HttpRequestException or TaskCanceledException or JsonException)
+                    { googleWarning = "Cores Google indisponíveis nesta atualização; usando classificação local."; }
                     testEvents = await googleApi.Events(first, last);
                     apiReadSucceeded = true;
                     googleTestEventCount = testEvents.Count;
@@ -524,7 +527,19 @@ internal sealed class AgendaPanel : UserControl
                 var google = row.Google;
                 var category = local is not null
                     ? serviceCatalog.Resolve(local)
-                    : serviceCatalog.Apply(AgendaServiceColors.Classify(google!.Title, google.Description));
+                    : serviceCatalog.Apply(google!.ServiceTypeId is { } typeId
+                        ? AgendaServiceColors.FromServiceIds([typeId], google.Title, null)
+                        : AgendaServiceColors.Classify(google.Title, google.Description));
+                if (local is null && google?.ServiceTypeId is { } selectedType &&
+                    serviceCatalog.Items.FirstOrDefault(item => item.Id == selectedType) is { } definition)
+                    category = category with { Id = definition.Id, Label = definition.Label };
+                if (google is not null && googleApi.EventColorHex(google) is { } googleHex)
+                {
+                    var color = ColorTranslator.FromHtml(googleHex);
+                    var brightness = 0.2126 * color.R + 0.7152 * color.G + 0.0722 * color.B;
+                    category = category with { Color = color, TextColor = brightness > 145 ? Color.Black : Color.White,
+                        GoogleColorName = "Cor original do Google" };
+                }
                 var state = google is not null
                     ? row.Link is null ? googleOrigin + " • editável"
                         : local is null ? googleOrigin + " • vínculo pendente"
@@ -859,6 +874,8 @@ internal sealed class AgendaPanel : UserControl
             throw new InvalidOperationException("Selecione e confirme primeiro o calendário Google.");
         var calendarId = googleOAuth.CalendarId!;
         var draft = local.AsGoogleDraft(companyId);
+        var type = GoogleEventTypes().FirstOrDefault(candidate => local.ServiceIds.Contains(candidate.Id));
+        if (type is not null) draft = draft with { ServiceTypeId = type.Id, SelectedColorId = type.ColorId };
         _ = draft.AsGoogleFields();
         var saved = await googleApi.EnsureOperationalEvent(draft);
         var link = await linkStore.Link(companyId, local, calendarId, saved);
@@ -947,7 +964,8 @@ internal sealed class AgendaPanel : UserControl
         }
         var local = (grid.Rows[rowIndex].Tag as AgendaRowContext)?.Local;
         var link = calendarLinks.FirstOrDefault(l => l.CalendarId == googleOAuth.CalendarId && l.EventId == google.Id);
-        using var editor = new GoogleCalendarEventDialog(google, google.Date, local is not null && link is not null);
+        using var editor = new GoogleCalendarEventDialog(google, google.Date, local is not null && link is not null,
+            GoogleEventTypes());
         if (editor.ShowDialog(this) != DialogResult.OK) return;
         SetBusy(true);
         var changedOnGoogle = false;
@@ -986,6 +1004,10 @@ internal sealed class AgendaPanel : UserControl
         await LoadAppointments();
     }
 
+    private IEnumerable<GoogleEventTypeChoice> GoogleEventTypes()
+        => serviceCatalog.Items.Where(item => item.Id != "outros")
+            .Select(item => new GoogleEventTypeChoice(item.Id, item.Label, googleApi.ClosestColor(item.ColorHex)));
+
     private async Task CreateGoogleEvent()
     {
         if (busy || !googleOAuth.CanWriteSelectedCalendar)
@@ -993,7 +1015,7 @@ internal sealed class AgendaPanel : UserControl
             Status("Para criar eventos, selecione e confirme o calendário Google.");
             return;
         }
-        using var editor = new GoogleCalendarEventDialog(null, calendar.SelectedDate);
+        using var editor = new GoogleCalendarEventDialog(null, calendar.SelectedDate, eventTypes: GoogleEventTypes());
         if (editor.ShowDialog(this) != DialogResult.OK ||
             editor.Action != GoogleEventUserAction.Save || editor.Draft is not { } draft) return;
         SetBusy(true);

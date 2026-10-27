@@ -14,6 +14,47 @@ internal sealed class GoogleCalendarApi : IDisposable
 {
     private readonly IGoogleCalendarAuthorization auth;
     private readonly HttpClient http;
+    internal IReadOnlyDictionary<string, string> EventColors { get; private set; } = new Dictionary<string, string>();
+    private string? calendarColor;
+    private string? colorCalendarId;
+
+    internal async Task LoadColors(CancellationToken ct = default)
+    {
+        var calendar = SelectedCalendar();
+        colorCalendarId = null;
+        using var response = await Request(HttpMethod.Get, "colors", ct: ct);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        var colors = new Dictionary<string, string>();
+        foreach (var entry in json.RootElement.GetProperty("event").EnumerateObject())
+            if (entry.Value.TryGetProperty("background", out var background) && IsHex(background.GetString()))
+                colors[entry.Name] = background.GetString()!;
+        using var calendarResponse = await Request(HttpMethod.Get,
+            "users/me/calendarList/" + Uri.EscapeDataString(calendar), ct: ct);
+        using var calendarJson = JsonDocument.Parse(await calendarResponse.Content.ReadAsStringAsync(ct));
+        var hex = calendarJson.RootElement.TryGetProperty("backgroundColor", out var value) ? value.GetString() : null;
+        if (auth.CalendarId != calendar) return;
+        EventColors = colors;
+        calendarColor = IsHex(hex) ? hex : null;
+        colorCalendarId = calendar;
+    }
+
+    internal string? EventColorHex(GoogleEventSnapshot item) => colorCalendarId != auth.CalendarId ? null
+        : !string.IsNullOrEmpty(item.ColorId) && EventColors.TryGetValue(item.ColorId, out var hex) ? hex
+        : string.IsNullOrEmpty(item.ColorId) || item.ColorId == "0" ? calendarColor : null;
+
+    internal string? ClosestColor(string hex)
+    {
+        if (!IsHex(hex) || colorCalendarId != auth.CalendarId) return null;
+        var wanted = System.Drawing.ColorTranslator.FromHtml(hex);
+        return EventColors.OrderBy(entry =>
+        {
+            var color = System.Drawing.ColorTranslator.FromHtml(entry.Value);
+            return Math.Pow(color.R - wanted.R, 2) + Math.Pow(color.G - wanted.G, 2) + Math.Pow(color.B - wanted.B, 2);
+        }).Select(entry => entry.Key).FirstOrDefault();
+    }
+
+    private static bool IsHex(string? hex) => hex is not null &&
+        System.Text.RegularExpressions.Regex.IsMatch(hex, "^#[0-9a-fA-F]{6}$");
 
     internal GoogleCalendarApi(GoogleDesktopOAuth auth)
         : this(auth, new HttpClient()) { }
@@ -155,17 +196,15 @@ internal sealed class GoogleCalendarApi : IDisposable
         // O Google permite IDs explícitos em base32hex. Mantemos o mesmo ID
         // enquanto este rascunho existir, evitando duplicar uma tentativa repetida.
         // Uma dúvida de rede deve ser resolvida por consulta, nunca novo POST cego.
-        var payload = JsonSerializer.SerializeToNode(draft.AsGoogleFields())!.AsObject();
+        var payload = draft.GooglePayload();
         payload["id"] = draft.CreateRequestId;
         if (draft.OperationalCompanyId is { } company && draft.OperationalAppointmentId is { } appointment)
-            payload["extendedProperties"] = new JsonObject
-            {
-                ["private"] = new JsonObject
-                {
-                    ["modux_company_id"] = company.ToString("D"),
-                    ["modux_appointment_id"] = appointment.ToString("D")
-                }
-            };
+        {
+            var metadata = payload["extendedProperties"]?["private"]?.AsObject() ?? new JsonObject();
+            metadata["modux_company_id"] = company.ToString("D");
+            metadata["modux_appointment_id"] = appointment.ToString("D");
+            payload["extendedProperties"] = new JsonObject { ["private"] = metadata.DeepClone() };
+        }
         try
         {
             using var response = await Request(HttpMethod.Post, path, payload, ct: ct);
@@ -225,7 +264,7 @@ internal sealed class GoogleCalendarApi : IDisposable
         var path = EventPath(original.Id) + "?sendUpdates=none";
         // PATCH preserva convidados, recorrência, lembretes e demais propriedades não editadas.
         using var response = await Request(new HttpMethod("PATCH"), path,
-            proposed.AsGoogleFields(), original.ETag, ct);
+            proposed.GooglePayload(current.PrivateProperties), original.ETag, ct);
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
         return GoogleEventSnapshot.Parse(json.RootElement) ??
             throw new InvalidOperationException("Alteração concluída no Google; atualize a agenda para confirmar.");
@@ -308,6 +347,11 @@ internal sealed class GoogleCalendarApi : IDisposable
     public void Dispose() => http.Dispose();
 }
 
+internal sealed record GoogleEventTypeChoice(string Id, string Label, string? ColorId)
+{
+    public override string ToString() => Label;
+}
+
 internal sealed record GoogleCalendarChoice(string Id, string Name, string Role, bool IsPrimary)
 {
     public override string ToString() => Name + (IsPrimary ? " (principal)" : "");
@@ -322,6 +366,8 @@ internal sealed record GoogleEventSnapshot(
     internal bool SpansMultipleDays { get; init; }
     internal Guid? OperationalCompanyId { get; init; }
     internal Guid? OperationalAppointmentId { get; init; }
+    internal IReadOnlyDictionary<string, string> PrivateProperties { get; init; } = new Dictionary<string, string>();
+    internal string? ServiceTypeId => PrivateProperties.GetValueOrDefault("modux_service_id");
 
     private static GoogleEventSnapshot WithIdentity(GoogleEventSnapshot snapshot, JsonElement source)
     {
@@ -334,8 +380,13 @@ internal sealed record GoogleEventSnapshot(
                 Guid.TryParse(value.GetString(), out var id)) return id;
             return null;
         }
+        var privateProperties = new Dictionary<string, string>();
+        if (source.TryGetProperty("extendedProperties", out var props) && props.ValueKind == JsonValueKind.Object &&
+            props.TryGetProperty("private", out var entries) && entries.ValueKind == JsonValueKind.Object)
+            foreach (var entry in entries.EnumerateObject())
+                if (entry.Value.ValueKind == JsonValueKind.String) privateProperties[entry.Name] = entry.Value.GetString()!;
         return snapshot with { OperationalCompanyId = Read("modux_company_id"),
-            OperationalAppointmentId = Read("modux_appointment_id") };
+            OperationalAppointmentId = Read("modux_appointment_id"), PrivateProperties = privateProperties };
     }
 
     internal static GoogleEventSnapshot? Parse(JsonElement e)
@@ -391,6 +442,23 @@ internal sealed record GoogleEventDraft(string Title, string Description, string
     internal string CreateRequestId { get; private init; } = "modu" + Guid.NewGuid().ToString("N");
     internal Guid? OperationalCompanyId { get; private init; }
     internal Guid? OperationalAppointmentId { get; private init; }
+    internal string? ServiceTypeId { get; init; }
+    internal string? SelectedColorId { get; init; }
+
+    internal JsonObject GooglePayload(IReadOnlyDictionary<string, string>? existing = null)
+    {
+        var payload = JsonSerializer.SerializeToNode(AsGoogleFields())!.AsObject();
+        if (ServiceTypeId is not null)
+        {
+            if (!System.Text.RegularExpressions.Regex.IsMatch(ServiceTypeId, "^[a-z0-9_]{1,80}$"))
+                throw new InvalidOperationException("Tipo de serviço inválido.");
+            var metadata = existing is null ? new JsonObject() : JsonSerializer.SerializeToNode(existing)!.AsObject();
+            metadata["modux_service_id"] = ServiceTypeId;
+            payload["extendedProperties"] = new JsonObject { ["private"] = metadata };
+            if (!string.IsNullOrEmpty(SelectedColorId)) payload["colorId"] = SelectedColorId;
+        }
+        return payload;
+    }
 
     internal GoogleEventDraft ForAppointment(Guid companyId, Guid appointmentId)
     {
