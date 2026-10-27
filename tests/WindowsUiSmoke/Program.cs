@@ -131,7 +131,7 @@ internal static class Program
             }
             throw new Exception("HTTP inesperado na fila fictícia: " + path);
         };
-        var store = Activator.CreateInstance(storeType, flags, null, [transport], null)!;
+        var store = Activator.CreateInstance(storeType, flags | BindingFlags.Public, null, [transport], null)!;
         var validate = typeof(Program).GetMethod(nameof(FixtureValidate), BindingFlags.Static | BindingFlags.NonPublic)!
             .MakeGenericMethod(workType).CreateDelegate(typeof(Func<,>).MakeGenericType(workType, typeof(Task)));
         var open = typeof(Program).GetMethod(nameof(FixtureDraft), BindingFlags.Static | BindingFlags.NonPublic)!
