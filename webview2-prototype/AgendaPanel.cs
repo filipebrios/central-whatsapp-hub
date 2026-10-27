@@ -1035,7 +1035,7 @@ internal sealed class AgendaPanel : UserControl
 
     private IEnumerable<GoogleEventTypeChoice> GoogleEventTypes()
         => serviceCatalog.Items.Where(item => item.Id != "outros")
-            .Select(item => new GoogleEventTypeChoice(item.Id, item.Label, googleApi.ClosestColor(item.ColorHex)));
+            .Select(item => new GoogleEventTypeChoice(item.Id, item.Label, googleApi.ColorForService(item.Id, item.ColorHex)));
 
     private async Task CreateGoogleEvent()
     {

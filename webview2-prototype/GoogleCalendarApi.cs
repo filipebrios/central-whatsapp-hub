@@ -46,6 +46,16 @@ internal sealed class GoogleCalendarApi : IDisposable
         : !string.IsNullOrEmpty(item.ColorId) && EventColors.TryGetValue(item.ColorId, out var hex) ? hex
         : string.IsNullOrEmpty(item.ColorId) || item.ColorId == "0" ? calendarColor : null;
 
+    // Calendar default is a deliberate choice, not the nearest event-palette RGB.
+    // The API's pastel palette and the Calendar UI's named colors differ.
+    internal string? ColorForService(string id, string hex) => id switch
+    {
+        "desinsetizacao" => "0", // Internal sentinel: clear event override, inherit calendar.
+        "desratizacao" => "9", // Blueberry / Mirtilo.
+        "orcamento" => "5", "confirmacao" => "10", "cancelado" => "11", "interno" => "6",
+        _ => ClosestColor(hex)
+    };
+
     internal string? ClosestColor(string hex)
     {
         if (!IsHex(hex) || colorCalendarId != auth.CalendarId) return null;
@@ -201,6 +211,8 @@ internal sealed class GoogleCalendarApi : IDisposable
         // enquanto este rascunho existir, evitando duplicar uma tentativa repetida.
         // Uma dúvida de rede deve ser resolvida por consulta, nunca novo POST cego.
         var payload = draft.GooglePayload();
+        // New events inherit the selected calendar simply by omitting colorId.
+        if (payload.ContainsKey("colorId") && payload["colorId"] is null) payload.Remove("colorId");
         payload["id"] = draft.CreateRequestId;
         if (draft.OperationalCompanyId is { } company && draft.OperationalAppointmentId is { } appointment)
         {
@@ -466,7 +478,10 @@ internal sealed record GoogleEventDraft(string Title, string Description, string
             metadata["modux_service_ids"] = string.Join(",", types.Distinct(StringComparer.Ordinal));
             metadata["modux_service_id"] = types.FirstOrDefault() ?? "";
             payload["extendedProperties"] = new JsonObject { ["private"] = metadata };
-            if (!string.IsNullOrEmpty(SelectedColorId)) payload["colorId"] = SelectedColorId;
+            if (!string.IsNullOrEmpty(SelectedColorId))
+                // JSON null in PATCH removes a previous override. Omitting the field
+                // would preserve the wrong Mirtilo override on the edited event.
+                payload["colorId"] = SelectedColorId == "0" ? null : JsonValue.Create(SelectedColorId);
         }
         return payload;
     }

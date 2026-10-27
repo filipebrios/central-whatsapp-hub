@@ -812,6 +812,55 @@ var servicesSaved = await serviceStore.UpdateServices(company, serviceOriginal, 
 if (servicesSaved.ServiceIds.Length != 2 || servicesSaved.Revision != 5) throw new Exception("Serviços operacionais não confirmados.");
 Console.WriteLine("PASS: combinação de serviços, PATCH Google real simulado, preservação, filtro secundário e CAS operacional restrito.");
 
+// Regression: nearest RGB picked Blueberry for #039BE5 with Google's pastel API palette.
+using (var historicalTransport = new CalendarTestHandler((method, uri, bearer, body) =>
+    CalendarTestHandler.Json(uri.AbsolutePath.EndsWith("/colors")
+        ? """{"event":{"7":{"background":"#46d6db"},"9":{"background":"#5484ed"}}}"""
+        : """{"backgroundColor":"#039BE5"}""")))
+using (var historicalApi = new GoogleCalendarApi(new FakeCalendarAuthorization(), new HttpClient(historicalTransport)))
+{
+    await historicalApi.LoadColors();
+    if (historicalApi.ClosestColor("#039BE5") != "9" ||
+        historicalApi.ColorForService("desinsetizacao", "#039BE5") != "0" ||
+        historicalApi.ColorForService("desratizacao", "#3F51B5") != "9" ||
+        historicalApi.ColorForService("orcamento", "#F6BF26") != "5" ||
+        historicalApi.ColorForService("confirmacao", "#0B8043") != "10" ||
+        historicalApi.ColorForService("cancelado", "#D50000") != "11" ||
+        historicalApi.ColorForService("interno", "#F4511E") != "6")
+        throw new Exception("RGB aproximado voltou a confundir desinsetização com Mirtilo.");
+    var inheritedDraft = change with { ServiceTypeIds = ["desinsetizacao", "reservatorio"],
+        SelectedColorId = historicalApi.ColorForService("desinsetizacao", "#039BE5") };
+    var inheritedJson = System.Text.Json.Nodes.JsonNode.Parse(typedJson.RootElement.GetRawText())!.AsObject();
+    inheritedJson.Remove("colorId");
+    inheritedJson["extendedProperties"]!["private"]!["modux_service_ids"] = "desinsetizacao,reservatorio";
+    inheritedJson["extendedProperties"]!["private"]!["modux_service_id"] = "desinsetizacao";
+    using (var writeTransport = new CalendarTestHandler((method, uri, bearer, body) =>
+    {
+        if (method == "GET") return CalendarTestHandler.Json(typedJson.RootElement.GetRawText());
+        using var payload = JsonDocument.Parse(body!);
+        if (method == "PATCH" && (!payload.RootElement.TryGetProperty("colorId", out var reset) || reset.ValueKind != JsonValueKind.Null))
+            throw new Exception("PATCH não removeu explicitamente a cor Mirtilo anterior.");
+        if (method == "POST" && payload.RootElement.TryGetProperty("colorId", out var forbiddenColor))
+            throw new Exception("Novo evento impôs uma cor em vez de herdar a agenda.");
+        if (!uri.Query.Contains("sendUpdates=none") ||
+            (method == "PATCH" && payload.RootElement.GetProperty("extendedProperties").GetProperty("private").GetProperty("other_app").GetString() != "preserve"))
+            throw new Exception("Correção perdeu metadados ou alterou o fluxo de notificação.");
+        return CalendarTestHandler.Json(inheritedJson.ToJsonString());
+    }))
+    using (var writeApi = new GoogleCalendarApi(new FakeCalendarAuthorization(), new HttpClient(writeTransport)))
+    {
+        var corrected = await writeApi.Update(item!, inheritedDraft);
+        if (historicalApi.EventColorHex(corrected) != "#039BE5" || corrected.ServiceTypeIds.Length != 2)
+            throw new Exception("Desinsetização não herdou o azul padrão ou perdeu o segundo serviço.");
+        await writeApi.Create(inheritedDraft);
+        if (writeTransport.Calls != 3) throw new Exception("Correção repetiu uma escrita Google.");
+    }
+    var ratColor = (change with { ServiceTypeIds = ["desratizacao"], SelectedColorId = historicalApi.ColorForService("desratizacao", "#3F51B5") }).GooglePayload();
+    if (ratColor["colorId"]!.GetValue<string>() != "9" || change.GooglePayload().ContainsKey("colorId"))
+        throw new Exception("Desratização perdeu Mirtilo ou edição comum passou a recolorir.");
+}
+Console.WriteLine("PASS: bug RGB reproduzido, desinsetização herda azul padrão, PATCH remove override, criação omite cor e desratização mantém Mirtilo.");
+
 static async Task ExpectFailure(Func<Task> operation, string message)
 {
     try { await operation(); }

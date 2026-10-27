@@ -61,6 +61,8 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- **27/10 — correção do salvamento de cores em validação:** usuário relatou desinsetização salva em Mirtilo (desratização). Causa identificada no RGB aproximado entre paleta pastel da API e nomes/tons da interface Google. Desinsetização passa a herdar explicitamente a cor padrão do calendário; desratização mantém ID 9. PATCH limpa override anterior apenas quando operador seleciona o tipo; edição comum e eventos existentes não são recoloridos em lote. Aguardar CI, sem novo instalador por ajuste isolado.
+
 - **27/10 — MODUX 1.9.2 beta PUBLICADA:** release `modux-v1.9.2-beta1`, commit do pacote `bbd5f2ec9f4c746a008d069aeb6d1858c5b2696c`, CI #40503361048 totalmente aprovado. EXE `MODUX-Setup-1.9.2.exe`, 51.295.725 bytes, SHA-256 `1fa302524ba566b76acfc8134034bb4b6c07322038b7a97a0f3957a9f75b3515`. Release pública, não rascunho, prerelease. Download: https://github.com/filipebrios/central-whatsapp-hub/releases/download/modux-v1.9.2-beta1/MODUX-Setup-1.9.2.exe .
 - Entrega reúne visões reais mês/semana/dia pelo seletor da tela, grade horária/rolagem/duração/sobreposições/dia inteiro, eventos encerrados desbotados sem recoloração no Google, serviços combinados e otimização. CI repetiu testes C#/HTTP/CAS, cores/protocolo, navegador, smoke e instalação/desinstalação com hashes de cadastros/perfis fictícios preservados. Capturas finais do seletor Semana/Dia e editor múltiplo conferidas. Medição final do runner: 500 eventos, oito trocas/redesenhos, 136 ms, 25 controles nativos; não inclui rede nem equivale a velocidade medida no computador do usuário. Assets baixados e SHA comparado antes de publicar; versões 1.9.0/1.9.1 preservadas. Validação real do usuário ainda necessária.
 
@@ -147,6 +149,8 @@ Requisitos permanentes:
 - Alterações atribuídas ao Manus não estão no repositório conhecido.
 
 ## Pendências priorizadas
+
+- Validar regressão do salvamento de cores (desinsetização padrão vs Mirtilo), preservar dois serviços e incorporar a correção à próxima atualização consolidada. Instalador atual 1.9.2 ainda contém a falha; não afirmar que atualizar a tela instala esta correção.
 
 - Após entrega 1.9.2: recolher retorno real das três visões, velocidade percebida e edição de serviços combinados na conta do usuário. Cache não elimina latência de rede; Atualizar força consulta, edição mantém GET/revisão/ETag. Limites de séries/multidia, recuperação manual de falhas parciais e acesso restrito da Agenda continuam explícitos.
 
@@ -320,6 +324,12 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-27 — gravação da cor padrão para desinsetização
+
+- Removida aproximação RGB dos seis tipos históricos na escolha de cor para escrita. Desinsetização usa sentinela interno de cor padrão; desratização 9, orçamento 5, confirmação 10, cancelado 11, interno 6. Tipos auxiliares continuam usando cor disponível próxima. Paleta lida continua sendo usada para renderização, sem alterar o calendário.
+- Ao criar desinsetização, omite colorId para herdar a agenda. Ao selecionar o tipo em edição, PATCH envia colorId null para remover override anterior, em vez de omitir o campo (que preservaria Mirtilo). Edição sem alteração de tipos mantém a cor. Usa confirmação/GET/ETag existentes; não altera eventos reais pelas ferramentas.
+- Regressão HTTP reproduz paleta pastel que escolhia 9 para #039BE5 e verifica herança, remoção explícita, criação sem cor, Mirtilo da desratização, serviços combinados, metadados e ausência de reenvio. Aguardando Windows. Sem novo instalador isolado, conforme preferência de consolidação.
 
 ### 2026-10-27 — entrega consolidada 1.9.2 beta
 
