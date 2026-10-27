@@ -18,31 +18,30 @@ internal sealed class GoogleCalendarEventDialog : Form
     private readonly CheckBox allDay = new()
     { Text = "Dia inteiro", Dock = DockStyle.Top, AutoSize = true };
     private readonly GoogleEventSnapshot? original;
-    private readonly ComboBox serviceType = new() { Dock = DockStyle.Top, DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly bool linked;
+    private readonly CheckedListBox serviceType = new() { Dock = DockStyle.Fill, CheckOnClick = true, IntegralHeight = false, BorderStyle = BorderStyle.FixedSingle };
     private bool serviceTypeChanged;
 
     internal GoogleEventUserAction Action { get; private set; }
     internal GoogleEventDraft? Draft { get; private set; }
 
     internal GoogleCalendarEventDialog(GoogleEventSnapshot? source, DateOnly initialDay, bool linkedAppointment = false,
-        IEnumerable<GoogleEventTypeChoice>? eventTypes = null)
+        IEnumerable<GoogleEventTypeChoice>? eventTypes = null, IReadOnlyList<string>? originalServices = null)
     {
         original = source;
+        linked = linkedAppointment;
         Text = source is null ? "Criar evento no Google Agenda" : "Editar evento do Google Agenda";
-        Width = 720; Height = 730; MinimumSize = new Size(620, 670);
+        Width = 720; Height = 800; MinimumSize = new Size(620, 700);
         Font = new Font("Segoe UI", 10);
         StartPosition = FormStartPosition.CenterParent;
         BackColor = Color.White;
-        serviceType.Items.Add("Manter tipo e cor atuais");
-        if (eventTypes is not null)
-            foreach (var type in eventTypes) serviceType.Items.Add(type);
-        serviceType.SelectedIndex = 0;
-        for (var i = 1; i < serviceType.Items.Count; i++)
-            if (serviceType.Items[i] is GoogleEventTypeChoice type && type.Id == source?.ServiceTypeId)
-                serviceType.SelectedIndex = i;
-        serviceType.Enabled = !linkedAppointment && serviceType.Items.Count > 1;
-        if (linkedAppointment) serviceType.Items[0] = "Tipo definido no atendimento vinculado";
-        serviceType.SelectedIndexChanged += (_, _) => serviceTypeChanged = true;
+        var selectedTypes = originalServices ?? source?.ServiceTypeIds ?? [];
+        var types = eventTypes?.ToList() ?? [];
+        foreach (var id in selectedTypes)
+            if (!types.Any(type => type.Id == id)) types.Add(new GoogleEventTypeChoice(id, id, null));
+        foreach (var type in types) serviceType.Items.Add(type, selectedTypes.Contains(type.Id));
+        serviceType.Enabled = types.Count > 0;
+        serviceType.ItemCheck += (_, _) => serviceTypeChanged = true;
 
         if (source is not null)
         {
@@ -76,8 +75,8 @@ internal sealed class GoogleCalendarEventDialog : Form
         AddRow(layout, 3, "Hora", time, 48);
         AddRow(layout, 4, "Duração (min)", minutes, 48);
         AddRow(layout, 5, "Período", allDay, 48);
-        AddRow(layout, 6, "Tipo de serviço ou evento", serviceType, 48);
-        AddRow(layout, 7, "Observações", description, 135);
+        AddRow(layout, 6, "Serviços / tipo de evento\nMarque um ou mais", serviceType, 130);
+        AddRow(layout, 7, "Observações", description, 110);
 
         var footer = new FlowLayoutPanel
         {
@@ -148,8 +147,11 @@ internal sealed class GoogleCalendarEventDialog : Form
         var proposal = new GoogleEventDraft(
             title.Text.Trim(), description.Text.Trim(), location.Text.Trim(), day, clock,
             allDay.Checked ? 1440 : (int)minutes.Value, allDay.Checked);
-        if (serviceTypeChanged && serviceType.SelectedItem is GoogleEventTypeChoice type)
-            proposal = proposal with { ServiceTypeId = type.Id, SelectedColorId = type.ColorId };
+        if (serviceTypeChanged)
+        {
+            var selected = serviceType.CheckedItems.Cast<GoogleEventTypeChoice>().ToArray();
+            proposal = proposal with { ServiceTypeIds = selected.Select(type => type.Id).ToArray(), SelectedColorId = selected.FirstOrDefault()?.ColorId };
+        }
         try
         {
             // Não enviar nada ao Google antes da confirmação do usuário.
@@ -164,7 +166,8 @@ internal sealed class GoogleCalendarEventDialog : Form
         if (MessageBox.Show(this,
             original is null
                 ? "Criar este compromisso no Google Agenda agora?"
-                : "Salvar as alterações deste compromisso no Google Agenda agora?",
+                : linked ? "Salvar as alterações no Google Agenda e atualizar o atendimento vinculado agora?"
+                    : "Salvar as alterações deste compromisso no Google Agenda agora?",
             "Confirmar alteração no Google",
             MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
         Draft = proposal;

@@ -1,307 +1,256 @@
 using System.Globalization;
+using System.Drawing.Drawing2D;
 
 namespace CentralWhatsApp.WebView2;
 
-internal sealed record AgendaCalendarEntry(DateOnly Date, string Time, string Client, string Service, string Status, AgendaServiceCategory Category);
-
-/// <summary>Calendário mensal local, alimentado somente com eventos autorizados pelo Supabase.</summary>
+/// <summary>One buffered drawing surface: no per-event native control creation or network access.</summary>
 internal sealed class AgendaMonthView : UserControl
 {
     private static readonly CultureInfo Br = CultureInfo.GetCultureInfo("pt-BR");
-    private readonly TableLayoutPanel days = new() { Dock = DockStyle.Fill, ColumnCount = 7, RowCount = 7, BackColor = Color.FromArgb(230, 235, 231), CellBorderStyle = TableLayoutPanelCellBorderStyle.Single };
-    private readonly Label caption = new() { AutoSize = true, Font = new Font("Segoe UI", 14f, FontStyle.Bold), ForeColor = Color.FromArgb(11, 19, 43), Margin = new Padding(10, 9, 10, 5) };
-    private readonly Button previous = Button("‹");
-    private readonly Button next = Button("›");
-    private readonly Button current = Button("Hoje");
-    private readonly ToolTip eventTip = new() { ShowAlways = true, AutoPopDelay = 14000 };
-    private readonly FlowLayoutPanel legend = new()
-    {
-        Dock = DockStyle.Top, Height = 32, WrapContents = false,
-        AutoScroll = true, BackColor = Color.White,
-        Padding = new Padding(8, 4, 5, 0)
-    };
-    private List<AgendaCalendarEntry> entries = [];
-    private DateOnly selectedDate = DateOnly.FromDateTime(DateTime.Today);
-    private DateOnly displayedMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
-
+    private readonly Label caption = new() { AutoSize = true, Font = new Font("Segoe UI", 13, FontStyle.Bold), Margin = new Padding(12, 7, 8, 0) };
+    private readonly FlowLayoutPanel header = new() { Dock = DockStyle.Top, Height = 48, WrapContents = false, Padding = new Padding(6, 5, 5, 2) };
+    private readonly FlowLayoutPanel legend = new() { Dock = DockStyle.Top, Height = 30, WrapContents = false, AutoScroll = true, Padding = new Padding(8, 2, 5, 0) };
+    private readonly CalendarSurface surface;
+    private readonly Button previous = Nav("‹"), current = Nav("Hoje"), next = Nav("›");
+    private IReadOnlyList<AgendaServiceCategory> legendEntries = [];
+    private DateOnly selectedDate = DateOnly.FromDateTime(AgendaCalendarLayout.Now);
+    internal AgendaCalendarMode Mode { get; private set; } = AgendaCalendarMode.Month;
+    internal AgendaCalendarSpan VisibleRange => AgendaCalendarLayout.Range(selectedDate, Mode);
+    internal AgendaCalendarSpan DisplayRange => Mode == AgendaCalendarMode.Month ? AgendaCalendarLayout.MonthEnvelope(selectedDate) : VisibleRange;
+    public DateOnly DisplayedMonth => new(selectedDate.Year, selectedDate.Month, 1);
+    public DateOnly SelectedDate => selectedDate;
     public event Action<DateOnly>? DateSelected;
     public event Action<DateOnly>? MonthChanged;
-    public DateOnly DisplayedMonth => displayedMonth;
-    public DateOnly SelectedDate => selectedDate;
+    internal event Action<string>? EventActivated;
 
     internal AgendaMonthView()
     {
-        Dock = DockStyle.Top;
-        Height = 430;
-        BackColor = Color.White;
-        days.Padding = new Padding(1);
-        for (var i = 0; i < 7; i++)
-            days.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / 7f));
-        days.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
-        for (var i = 0; i < 6; i++)
-            days.RowStyles.Add(new RowStyle(SizeType.Percent, 100f / 6f));
-        var header = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top, Height = 54, WrapContents = false,
-            BackColor = Color.White, Padding = new Padding(6, 4, 5, 2)
-        };
-        header.Controls.Add(previous); header.Controls.Add(current); header.Controls.Add(next); header.Controls.Add(caption);
-        previous.Click += (_, _) => SetMonth(displayedMonth.AddMonths(-1));
-        next.Click += (_, _) => SetMonth(displayedMonth.AddMonths(1));
-        current.Click += (_, _) =>
-        {
-            var today = DateOnly.FromDateTime(DateTime.Today);
-            selectedDate = today;
-            SetMonth(new DateOnly(today.Year, today.Month, 1));
-            DateSelected?.Invoke(today);
-        };
-        SetLegend(AgendaServiceColors.Legend);
-        Controls.Add(days); Controls.Add(legend); Controls.Add(header);
-        Render();
+        Dock = DockStyle.Top; Height = 430;
+        surface = new CalendarSurface(this) { Dock = DockStyle.Fill };
+        header.Controls.AddRange([previous, current, next, caption]);
+        previous.Click += (_, _) => Navigate(-1); next.Click += (_, _) => Navigate(1);
+        current.Click += (_, _) => ChangeDate(DateOnly.FromDateTime(AgendaCalendarLayout.Now));
+        Controls.Add(surface); Controls.Add(legend); Controls.Add(header);
+        SetLegend(AgendaServiceColors.Legend); ApplyAppearance();
     }
-
-    private IReadOnlyList<AgendaServiceCategory> legendEntries = AgendaServiceColors.Legend;
-
-    internal void SetLegend(IReadOnlyList<AgendaServiceCategory> categories)
+    private static Button Nav(string text) => new() { Text = text, Width = text == "Hoje" ? 60 : 36,
+        Height = 31, FlatStyle = FlatStyle.Flat, Margin = new Padding(3, 0, 3, 0), Cursor = Cursors.Hand };
+    private void Navigate(int direction) => ChangeDate(Mode switch { AgendaCalendarMode.Month => selectedDate.AddMonths(direction),
+        AgendaCalendarMode.Week => selectedDate.AddDays(7 * direction), _ => selectedDate.AddDays(direction) });
+    private void ChangeDate(DateOnly date)
     {
-        legendEntries = categories;
-        foreach (Control child in legend.Controls.Cast<Control>().ToArray()) child.Dispose();
-        legend.Controls.Clear();
-        var mainIds = new[] { "desinsetizacao", "desratizacao", "orcamento", "confirmacao", "cancelado", "interno", "outros" };
-        foreach (var category in categories.Where(c => mainIds.Contains(c.Id)))
-        {
-            var item = new FlowLayoutPanel
-            {
-                AutoSize = true, WrapContents = false, Margin = new Padding(2, 1, 10, 1),
-                BackColor = ModuxAppearance.Surface
-            };
-            var swatch = new Panel { Width = 8, Height = 8, BackColor = category.Color, Margin = new Padding(0, 5, 5, 0) };
-            var label = new Label
-            {
-                AutoSize = true, Text = category.Label, Font = new Font("Segoe UI", 8f),
-                ForeColor = ModuxAppearance.Text, Margin = Padding.Empty
-            };
-            item.Controls.Add(swatch); item.Controls.Add(label); legend.Controls.Add(item);
-            eventTip.SetToolTip(label, category.Label + " • " + category.GoogleColorName);
-        }
-        var more = new Button
-        {
-            Text = "Ver todas", AutoSize = true, Height = 21, BackColor = ModuxAppearance.Field,
-            ForeColor = ModuxAppearance.Text, FlatStyle = FlatStyle.Flat,
-            Font = new Font("Segoe UI", 8f), Margin = new Padding(0)
-        };
-        more.Click += (_, _) => ShowLegend();
-        legend.Controls.Add(more);
-        ModuxAppearance.Round(more);
+        selectedDate = date; UpdateCaption(); surface.ResetScroll(); surface.Invalidate(); MonthChanged?.Invoke(date);
     }
-
-    private static Button Button(string text) => new()
+    public void SetMonth(DateOnly date) { SetView(date, Mode); }
+    public void SelectDate(DateOnly day) { selectedDate = day; UpdateCaption(); surface.Invalidate(); }
+    internal void SetView(DateOnly day, AgendaCalendarMode mode)
     {
-        Text = text, Width = text == "Hoje" ? 56 : 34, Height = 30,
-        FlatStyle = FlatStyle.Flat, BackColor = Color.White,
-        ForeColor = Color.FromArgb(0, 103, 44),
-        Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-        Margin = new Padding(3, 2, 3, 2)
-    };
-
-    public void SetMonth(DateOnly firstDay)
-    {
-        var target = new DateOnly(firstDay.Year, firstDay.Month, 1);
-        if (displayedMonth != target)
-        {
-            displayedMonth = target;
-            selectedDate = target;
-            Render();
-            MonthChanged?.Invoke(target);
-        }
-        else Render();
+        var changed = mode != Mode || !VisibleRange.Contains(day);
+        selectedDate = day; Mode = mode; UpdateCaption();
+        if (changed) surface.ResetScroll();
+        surface.Invalidate();
     }
-
-    public void SelectDate(DateOnly day)
-    {
-        selectedDate = day;
-        if (day.Year != displayedMonth.Year || day.Month != displayedMonth.Month)
-            SetMonth(day);
-        Render();
-    }
-
     public void SetEntries(IEnumerable<AgendaCalendarEntry> source)
     {
-        entries = source.ToList();
-        Render();
+        surface.Entries = source.ToArray(); surface.Invalidate();
     }
-
+    private void UpdateCaption()
+    {
+        var span = VisibleRange;
+        caption.Text = Mode switch
+        {
+            AgendaCalendarMode.Day => selectedDate.ToDateTime(TimeOnly.MinValue).ToString("dddd, dd 'de' MMMM", Br),
+            AgendaCalendarMode.Week => $"{span.First:dd/MM} – {span.Last:dd/MM/yyyy}",
+            _ => Br.TextInfo.ToTitleCase(selectedDate.ToDateTime(TimeOnly.MinValue).ToString("MMMM yyyy", Br))
+        };
+        surface.AccessibleName = "Agenda " + (Mode == AgendaCalendarMode.Month ? "mensal" : Mode == AgendaCalendarMode.Week ? "semanal" : "do dia") + " • " + caption.Text;
+    }
+    internal void SetLegend(IReadOnlyList<AgendaServiceCategory> categories)
+    {
+        if (legendEntries.SequenceEqual(categories)) return;
+        legendEntries = categories.ToArray();
+        foreach (Control child in legend.Controls.Cast<Control>().ToArray()) child.Dispose();
+        foreach (var category in categories.Where(x => new[] { "desinsetizacao", "desratizacao", "orcamento", "confirmacao", "cancelado", "interno" }.Contains(x.Id)))
+        {
+            var item = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(3, 1, 12, 0), BackColor = ModuxAppearance.Surface };
+            item.Controls.Add(new Label { Text = "■", AutoSize = true, ForeColor = category.Color, Tag = "service-color", Margin = Padding.Empty, Font = new Font("Segoe UI", 8) });
+            item.Controls.Add(new Label { Text = category.Label, AutoSize = true, ForeColor = ModuxAppearance.Text, Margin = Padding.Empty, Font = new Font("Segoe UI", 8) });
+            legend.Controls.Add(item);
+        }
+    }
     internal void ApplyAppearance()
     {
-        BackColor = ModuxAppearance.Surface;
-        days.BackColor = ModuxAppearance.Border;
-        legend.BackColor = ModuxAppearance.Surface;
+        BackColor = header.BackColor = legend.BackColor = ModuxAppearance.Surface;
         caption.ForeColor = ModuxAppearance.Text;
-        SetLegend(legendEntries);
-        foreach (Control control in Controls)
-            if (control is FlowLayoutPanel panel) panel.BackColor = ModuxAppearance.Surface;
-        foreach (var button in new[] { previous, next, current })
+        foreach (Control item in legend.Controls)
         {
-            button.BackColor = ModuxAppearance.Field;
-            button.ForeColor = ModuxAppearance.Accent;
-            button.FlatAppearance.BorderSize = 0;
-            ModuxAppearance.Round(button);
+            item.BackColor = ModuxAppearance.Surface;
+            foreach (Control child in item.Controls)
+                if (child.Tag as string != "service-color") child.ForeColor = ModuxAppearance.Text;
         }
-        Render();
+        foreach (var button in new[] { previous, current, next })
+        { button.BackColor = ModuxAppearance.Field; button.ForeColor = ModuxAppearance.Accent; button.FlatAppearance.BorderSize = 0; ModuxAppearance.Round(button); }
+        surface.BackColor = ModuxAppearance.Surface; UpdateCaption(); surface.Invalidate();
+    }
+    private void Choose(DateOnly date, string? key, bool edit)
+    {
+        var previous = VisibleRange;
+        selectedDate = date; UpdateCaption(); surface.Invalidate(); DateSelected?.Invoke(date);
+        if (!previous.Contains(date)) MonthChanged?.Invoke(date);
+        if (edit && !string.IsNullOrEmpty(key)) EventActivated?.Invoke(key);
     }
 
-    private void Render()
+    private sealed class CalendarSurface : ScrollableControl
     {
-        caption.Text = Br.TextInfo.ToTitleCase(displayedMonth.ToDateTime(TimeOnly.MinValue).ToString("MMMM yyyy", Br));
-        days.SuspendLayout();
-        try
+        private readonly AgendaMonthView owner;
+        private readonly ToolTip tip = new() { AutoPopDelay = 14000, ShowAlways = true };
+        private readonly System.Windows.Forms.Timer clock = new() { Interval = 60000 };
+        private readonly List<(Rectangle Bounds, DateOnly Day, AgendaCalendarEntry? Entry)> hits = [];
+        private string lastTip = "";
+        private readonly Font regular = new("Segoe UI", 8.5f);
+        private readonly Font strong = new("Segoe UI", 8.5f, FontStyle.Bold);
+        internal AgendaCalendarEntry[] Entries = [];
+        private const int Hour = 52, Gutter = 52, Heading = 46, AllDayRows = 3;
+        internal CalendarSurface(AgendaMonthView owner)
         {
-            foreach (Control old in days.Controls.Cast<Control>().ToArray()) old.Dispose();
-            days.Controls.Clear();
-            var heads = new[] { "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom" };
-            for (var col = 0; col < 7; col++)
-            {
-                days.Controls.Add(new Label
-                {
-                    Text = heads[col], Dock = DockStyle.Fill,
-                    TextAlign = ContentAlignment.MiddleCenter,
-                    Font = new Font("Segoe UI", 8f, FontStyle.Bold),
-                    BackColor = ModuxAppearance.Field,
-                    ForeColor = ModuxAppearance.Muted,
-                    Margin = Padding.Empty
-                }, col, 0);
-            }
-            var offset = ((int)displayedMonth.DayOfWeek + 6) % 7;
-            var firstVisible = displayedMonth.AddDays(-offset);
-            var today = DateOnly.FromDateTime(DateTime.Today);
-            var byDay = entries.GroupBy(x => x.Date).ToDictionary(g => g.Key, g => g.ToList());
+            this.owner = owner; DoubleBuffered = true; AutoScroll = true; TabStop = true;
+            ResizeRedraw = true; Cursor = Cursors.Hand;
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
+            clock.Tick += (_, _) => { if (Visible) Invalidate(); }; clock.Start();
+        }
+        internal void ResetScroll()
+        {
+            AutoScrollPosition = Point.Empty;
+            AutoScrollMinSize = owner.Mode == AgendaCalendarMode.Month ? Size.Empty : new Size(0, Heading + 24 * Hour + 92);
+            if (owner.Mode != AgendaCalendarMode.Month) AutoScrollPosition = new Point(0, 7 * Hour);
+        }
+        protected override void OnScroll(ScrollEventArgs se) { base.OnScroll(se); Invalidate(); }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e); hits.Clear();
+            if (ClientSize.Width < 80 || ClientSize.Height < 40) return;
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            if (owner.Mode == AgendaCalendarMode.Month) DrawMonth(e.Graphics); else DrawTimeline(e.Graphics);
+        }
+        private void Text(Graphics g, string text, Rectangle bounds, Color color, bool bold = false, bool wrap = false)
+        {
+            TextRenderer.DrawText(g, text, bold ? strong : regular, bounds, color, TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis |
+                (wrap ? TextFormatFlags.WordBreak : TextFormatFlags.SingleLine) | TextFormatFlags.PreserveGraphicsClipping);
+        }
+        private static void Fill(Graphics g, Rectangle bounds, Color color)
+        { using var brush = new SolidBrush(color); g.FillRectangle(brush, bounds); }
+        private void Chip(Graphics g, Rectangle bounds, AgendaCalendarEntry item, DateOnly day, string text, bool wrap = false)
+        {
+            if (bounds.Height < 3 || bounds.Width < 3) return;
+            var past = item.IsPast(AgendaCalendarLayout.Now);
+            Fill(g, bounds, AgendaCalendarLayout.Fade(item.Category.Color, ModuxAppearance.Surface, past));
+            Text(g, text, Rectangle.Inflate(bounds, -4, -2), past ? ModuxAppearance.Muted : item.Category.TextColor, false, wrap);
+            hits.Add((bounds, day, item));
+        }
+        private void DrawMonth(Graphics g)
+        {
+            var width = ClientSize.Width; var height = ClientSize.Height;
+            using var line = new Pen(ModuxAppearance.Border);
+            var first = AgendaCalendarLayout.MonthEnvelope(owner.selectedDate).First;
+            for (var i = 0; i < 7; i++)
+                Text(g, new[] { "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom" }[i],
+                    new Rectangle(i * width / 7 + 8, 5, width / 7, 22), ModuxAppearance.Muted);
             for (var i = 0; i < 42; i++)
             {
-                var date = firstVisible.AddDays(i);
-                byDay.TryGetValue(date, out var dayEntries);
-                var count = dayEntries?.Count ?? 0;
-                var dateCell = new TableLayoutPanel
-                {
-                    Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4,
-                    Margin = Padding.Empty, Padding = new Padding(2),
-                    BackColor = date == selectedDate
-                        ? (ModuxAppearance.Selection)
-                        : date.Month == displayedMonth.Month
-                            ? ModuxAppearance.Surface : ModuxAppearance.Canvas,
-                    Cursor = Cursors.Hand,
-                    AccessibleName = $"{date:dd/MM/yyyy} • {count} agendamentos"
-                };
-                dateCell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-                dateCell.RowStyles.Add(new RowStyle(SizeType.Absolute, 20f));
-                dateCell.RowStyles.Add(new RowStyle(SizeType.Absolute, 17f));
-                dateCell.RowStyles.Add(new RowStyle(SizeType.Absolute, 17f));
-                dateCell.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
-                var title = new Label
-                {
-                    Dock = DockStyle.Fill, Margin = Padding.Empty,
-                    Font = new Font("Segoe UI", 8.5f,
-                        date == today ? FontStyle.Bold : FontStyle.Regular),
-                    ForeColor = date == today ? (ModuxAppearance.Accent)
-                        : date.Month == displayedMonth.Month ? ModuxAppearance.Text : ModuxAppearance.Muted,
-                    Text = $"{date.Day}{(date == today ? " •" : "")}",
-                    Cursor = Cursors.Hand,
-                    TextAlign = ContentAlignment.MiddleLeft
-                };
-                dateCell.Controls.Add(title, 0, 0);
-
-                // Cada compromisso recebe a sua própria faixa de cor.
-                // Uma célula inteira colorida não representaria serviços diferentes no mesmo dia.
-                if (dayEntries is { Count: > 0 })
-                {
-                    for (var entryIndex = 0; entryIndex < Math.Min(2, count); entryIndex++)
-                    {
-                        var entry = dayEntries[entryIndex];
-                        var chip = new Label
-                        {
-                            Dock = DockStyle.Fill, Height = 17, Margin = new Padding(0, 1, 1, 0),
-                            Text = $"{entry.Time}  {entry.Client}",
-                            Font = new Font("Segoe UI", 7.5f, FontStyle.Regular),
-                            BackColor = entry.Category.Color,
-                            ForeColor = entry.Category.TextColor,
-                            AutoEllipsis = true,
-                            TextAlign = ContentAlignment.MiddleLeft,
-                            Padding = new Padding(3, 0, 2, 0),
-                            Cursor = Cursors.Hand
-                        };
-                        eventTip.SetToolTip(chip,
-                            $"{entry.Time} • {entry.Client}\n{entry.Category.Label} | {entry.Service}\n{entry.Status}");
-                        chip.Click += (_, _) => SelectAndNotify(date);
-                        dateCell.Controls.Add(chip, 0, entryIndex + 1);
-                    }
-                    if (count > 2)
-                    {
-                        var extra = new Label
-                        {
-                            Dock = DockStyle.Fill, Text = $"+{count - 2} outros",
-                            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
-                            ForeColor = ModuxAppearance.Muted, Margin = Padding.Empty,
-                            Cursor = Cursors.Hand
-                        };
-                        eventTip.SetToolTip(extra, string.Join("\n",
-                            dayEntries.Skip(2).Take(12).Select(entry =>
-                                $"{entry.Time} {entry.Client} • {entry.Category.Label}")));
-                        extra.Click += (_, _) => SelectAndNotify(date);
-                        dateCell.Controls.Add(extra, 0, 3);
-                    }
-                }
-                title.Click += (_, _) => SelectAndNotify(date);
-                dateCell.Click += (_, _) => SelectAndNotify(date);
-                days.Controls.Add(dateCell, i % 7, 1 + i / 7);
+                var day = first.AddDays(i); var col = i % 7; var row = i / 7;
+                var bounds = Rectangle.FromLTRB(col * width / 7, 28 + row * (height - 28) / 6,
+                    (col + 1) * width / 7, 28 + (row + 1) * (height - 28) / 6);
+                Fill(g, bounds, day == owner.selectedDate ? ModuxAppearance.Selection : day.Month == owner.selectedDate.Month ? ModuxAppearance.Surface : ModuxAppearance.Canvas);
+                g.DrawRectangle(line, bounds); hits.Add((bounds, day, null));
+                Text(g, day.Day.ToString(), new Rectangle(bounds.X + 5, bounds.Y + 3, bounds.Width - 8, 20),
+                    day == DateOnly.FromDateTime(AgendaCalendarLayout.Now) ? ModuxAppearance.Accent : ModuxAppearance.Muted, true);
+                var list = Entries.Where(x => x.Start < day.AddDays(1).ToDateTime(TimeOnly.MinValue) && x.End > day.ToDateTime(TimeOnly.MinValue)).OrderBy(x => x.Time).ToArray();
+                var slots = Math.Max(0, (bounds.Height - 25) / 20);
+                var shown = Math.Min(list.Length, slots);
+                for (var index = 0; index < shown; index++) Chip(g, new Rectangle(bounds.X + 3, bounds.Y + 24 + index * 20, bounds.Width - 6, 19),
+                    list[index], day, $"{list[index].Time} {list[index].Client}");
+                if (list.Length > shown) Text(g, $"+{list.Length - shown}", new Rectangle(bounds.Right - 39, bounds.Y + 3, 36, 19), ModuxAppearance.Muted);
             }
         }
-        finally { days.ResumeLayout(); }
-    }
-    private void SelectAndNotify(DateOnly date)
-    {
-        SelectDate(date);
-        DateSelected?.Invoke(date);
-    }
-
-    private void ShowLegend()
-    {
-        using var form = new Form
+        private void DrawTimeline(Graphics g)
         {
-            Text = "Cores dos serviços • MODUX",
-            Width = 410, Height = 515,
-            StartPosition = FormStartPosition.CenterParent,
-            Font = new Font("Segoe UI", 10), BackColor = Color.White
-        };
-        var container = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown,
-            WrapContents = false, AutoScroll = true,
-            Padding = new Padding(18)
-        };
-        foreach (var category in legendEntries)
-        {
-            var item = new Label
+            var span = owner.VisibleRange; var count = owner.Mode == AgendaCalendarMode.Day ? 1 : 7;
+            var column = (ClientSize.Width - Gutter) / (float)count;
+            using var line = new Pen(ModuxAppearance.Border);
+            var maxAllDay = Enumerable.Range(0, count).Select(i => Entries.Count(x => x.IsAllDay && x.Date <= span.First.AddDays(i) && x.End > span.First.AddDays(i).ToDateTime(TimeOnly.MinValue))).DefaultIfEmpty().Max();
+            var allHeight = maxAllDay == 0 ? 0 : Math.Min(AllDayRows, maxAllDay) * 22 + (maxAllDay > AllDayRows ? 20 : 0);
+            var gridTop = Heading + allHeight; var scroll = AutoScrollPosition.Y;
+            var state = g.Save(); g.SetClip(new Rectangle(0, gridTop, ClientSize.Width, Math.Max(0, ClientSize.Height - gridTop)));
+            for (var hour = 0; hour <= 24; hour++)
             {
-                AutoSize = false, Width = 350, Height = 29,
-                BackColor = category.Color, ForeColor = category.TextColor,
-                Padding = new Padding(9, 4, 3, 2),
-                Text = category.Label + "  (" + category.GoogleColorName + ")", Tag = "service-color",
-                Margin = new Padding(3, 2, 3, 4)
-            };
-            container.Controls.Add(item);
+                var y = gridTop + hour * Hour + scroll;
+                g.DrawLine(line, Gutter, y, ClientSize.Width, y);
+                if (hour < 24) Text(g, $"{hour:00}:00", new Rectangle(2, y + 2, Gutter - 4, 20), ModuxAppearance.Muted);
+            }
+            for (var dayIndex = 0; dayIndex < count; dayIndex++)
+            {
+                var day = span.First.AddDays(dayIndex); var x = Gutter + (int)(dayIndex * column);
+                g.DrawLine(line, x, gridTop, x, ClientSize.Height);
+                foreach (var slot in AgendaCalendarLayout.Slots(Entries, day))
+                {
+                    var bounds = new Rectangle(x + (int)(column * slot.Lane / slot.Lanes) + 2,
+                        gridTop + (int)(slot.StartMinute * Hour / 60) + scroll + 1,
+                        Math.Max(4, (int)(column / slot.Lanes) - 4), Math.Max(18, (int)((slot.EndMinute - slot.StartMinute) * Hour / 60) - 2));
+                    if (bounds.Bottom < gridTop || bounds.Top > ClientSize.Height) continue;
+                    Chip(g, bounds, slot.Entry, day, slot.Entry.Client + "\n" + slot.Entry.Time + " – " + slot.Entry.End.ToString("HH:mm"), true);
+                    hits[^1] = (Rectangle.Intersect(bounds, new Rectangle(0, gridTop, ClientSize.Width, Math.Max(0, ClientSize.Height - gridTop))), day, slot.Entry);
+                }
+            }
+            var now = AgendaCalendarLayout.Now; var today = DateOnly.FromDateTime(now);
+            if (span.Contains(today))
+            {
+                var x = Gutter + (int)((today.DayNumber - span.First.DayNumber) * column);
+                var y = gridTop + (int)(now.TimeOfDay.TotalMinutes * Hour / 60) + scroll;
+                using var red = new Pen(Color.FromArgb(211, 57, 57), 2); g.DrawLine(red, x, y, x + column, y);
+            }
+            g.Restore(state);
+            Fill(g, new Rectangle(0, 0, ClientSize.Width, gridTop), ModuxAppearance.Surface);
+            for (var dayIndex = 0; dayIndex < count; dayIndex++)
+            {
+                var day = span.First.AddDays(dayIndex); var x = Gutter + (int)(dayIndex * column);
+                Text(g, day.ToDateTime(TimeOnly.MinValue).ToString("ddd dd/MM", Br), new Rectangle(x + 6, 10, (int)column - 10, 25), day == today ? ModuxAppearance.Accent : ModuxAppearance.Text, true);
+                hits.Add((new Rectangle(x, 0, (int)column, Heading), day, null));
+                var all = Entries.Where(item => item.IsAllDay && item.Date <= day && item.End > day.ToDateTime(TimeOnly.MinValue)).ToArray();
+                for (var i = 0; i < Math.Min(AllDayRows, all.Length); i++) Chip(g, new Rectangle(x + 2, Heading + i * 22, (int)column - 4, 20), all[i], day, all[i].Client);
+                if (all.Length > AllDayRows) Text(g, $"+{all.Length - AllDayRows} dia inteiro", new Rectangle(x + 3, Heading + AllDayRows * 22, (int)column - 6, 20), ModuxAppearance.Muted);
+            }
+            Text(g, "GMT−03", new Rectangle(1, 20, Gutter - 2, 20), ModuxAppearance.Muted);
+            g.DrawLine(line, 0, gridTop, ClientSize.Width, gridTop);
         }
-        container.Controls.Add(new Label
+        private (Rectangle Bounds, DateOnly Day, AgendaCalendarEntry? Entry)? Hit(Point point)
         {
-            Text = "Eventos Google usam sua cor original. O catálogo define as cores dos serviços locais.",
-            Width = 350, Height = 58, ForeColor = Color.FromArgb(60, 78, 80),
-            Margin = new Padding(2, 13, 3, 3)
-        });
-        form.Controls.Add(container);
-        form.ShowDialog(this);
-    }
-
-    protected override void Dispose(bool disposing)
-    {
-        if (disposing) eventTip.Dispose();
-        base.Dispose(disposing);
+            for (var i = hits.Count - 1; i >= 0; i--) if (hits[i].Bounds.Contains(point)) return hits[i];
+            if (owner.Mode != AgendaCalendarMode.Month && point.X >= Gutter)
+            {
+                var count = owner.Mode == AgendaCalendarMode.Day ? 1 : 7;
+                var index = Math.Clamp((point.X - Gutter) * count / Math.Max(1, ClientSize.Width - Gutter), 0, count - 1);
+                return (Rectangle.Empty, owner.VisibleRange.First.AddDays(index), null);
+            }
+            return null;
+        }
+        protected override void OnMouseClick(MouseEventArgs e)
+        { base.OnMouseClick(e); if (Hit(e.Location) is { } hit) owner.Choose(hit.Day, hit.Entry?.Key, false); }
+        protected override void OnMouseDoubleClick(MouseEventArgs e)
+        { base.OnMouseDoubleClick(e); if (Hit(e.Location) is { } hit) owner.Choose(hit.Day, hit.Entry?.Key, true); }
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e); var hit = Hit(e.Location);
+            var value = hit?.Entry is { } item ? $"{item.Client}\n{item.Time} • {item.Service}\n{item.Status}" : "";
+            if (value != lastTip) { lastTip = value; tip.SetToolTip(this, value); }
+        }
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            if (e.KeyCode is Keys.Left or Keys.Right)
+            { owner.Choose(owner.selectedDate.AddDays(e.KeyCode == Keys.Left ? -1 : 1), null, false); e.Handled = true; }
+            else if (e.KeyCode is Keys.PageUp or Keys.PageDown) { owner.Navigate(e.KeyCode == Keys.PageUp ? -1 : 1); e.Handled = true; }
+            base.OnKeyDown(e);
+        }
+        protected override void Dispose(bool disposing)
+        { if (disposing) { clock.Dispose(); tip.Dispose(); regular.Dispose(); strong.Dispose(); } base.Dispose(disposing); }
     }
 }

@@ -15,7 +15,7 @@ internal static class AgendaViewFilter
         var ical = !hasLocal && !hasGoogle && values[4] == "Google • leitura";
         if (origin switch { 1 => !hasLocal, 2 => !hasGoogle, 3 => !ical,
             4 => !(hasLocal && hasGoogle), _ => false }) return false;
-        if (service is not null && !(local?.ServiceIds.Contains(service, StringComparer.Ordinal) ?? false) && category != service)
+        if (service is not null && !(local?.ServiceIds.Contains(service, StringComparer.Ordinal) ?? false) && !(google?.ServiceTypeIds.Contains(service, StringComparer.Ordinal) ?? false) && category != service)
             return false;
         if (state switch
         {

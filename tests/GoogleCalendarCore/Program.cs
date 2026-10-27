@@ -746,6 +746,68 @@ if (typedEvent.ServiceTypeId != "orcamento" || typedEvent.PrivateProperties["oth
     throw new Exception("Tipo explícito não sobreviveu à leitura Google.");
 Console.WriteLine("PASS: cores reais/herdadas, paleta dinâmica e tipo explícito sem recoloração automática/perda de metadados.");
 
+// Real display ranges, exact end-time fading and collision layout.
+var sunday = new DateOnly(2026, 11, 1);
+var weekRange = AgendaCalendarLayout.Range(sunday, AgendaCalendarMode.Week);
+if (weekRange.First != new DateOnly(2026, 10, 26) || weekRange.Last != sunday ||
+    AgendaCalendarLayout.Range(sunday, AgendaCalendarMode.Day).First != sunday ||
+    AgendaCalendarLayout.Range(sunday, AgendaCalendarMode.Month).Last != new DateOnly(2026, 11, 30))
+    throw new Exception("Dia/semana/mês retornaram intervalos incorretos.");
+var calendarEntry = new AgendaCalendarEntry(new DateOnly(2026, 10, 27), "08:00", "Fixture", "Dois serviços", "agendado", AgendaServiceColors.Desinsetizacao, 60);
+if (calendarEntry.IsPast(new DateTime(2026, 10, 27, 8, 59, 59)) || !calendarEntry.IsPast(new DateTime(2026, 10, 27, 9, 0, 0)))
+    throw new Exception("Opacidade deve usar término, não o início do compromisso.");
+var allDays = calendarEntry with { AllDay = true, ExclusiveEndDate = new DateOnly(2026, 10, 29) };
+if (allDays.IsPast(new DateTime(2026, 10, 28, 23, 59, 59)) || !allDays.IsPast(new DateTime(2026, 10, 29)))
+    throw new Exception("Dia inteiro não respeitou o fim exclusivo.");
+var collisions = AgendaCalendarLayout.Slots([calendarEntry with { Duration = 120, Key = "a" },
+    calendarEntry with { Time = "09:00", Duration = 120, Key = "b" },
+    calendarEntry with { Time = "10:00", Duration = 120, Key = "c" }], calendarEntry.Date);
+if (collisions.Count != 3 || collisions.Any(slot => slot.Lanes != 2) || collisions[0].Lane != collisions[2].Lane)
+    throw new Exception("Eventos simultâneos foram sobrepostos/ocultados ou horários adjacentes perderam a coluna.");
+var crossing = AgendaCalendarLayout.Slots([calendarEntry with { Time = "23:30", Duration = 90 }], calendarEntry.Date.AddDays(1));
+if (crossing.Count != 1 || crossing[0].StartMinute != 0 || crossing[0].EndMinute != 60)
+    throw new Exception("Evento atravessando meia-noite desapareceu na visão diária.");
+var originalColor = calendarEntry.Category.Color;
+if (AgendaCalendarLayout.Fade(originalColor, System.Drawing.Color.White, false) != originalColor ||
+    AgendaCalendarLayout.Fade(originalColor, System.Drawing.Color.White, true) == originalColor || calendarEntry.Category.Color != originalColor)
+    throw new Exception("Opacidade alterou a cor de origem ou afetou compromisso futuro.");
+Console.WriteLine("PASS: dia/semana/mês, semana segunda-domingo, virada de mês/meia-noite, sobreposição e opacidade por término.");
+
+var combinedDraft = change with { ServiceTypeIds = ["desinsetizacao", "reservatorio"], SelectedColorId = "7" };
+using (var multiTransport = new CalendarTestHandler((method, uri, bearer, body) =>
+{
+    if (method == "GET") return CalendarTestHandler.Json(typedJson.RootElement.GetRawText());
+    using var written = JsonDocument.Parse(body!);
+    var metadata = written.RootElement.GetProperty("extendedProperties").GetProperty("private");
+    if (method != "PATCH" || metadata.GetProperty("modux_service_ids").GetString() != "desinsetizacao,reservatorio" ||
+        metadata.GetProperty("other_app").GetString() != "preserve" || written.RootElement.TryGetProperty("attendees", out var ignoredGuests))
+        throw new Exception("PATCH combinado perdeu serviço/metadados ou escreveu convidados.");
+    return CalendarTestHandler.Json(source.Replace("\"colorId\":\"9\"", "\"extendedProperties\":{\"private\":{\"modux_service_ids\":\"desinsetizacao,reservatorio\"}},\"colorId\":\"7\""));
+}))
+using (var combinedApi = new GoogleCalendarApi(new FakeCalendarAuthorization(), new HttpClient(multiTransport)))
+{
+    var combined = await combinedApi.Update(item!, combinedDraft);
+    if (!combined.ServiceTypeIds.SequenceEqual(new[] { "desinsetizacao", "reservatorio" }))
+        throw new Exception("Dois serviços não sobreviveram à gravação/leitura.");
+    if (!AgendaViewFilter.Matches(new[] { "2026-10-27", "08:00", "Fixture", "Dois serviços", "Google • editável", "", "" },
+        null, combined, "desinsetizacao", "", 0, 0, "reservatorio"))
+        throw new Exception("Filtro não encontrou o segundo serviço.");
+}
+var serviceOriginal = new AgendaLocalSnapshot(Guid.NewGuid().ToString(), 4, "Fixture", "Anterior", ["orcamento"], "2026-10-27", "08:00", "agendado", "", "");
+var serviceStore = new AgendaAppointmentStore((method, path, body) =>
+{
+    using var written = JsonDocument.Parse(JsonSerializer.Serialize(body));
+    if (method != HttpMethod.Patch || !path.Contains("revision=eq.4") || !path.Contains("company_id=eq." + company) ||
+        written.RootElement.EnumerateObject().Count() != 2 || written.RootElement.GetProperty("service_ids").GetArrayLength() != 2)
+        throw new Exception("Edição vinculada de serviços escreveu campos alheios ou ignorou revisão/empresa.");
+    return Task.FromResult(CalendarTestHandler.Json(JsonSerializer.Serialize(new[] { new { id = serviceOriginal.Id, revision = 5,
+        client = "Fixture", primary_service = "Desinsetização + Reservatório", service_ids = new[] { "desinsetizacao", "reservatorio" },
+        date = "2026-10-27", time = "08:00", status = "agendado" } })));
+});
+var servicesSaved = await serviceStore.UpdateServices(company, serviceOriginal, ["desinsetizacao", "reservatorio"], "Desinsetização + Reservatório");
+if (servicesSaved.ServiceIds.Length != 2 || servicesSaved.Revision != 5) throw new Exception("Serviços operacionais não confirmados.");
+Console.WriteLine("PASS: combinação de serviços, PATCH Google real simulado, preservação, filtro secundário e CAS operacional restrito.");
+
 static async Task ExpectFailure(Func<Task> operation, string message)
 {
     try { await operation(); }

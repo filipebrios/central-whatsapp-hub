@@ -48,13 +48,13 @@ internal static class Program
         choices.SetValue(Activator.CreateInstance(choiceType, ["orcamento", "Orçamento", "5"]), 1);
         using var editor = (Form)Activator.CreateInstance(editorType,
             BindingFlags.Instance | BindingFlags.NonPublic, null,
-            [null, new DateOnly(2026, 10, 27), false, choices], null)!;
+            [null, new DateOnly(2026, 10, 27), false, choices, null], null)!;
         editor.Show(); Pump();
-        var selector = (ComboBox)editorType.GetField("serviceType", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(editor)!;
-        if (!selector.Visible || !selector.Enabled || selector.Items.Count != 3 ||
-            selector.DropDownStyle != ComboBoxStyle.DropDownList)
+        var selector = (CheckedListBox)editorType.GetField("serviceType", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(editor)!;
+        if (!selector.Visible || !selector.Enabled || selector.Items.Count != 2 || !selector.CheckOnClick)
             throw new Exception("Seletor do tipo de evento não está acessível.");
-        selector.SelectedIndex = 2;
+        selector.SetItemChecked(0, true); selector.SetItemChecked(1, true);
+        if (selector.CheckedItems.Count != 2) throw new Exception("Não permitiu dois serviços no editor.");
         foreach (var dark in new[] { false, true })
         {
             configure.Invoke(null, [dark]); Pump();
@@ -63,10 +63,54 @@ internal static class Program
             capture.Save("ui-smoke-output/editor-tipo-" + (dark ? "escuro" : "claro") + ".png");
         }
         editor.Close();
+        CheckCalendarViews(assembly, panel, form, configure);
         CheckPublicFirstRun(assembly);
         form.Close();
         Console.WriteLine("PASS: painel Windows inicia, aplica temas, preserva cor de serviço e mantém grade operacional.");
         return 0;
+    }
+
+    private static void CheckCalendarViews(Assembly assembly, Control panel, Form form, MethodInfo configure)
+    {
+        var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        var calendar = (Control)panel.GetType().GetField("calendar", flags)!.GetValue(panel)!;
+        var entryType = assembly.GetType("CentralWhatsApp.WebView2.AgendaCalendarEntry", true)!;
+        var colorType = assembly.GetType("CentralWhatsApp.WebView2.AgendaServiceColors", true)!;
+        var category = colorType.GetField("Desinsetizacao", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var fixtures = Array.CreateInstance(entryType, 6);
+        fixtures.SetValue(Activator.CreateInstance(entryType, [today.AddDays(-1), "08:00", "Visita passada", "Desinsetização + Reservatório", "agendado", category, 60, false, "g:past", null]), 0);
+        fixtures.SetValue(Activator.CreateInstance(entryType, [today, "08:00", "Visita de hoje", "Desinsetização", "agendado", category, 90, false, "g:today", null]), 1);
+        fixtures.SetValue(Activator.CreateInstance(entryType, [today.AddDays(1), "08:00", "Visita futura", "Desinsetização", "agendado", category, 120, false, "g:next", null]), 2);
+        fixtures.SetValue(Activator.CreateInstance(entryType, [today.AddDays(1), "08:30", "Visita simultânea", "Reservatório", "agendado", category, 60, false, "g:overlap", null]), 3);
+        fixtures.SetValue(Activator.CreateInstance(entryType, [today, "Dia todo", "Evento dia inteiro", "Interno", "agendado", category, 1440, true, "g:all", today.AddDays(2)]), 4);
+        fixtures.SetValue(Activator.CreateInstance(entryType, [today.AddDays(-1), "23:30", "Cruza meia-noite", "Desinsetização", "agendado", category, 90, false, "g:night", null]), 5);
+        var modeType = assembly.GetType("CentralWhatsApp.WebView2.AgendaCalendarMode", true)!;
+        calendar.GetType().GetMethod("SetEntries")!.Invoke(calendar, [fixtures]);
+        foreach (var dark in new[] { false, true })
+        foreach (var mode in new[] { "Month", "Week", "Day" })
+        {
+            configure.Invoke(null, [dark]);
+            calendar.GetType().GetMethod("SetView", flags)!.Invoke(calendar, [today, Enum.Parse(modeType, mode)]);
+            Pump();
+            if (Descendants(calendar).Count() > 60) throw new Exception("Calendário voltou a criar controles por evento.");
+            Capture(form, "calendario-" + mode.ToLowerInvariant() + (dark ? "-escuro" : "-claro"));
+        }
+        // Stress the actual drawing surface with 500 events; log time without a flaky runner-speed assertion.
+        var stress = Array.CreateInstance(entryType, 500);
+        for (var i = 0; i < 500; i++) stress.SetValue(Activator.CreateInstance(entryType,
+            [today.AddDays(i % 7 - 3), $"{7 + i % 12:00}:00", "Visita fictícia " + i, "Serviço", "agendado", category, 60, false, "fixture-" + i, null]), i);
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        calendar.GetType().GetMethod("SetEntries")!.Invoke(calendar, [stress]);
+        for (var i = 0; i < 8; i++)
+        {
+            calendar.GetType().GetMethod("SetView", flags)!.Invoke(calendar, [today, Enum.Parse(modeType, i % 2 == 0 ? "Week" : "Day")]);
+            calendar.Refresh();
+        }
+        timer.Stop();
+        Console.WriteLine($"PERF: 500 eventos, 8 trocas/redesenhos semana/dia, {timer.ElapsedMilliseconds} ms, {Descendants(calendar).Count()} controles nativos.");
+        calendar.GetType().GetMethod("SetEntries")!.Invoke(calendar, [fixtures]);
+        Console.WriteLine("PASS: visões reais mês/semana/dia, eventos simultâneos/dia inteiro, seletor múltiplo e superfície constante.");
     }
 
     private static void CheckPublicFirstRun(Assembly assembly)

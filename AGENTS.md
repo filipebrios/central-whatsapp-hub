@@ -61,6 +61,8 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- **27/10 — nova rodada de feedback 1.9.1:** Semana apenas filtrava dados e continuava mensal; usuário pediu visões reais mês/semana/dia, eventos encerrados desbotados, mais rapidez e vários serviços no editor Google. Implementação em validação: superfície desenhada com grade horária/colunas de sobreposição, fim no fuso São Paulo, cache curto de navegação e lista de serviços com metadados compatíveis. Nenhum novo instalador publicado nesta etapa.
+
 - **27/10 — MODUX 1.9.1 beta PUBLICADA:** release `modux-v1.9.1-beta1`, commit do pacote `9c538a232265972edd6a9727ebc53a965444d285`, CI #40499144282 totalmente aprovado. EXE `MODUX-Setup-1.9.1.exe`, 51.280.337 bytes, SHA-256 `7f1209f278e5012c71a31e616ef1c98aa7307a1518d0a61c8275c7e875e64d75`. Release pública, não rascunho, prerelease. Download: https://github.com/filipebrios/central-whatsapp-hub/releases/download/modux-v1.9.1-beta1/MODUX-Setup-1.9.1.exe .
 - Inclui cores Google/tipo explícito, visual inspirado no ARANY, instalação nova sem contas/nomes de empresas, Sobre com versão/crédito ARANY/site e identificação ARANY no executável/instalador. Preserva contas/sessões existentes. Capturas nativas de boas-vindas, janela 1024 e Sobre revisadas. Testes C#/HTTP/cores/protocolo, navegador, smoke, instalação/desinstalação com hashes de perfil e cadastro fictícios passaram; assets baixados e SHA comparado antes de publicar. Beta1 1.9.0 preservada. Validação real no Windows do usuário ainda necessária; Agenda continua de equipe autorizada, sem SaaS público novo.
 
@@ -142,6 +144,8 @@ Requisitos permanentes:
 - Alterações atribuídas ao Manus não estão no repositório conhecido.
 
 ## Pendências priorizadas
+
+- Validar nova grade mês/semana/dia, navegação entre meses, meia-noite/dia inteiro, sobreposições, opacidade, edição múltipla Google/atendimento por revisão e desempenho com 500 eventos. Conferir capturas antes de uma atualização consolidada; preservar conta/sessões e controles de conflito.
 
 - Após entrega 1.9.1: recolher feedback real de aparência, cores Google, sessões e WaSeller. Primeira abertura/preservação/Sobre/layout já testados internamente; não anunciar distribuição geral da Agenda como SaaS (provisionamento de equipes não faz parte desta mudança).
 
@@ -311,6 +315,14 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-27 — visões reais, serviços combinados e otimização da Agenda
+
+- Substituída a criação/destruição de controles por compromisso por uma superfície nativa com desenho em buffer. Mês mostra dias; semana começa segunda e usa colunas de horário/duração; dia usa uma coluna, com rolagem de 24h, faixa de dia inteiro, linha da hora e repartição para eventos simultâneos. Clique seleciona data; duplo clique usa ID exato do evento.
+- Eventos desbotam após o término real no fuso São Paulo, incluindo fim exclusivo de dia inteiro. A cor original não é regravada. Atualização de relógio apenas redesenha, sem consultas.
+- Navegação reaproveita o período cifrado/em memória por até 90 segundos quando cabe no intervalo carregado. Atualizar e operações de escrita continuam consultando; catálogo/paleta evitam GETs repetidos e têm invalidação explícita. iCal do mesmo calendário só é lido como fallback se API não responder. Busca tem pausa de 160ms e grade desenha em buffer, sem reconstrução dupla do calendário. Cache limpo no logout.
+- Editor Google oferece seleção de vários serviços, preserva título e metadados de terceiros; lê o campo singular anterior e persiste lista mais primeiro serviço compatível. Um evento Google mantém uma cor, obtida do primeiro tipo escolhido. Atendimento vinculado recebe apenas service_ids/primary_service por CAS de revisão antes de reconciliar horário/ETag; falha parcial exige conferência, sem sobrescrita forçada.
+- Testes preparados para limites de período, sobreposição/meia-noite, opacidade, PATCH múltiplo/filtro secundário/CAS, capturas de três visões em dois temas e oito trocas com 500 eventos. Aguardando Windows; não declarar pronto antes da conclusão.
 
 ### 2026-10-27 — entrega consolidada 1.9.1 beta ARANY
 

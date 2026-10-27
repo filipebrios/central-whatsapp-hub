@@ -17,10 +17,13 @@ internal sealed class GoogleCalendarApi : IDisposable
     internal IReadOnlyDictionary<string, string> EventColors { get; private set; } = new Dictionary<string, string>();
     private string? calendarColor;
     private string? colorCalendarId;
+    private DateTimeOffset colorsLoadedAt;
+    internal void InvalidateColors() => colorsLoadedAt = default;
 
     internal async Task LoadColors(CancellationToken ct = default)
     {
         var calendar = SelectedCalendar();
+        if (colorCalendarId == calendar && DateTimeOffset.UtcNow - colorsLoadedAt < TimeSpan.FromMinutes(15)) return;
         colorCalendarId = null;
         using var response = await Request(HttpMethod.Get, "colors", ct: ct);
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
@@ -36,6 +39,7 @@ internal sealed class GoogleCalendarApi : IDisposable
         EventColors = colors;
         calendarColor = IsHex(hex) ? hex : null;
         colorCalendarId = calendar;
+        colorsLoadedAt = DateTimeOffset.UtcNow;
     }
 
     internal string? EventColorHex(GoogleEventSnapshot item) => colorCalendarId != auth.CalendarId ? null
@@ -367,7 +371,11 @@ internal sealed record GoogleEventSnapshot(
     internal Guid? OperationalCompanyId { get; init; }
     internal Guid? OperationalAppointmentId { get; init; }
     internal IReadOnlyDictionary<string, string> PrivateProperties { get; init; } = new Dictionary<string, string>();
-    internal string? ServiceTypeId => PrivateProperties.GetValueOrDefault("modux_service_id");
+    internal string[] ServiceTypeIds => PrivateProperties.TryGetValue("modux_service_ids", out var ids)
+        ? ids.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.Ordinal).ToArray()
+        : PrivateProperties.TryGetValue("modux_service_id", out var id) && !string.IsNullOrEmpty(id) ? [id] : [];
+    internal string? ServiceTypeId => ServiceTypeIds.FirstOrDefault();
+    internal DateOnly? ExclusiveEndDate { get; init; }
 
     private static GoogleEventSnapshot WithIdentity(GoogleEventSnapshot snapshot, JsonElement source)
     {
@@ -411,7 +419,7 @@ internal sealed record GoogleEventSnapshot(
                 Get(e, "description"), Get(e, "location"), date, "Dia todo",
                 true, 1440, Get(e, "colorId"), Get(e, "recurringEventId"))
             {
-                SpansMultipleDays = multiDay
+                SpansMultipleDays = multiDay, ExclusiveEndDate = endsOn
             }, e);
         }
         if (!DateTimeOffset.TryParse(Get(start, "dateTime"), out var begin) ||
@@ -443,17 +451,20 @@ internal sealed record GoogleEventDraft(string Title, string Description, string
     internal Guid? OperationalCompanyId { get; private init; }
     internal Guid? OperationalAppointmentId { get; private init; }
     internal string? ServiceTypeId { get; init; }
+    internal string[]? ServiceTypeIds { get; init; }
     internal string? SelectedColorId { get; init; }
 
     internal JsonObject GooglePayload(IReadOnlyDictionary<string, string>? existing = null)
     {
         var payload = JsonSerializer.SerializeToNode(AsGoogleFields())!.AsObject();
-        if (ServiceTypeId is not null)
+        var types = ServiceTypeIds ?? (ServiceTypeId is not null ? [ServiceTypeId] : null);
+        if (types is not null)
         {
-            if (!System.Text.RegularExpressions.Regex.IsMatch(ServiceTypeId, "^[a-z0-9_]{1,80}$"))
+            if (types.Length > 32 || types.Any(id => !System.Text.RegularExpressions.Regex.IsMatch(id, "^[a-z0-9_]{1,80}$")))
                 throw new InvalidOperationException("Tipo de serviço inválido.");
             var metadata = existing is null ? new JsonObject() : JsonSerializer.SerializeToNode(existing)!.AsObject();
-            metadata["modux_service_id"] = ServiceTypeId;
+            metadata["modux_service_ids"] = string.Join(",", types.Distinct(StringComparer.Ordinal));
+            metadata["modux_service_id"] = types.FirstOrDefault() ?? "";
             payload["extendedProperties"] = new JsonObject { ["private"] = metadata };
             if (!string.IsNullOrEmpty(SelectedColorId)) payload["colorId"] = SelectedColorId;
         }

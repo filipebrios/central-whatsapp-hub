@@ -25,11 +25,15 @@ internal sealed class AgendaServiceCatalog(
     Func<HttpMethod, string, object?, Task<HttpResponseMessage>> authorized)
 {
     internal IReadOnlyList<AgendaServiceDefinition> Items { get; private set; } = [];
+    private string? loadedCompany;
+    private DateTimeOffset loadedAt;
+    internal void Invalidate() => loadedAt = default;
 
-    internal void Clear() => Items = [];
+    internal void Clear() { Items = []; loadedCompany = null; loadedAt = default; }
 
     internal async Task Load(string companyId)
     {
+        if (loadedCompany == companyId && DateTimeOffset.UtcNow - loadedAt < TimeSpan.FromMinutes(5)) return;
         using var response = await authorized(HttpMethod.Get,
             "rest/v1/agenda_service_types?select=id,label,color,sort_order,is_active,updated_at" +
             "&company_id=eq." + Uri.EscapeDataString(companyId) + "&order=sort_order.asc,id.asc&limit=250", null);
@@ -38,6 +42,7 @@ internal sealed class AgendaServiceCatalog(
         if (json.RootElement.GetArrayLength() >= 250)
             throw new InvalidOperationException("Catálogo grande demais para carregar sem revisão.");
         Items = json.RootElement.EnumerateArray().Select(AgendaServiceDefinition.Parse).ToArray();
+        loadedCompany = companyId; loadedAt = DateTimeOffset.UtcNow;
     }
 
     internal AgendaServiceCategory Apply(AgendaServiceCategory original)
@@ -88,6 +93,7 @@ internal sealed class AgendaServiceCatalog(
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         if (json.RootElement.ValueKind != JsonValueKind.Array || json.RootElement.GetArrayLength() != 1)
             throw new InvalidOperationException("O catálogo mudou. Atualize antes de salvar novamente.");
+        loadedAt = default;
     }
 
     private static void Check(HttpResponseMessage response)

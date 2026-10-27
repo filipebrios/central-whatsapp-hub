@@ -59,10 +59,22 @@ internal sealed class AgendaPanel : UserControl
     private readonly List<(string[] Values, AgendaServiceCategory Category, GoogleEventSnapshot? Google, AgendaLocalSnapshot? Local)> cachedRows = [];
     private DateOnly? filterDate;
     private bool suspendRefresh;
+    private AgendaCalendarSpan? loadedRange;
+    private string? loadedCompany, loadedCalendar;
+    private DateTimeOffset loadedAt;
+    private readonly System.Windows.Forms.Timer searchDelay = new() { Interval = 160 };
+    private AgendaCalendarMode SelectedMode => period.SelectedIndex switch { 0 => AgendaCalendarMode.Day, 1 => AgendaCalendarMode.Week, _ => AgendaCalendarMode.Month };
+    private static string EventKey(GoogleEventSnapshot? google, AgendaLocalSnapshot? local)
+        => google is not null ? "g:" + google.Id : local is not null ? "l:" + local.Id : "";
+    private static AgendaCalendarEntry CalendarEntry(string[] record, AgendaServiceCategory category, GoogleEventSnapshot? google, AgendaLocalSnapshot? local)
+        => new(DateOnly.Parse(record[0]), record[1], record[2], record[3], record[4], category,
+            google?.Duration ?? local?.Duration ?? 60, google?.AllDay ?? false, EventKey(google, local), google?.ExclusiveEndDate);
+
     private readonly Label status = new() { Dock = DockStyle.Bottom, Height = 54, AutoEllipsis = true, ForeColor = Color.FromArgb(59, 74, 92), Padding = new Padding(12, 9, 12, 0) };
     private readonly DateTimePicker startDate = new() { Format = DateTimePickerFormat.Short, Value = DateTime.Today, Width = 125 };
     private readonly ComboBox period = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 105 };
-    private readonly DataGridView grid = new()
+    private sealed class BufferedGrid : DataGridView { public BufferedGrid() { DoubleBuffered = true; } }
+    private readonly DataGridView grid = new BufferedGrid()
     {
         Dock = DockStyle.Fill, ReadOnly = true, AllowUserToAddRows = false,
         AllowUserToDeleteRows = false, RowHeadersVisible = false, MultiSelect = false,
@@ -129,7 +141,7 @@ internal sealed class AgendaPanel : UserControl
             if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; await Login(); }
         };
 
-        period.Items.AddRange(["Hoje", "Semana", "Mês"]);
+        period.Items.AddRange(["Dia", "Semana", "Mês"]);
         period.SelectedIndex = 2;
         var bar = new FlowLayoutPanel
         {
@@ -207,7 +219,7 @@ internal sealed class AgendaPanel : UserControl
         more.Click += (_, _) => { if (!busy) tools.Show(more, new Point(0, more.Height)); };
         more.Disposed += (_, _) => tools.Dispose();
         bar.Controls.Add(more);
-        Resize += (_, _) => calendar.Height = Math.Clamp(ClientSize.Height - 340, 220, 430);
+        Resize += (_, _) => calendar.Height = Math.Clamp(ClientSize.Height - 290, 230, 620);
         UpdateGoogleLabel();
         googleRefreshTimer.Tick += async (_, _) =>
         {
@@ -233,7 +245,8 @@ internal sealed class AgendaPanel : UserControl
         filterOrigin.Items.AddRange(["Todas as origens", "Cadastros da equipe", "Google API", "Google iCal", "Vinculados"]);
         filterService.Items.Add("Todos os serviços");
         filterState.SelectedIndex = filterOrigin.SelectedIndex = filterService.SelectedIndex = 0;
-        search.TextChanged += (_, _) => ShowCachedRows();
+        searchDelay.Tick += (_, _) => { searchDelay.Stop(); ShowCachedRows(); };
+        search.TextChanged += (_, _) => { searchDelay.Stop(); searchDelay.Start(); };
         filterState.SelectedIndexChanged += (_, _) => ShowCachedRows();
         filterOrigin.SelectedIndexChanged += (_, _) => ShowCachedRows();
         filterService.SelectedIndexChanged += (_, _) => ShowCachedRows();
@@ -251,25 +264,32 @@ internal sealed class AgendaPanel : UserControl
         calendar.DateSelected += selected =>
         {
             filterDate = selected;
+            suspendRefresh = true; startDate.Value = selected.ToDateTime(TimeOnly.MinValue); suspendRefresh = false;
             ShowCachedRows();
         };
-        calendar.MonthChanged += month =>
+        calendar.EventActivated += async key =>
         {
-            suspendRefresh = true;
-            period.SelectedIndex = 2;
-            startDate.Value = month.ToDateTime(TimeOnly.MinValue);
-            suspendRefresh = false;
-            filterDate = null;
-            _ = LoadAppointments();
+            for (var i = 0; i < grid.Rows.Count; i++)
+                if (grid.Rows[i].Tag is AgendaRowContext row && EventKey(row.Google, row.Local) == key)
+                { grid.CurrentCell = grid.Rows[i].Cells[2]; await EditSelectedGoogleEvent(i); break; }
         };
-        refresh.Click += async (_, _) => { filterDate = null; await LoadAppointments(); };
+        calendar.MonthChanged += async day =>
+        {
+            suspendRefresh = true; startDate.Value = day.ToDateTime(TimeOnly.MinValue); suspendRefresh = false;
+            filterDate = null; await LoadAppointments(false);
+        };
+        refresh.Click += async (_, _) => { filterDate = null; googleApi.InvalidateColors(); serviceCatalog.Invalidate(); await LoadAppointments(); };
         startDate.ValueChanged += async (_, _) =>
         {
-            if (companyId is not null && !suspendRefresh) { filterDate = null; await LoadAppointments(); }
+            if (suspendRefresh) return;
+            filterDate = null; calendar.SetView(DateOnly.FromDateTime(startDate.Value), SelectedMode);
+            if (companyId is not null) await LoadAppointments(false);
         };
         period.SelectedIndexChanged += async (_, _) =>
         {
-            if (companyId is not null && !suspendRefresh) { filterDate = null; await LoadAppointments(); }
+            if (suspendRefresh) return;
+            filterDate = null; calendar.SetView(DateOnly.FromDateTime(startDate.Value), SelectedMode);
+            if (companyId is not null) await LoadAppointments(false);
         };
         add.Click += async (_, _) => await CreateAppointment();
         signOut.Click += (_, _) => Logout();
@@ -281,6 +301,7 @@ internal sealed class AgendaPanel : UserControl
     private void SetBusy(bool value)
     {
         busy = value;
+        UseWaitCursor = value;
         signIn.Enabled = refresh.Enabled = add.Enabled = signOut.Enabled = !value;
         calendar.Enabled = startDate.Enabled = period.Enabled = !value;
         exportButton.Enabled = !value && companyId is not null;
@@ -340,6 +361,7 @@ internal sealed class AgendaPanel : UserControl
     private void Logout()
     {
         accessToken = refreshToken = companyId = currentUserId = currentRole = null;
+        loadedRange = null; loadedCompany = loadedCalendar = null; searchDelay.Stop();
         password.Clear();
         grid.Rows.Clear(); cachedRows.Clear(); calendar.SetEntries([]);
         localAppointments.Clear(); calendarLinks = []; linksReady = false;
@@ -403,9 +425,18 @@ internal sealed class AgendaPanel : UserControl
             _ => $"Falha de comunicação com a Agenda (HTTP {(int)response.StatusCode})."
         });
     }
-    private async Task LoadAppointments()
+    private async Task LoadAppointments(bool force = true)
     {
         if (busy || companyId is null) return;
+        var chosen = DateOnly.FromDateTime(startDate.Value);
+        calendar.SetView(chosen, SelectedMode);
+        var visibleRange = AgendaCalendarLayout.Range(chosen, SelectedMode);
+        if (!force && loadedCompany == companyId && loadedCalendar == googleOAuth.CalendarId &&
+            loadedRange?.Covers(visibleRange) == true && DateTimeOffset.UtcNow - loadedAt < TimeSpan.FromSeconds(90))
+        { ShowCachedRows(); Status("Período já carregado • Atualizar consulta as alterações da equipe."); return; }
+        var envelope = AgendaCalendarLayout.MonthEnvelope(chosen);
+        var first = envelope.First; var last = envelope.Last;
+        Status("Atualizando a agenda…");
         SetBusy(true);
         try
         {
@@ -417,18 +448,9 @@ internal sealed class AgendaPanel : UserControl
             filterService.SelectedIndex = 0;
             if (selectedService is not null && serviceCatalog.Items.FirstOrDefault(x => x.Id == selectedService) is { } previous)
                 filterService.SelectedItem = previous;
-            var chosen = DateOnly.FromDateTime(startDate.Value);
-            var first = period.SelectedIndex == 2
-                ? new DateOnly(chosen.Year, chosen.Month, 1) : chosen;
-            var last = period.SelectedIndex switch
-            {
-                0 => first,
-                1 => first.AddDays(6),
-                _ => first.AddMonths(1).AddDays(-1)
-            };
             var query = "rest/v1/agenda_appointments?select=id,revision,client,phone,primary_service,service_ids,date,time,status,address,duration,notes,responsible,email,kind,technician,service_completed_date,feedback_score,feedback_note" +
                 "&company_id=eq." + Uri.EscapeDataString(companyId) + "&deleted_at=is.null" +
-                $"&date=gte.{first:yyyy-MM-dd}&date=lte.{last:yyyy-MM-dd}" +
+                $"&date=gte.{first.AddDays(-1):yyyy-MM-dd}&date=lte.{last:yyyy-MM-dd}" +
                 "&order=date.asc,time.asc,id.asc&limit=250";
             var loadedAppointments = new List<AgendaLocalSnapshot>();
             for (var offset = 0; offset < 10000; offset += 250)
@@ -441,7 +463,6 @@ internal sealed class AgendaPanel : UserControl
                 if (offset == 9750) throw new InvalidOperationException("Atendimentos demais neste período. Reduza a consulta.");
             }
             cachedRows.Clear();
-            var calendarRows = new List<AgendaCalendarEntry>();
             googleEventCount = googleTestEventCount = 0;
             string? googleWarning = null;
             localAppointments.Clear(); localAppointments.AddRange(loadedAppointments);
@@ -452,7 +473,47 @@ internal sealed class AgendaPanel : UserControl
             // No piloto, manter a agenda operacional iCal (somente leitura)
             // SEMPRE visível, mesmo depois de autorizar a API OAuth para MODUX - TESTES.
             // O Google API nunca substitui nem importa automaticamente eventos do iCal.
-            if (googleFeed.HasUrl)
+
+            if (googleOAuth.CanWriteSelectedCalendar)
+            {
+                // Apenas eventos do calendário SECUNDÁRIO MODUX - TESTES entram
+                // no modo editável. Operacional continua identificado como leitura.
+                try
+                {
+                    try { await googleApi.LoadColors(); }
+                    catch (Exception error) when (error is InvalidOperationException or HttpRequestException or TaskCanceledException or JsonException)
+                    { googleWarning = "Cores Google indisponíveis nesta atualização; usando classificação local."; }
+                    testEvents = await googleApi.Events(first, last);
+                    apiReadSucceeded = true;
+                    googleTestEventCount = testEvents.Count;
+                    calendarLinks = await linkStore.List(companyId, googleOAuth.CalendarId!);
+                    linksReady = true;
+                    // Um evento pode ter mudado de mês no Google. Buscar os dados
+                    // operacionais vinculados pelo ID, sem depender da data antiga.
+                    var eventIds = testEvents.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
+                    var missing = calendarLinks.Where(link => eventIds.Contains(link.EventId))
+                        .Select(link => link.AppointmentId).Except(localAppointments.Select(a => a.Id)).ToArray();
+                    foreach (var group in missing.Chunk(50))
+                    {
+                        if (group.Any(id => !Guid.TryParse(id, out _)))
+                            throw new InvalidOperationException("Vínculo contém identificação inválida.");
+                        using var extra = await Authorized(HttpMethod.Get,
+                            "rest/v1/agenda_appointments?select=id,revision,client,phone,primary_service,service_ids,date,time,status,address,duration,notes,responsible,email,kind,technician,service_completed_date,feedback_score,feedback_note" +
+                            "&company_id=eq." + Uri.EscapeDataString(companyId) +
+                            "&deleted_at=is.null&id=in.(" + string.Join(",", group) + ")");
+                        RequireSuccess(extra);
+                        using var extraRows = JsonDocument.Parse(await extra.Content.ReadAsStringAsync());
+                        localAppointments.AddRange(extraRows.RootElement.EnumerateArray().Select(AgendaLocalSnapshot.Parse));
+                    }
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or
+                    HttpRequestException or TaskCanceledException or JsonException)
+                {
+                    linksReady = false;
+                    googleWarning = "Google / vínculos: " + ex.Message;
+                }
+            }
+            if (googleFeed.HasUrl && !(apiReadSucceeded && googleFeed.MatchesCalendar(googleOAuth.CalendarId)))
             {
                 try
                 {
@@ -476,51 +537,6 @@ internal sealed class AgendaPanel : UserControl
                 }
             }
 
-            if (googleOAuth.CanWriteSelectedCalendar)
-            {
-                // Apenas eventos do calendário SECUNDÁRIO MODUX - TESTES entram
-                // no modo editável. Operacional continua identificado como leitura.
-                try
-                {
-                    try { await googleApi.LoadColors(); }
-                    catch (Exception error) when (error is InvalidOperationException or HttpRequestException or TaskCanceledException or JsonException)
-                    { googleWarning = "Cores Google indisponíveis nesta atualização; usando classificação local."; }
-                    testEvents = await googleApi.Events(first, last);
-                    apiReadSucceeded = true;
-                    googleTestEventCount = testEvents.Count;
-                    calendarLinks = await linkStore.List(companyId, googleOAuth.CalendarId!);
-                    linksReady = true;
-                    // Um evento pode ter mudado de mês no Google. Buscar os dados
-                    // operacionais vinculados pelo ID, sem depender da data antiga.
-                    var missing = calendarLinks.Where(link => testEvents.Any(e => e.Id == link.EventId))
-                        .Select(link => link.AppointmentId).Except(localAppointments.Select(a => a.Id)).ToArray();
-                    foreach (var group in missing.Chunk(50))
-                    {
-                        if (group.Any(id => !Guid.TryParse(id, out _)))
-                            throw new InvalidOperationException("Vínculo contém identificação inválida.");
-                        using var extra = await Authorized(HttpMethod.Get,
-                            "rest/v1/agenda_appointments?select=id,revision,client,phone,primary_service,service_ids,date,time,status,address,duration,notes,responsible,email,kind,technician,service_completed_date,feedback_score,feedback_note" +
-                            "&company_id=eq." + Uri.EscapeDataString(companyId) +
-                            "&deleted_at=is.null&id=in.(" + string.Join(",", group) + ")");
-                        RequireSuccess(extra);
-                        using var extraRows = JsonDocument.Parse(await extra.Content.ReadAsStringAsync());
-                        localAppointments.AddRange(extraRows.RootElement.EnumerateArray().Select(AgendaLocalSnapshot.Parse));
-                    }
-                }
-                catch (Exception ex) when (ex is InvalidOperationException or
-                    HttpRequestException or TaskCanceledException or JsonException)
-                {
-                    linksReady = false;
-                    googleWarning = "Google / vínculos: " + ex.Message;
-                }
-            }
-            if (apiReadSucceeded && googleFeed.MatchesCalendar(googleOAuth.CalendarId))
-            {
-                // Quando as duas fontes são do mesmo calendário, API prevalece;
-                // se API falhar, iCal permanece como fallback de leitura.
-                cachedRows.RemoveAll(row => row.Values[4] == "Google • leitura");
-                googleEventCount = 0;
-            }
             var googleOrigin = googleOAuth.IsTestCalendarSelected ? "TESTES" : "Google";
             var unified = AgendaCalendarProjection.Merge(companyId, googleOAuth.CalendarId ?? "",
                 localAppointments, testEvents, calendarLinks);
@@ -533,9 +549,9 @@ internal sealed class AgendaPanel : UserControl
                     : serviceCatalog.Apply(google!.ServiceTypeId is { } typeId
                         ? AgendaServiceColors.FromServiceIds([typeId], google.Title, null)
                         : AgendaServiceColors.Classify(google.Title, google.Description));
-                if (local is null && google?.ServiceTypeId is { } selectedType &&
-                    serviceCatalog.Items.FirstOrDefault(item => item.Id == selectedType) is { } definition)
-                    category = category with { Id = definition.Id, Label = definition.Label };
+                if (local is null && google is not null && google.ServiceTypeIds.Length > 0)
+                    category = category with { Label = string.Join(" + ", google.ServiceTypeIds.Select(id =>
+                        serviceCatalog.Items.FirstOrDefault(item => item.Id == id)?.Label ?? id)) };
                 if (google is not null && googleApi.EventColorHex(google) is { } googleHex)
                 {
                     var color = ColorTranslator.FromHtml(googleHex);
@@ -556,16 +572,10 @@ internal sealed class AgendaPanel : UserControl
                     local?.Address ?? google!.Location
                 ], category, google, local));
             }
-            foreach (var row in cachedRows)
-                if (DateOnly.TryParseExact(row.Values[0], "yyyy-MM-dd",
-                    System.Globalization.CultureInfo.InvariantCulture,
-                    System.Globalization.DateTimeStyles.None, out var day))
-                    calendarRows.Add(new AgendaCalendarEntry(day, row.Values[1], row.Values[2],
-                        row.Values[3], row.Values[4], row.Category));
             cachedRows.Sort((left, right) =>
                 string.CompareOrdinal(left.Values[0] + left.Values[1],
                     right.Values[0] + right.Values[1]));
-            calendar.SetEntries(calendarRows);
+            loadedRange = envelope; loadedCompany = companyId; loadedCalendar = googleOAuth.CalendarId; loadedAt = DateTimeOffset.UtcNow;
             ShowCachedRows();
             string? backupWarning = null;
             try
@@ -601,15 +611,20 @@ internal sealed class AgendaPanel : UserControl
 
     private void ShowCachedRows()
     {
+        searchDelay.Stop();
+        grid.SuspendLayout();
+        try
+        {
         grid.Rows.Clear();
         var selectedService = (filterService.SelectedItem as AgendaServiceDefinition)?.Id;
-        var visible = cachedRows.Where(row => AgendaViewFilter.Matches(row.Values, row.Local, row.Google,
+        var visible = cachedRows.Where(row => DateOnly.TryParse(row.Values[0], out var date) && CalendarEntry(row.Values, row.Category, row.Google, row.Local).Start < calendar.DisplayRange.Last.AddDays(1).ToDateTime(TimeOnly.MinValue) && CalendarEntry(row.Values, row.Category, row.Google, row.Local).End > calendar.DisplayRange.First.ToDateTime(TimeOnly.MinValue) && AgendaViewFilter.Matches(row.Values, row.Local, row.Google,
             row.Category.Id, search.Text, filterState.SelectedIndex, filterOrigin.SelectedIndex, selectedService)).ToArray();
         var entries = new List<AgendaCalendarEntry>();
         foreach (var (record, category, google, local) in visible)
         {
-            if (DateOnly.TryParse(record[0], out var day))
-                entries.Add(new AgendaCalendarEntry(day, record[1], record[2], record[3], record[4], category));
+            if (DateOnly.TryParse(record[0], out _))
+                entries.Add(CalendarEntry(record, category, google, local));
+            if (!calendar.VisibleRange.Contains(DateOnly.Parse(record[0]))) continue;
             if (filterDate is not null && record[0] != filterDate.Value.ToString("yyyy-MM-dd"))
                 continue;
             var index = grid.Rows.Add(record);
@@ -619,8 +634,9 @@ internal sealed class AgendaPanel : UserControl
                 : "Operacional: agendamento local ou iCal somente leitura";
             var state = record[4];
             var serviceCell = grid.Rows[index].Cells[3];
-            serviceCell.Style.BackColor = category.Color;
-            serviceCell.Style.ForeColor = category.TextColor;
+            var past = CalendarEntry(record, category, google, local).IsPast(AgendaCalendarLayout.Now);
+            serviceCell.Style.BackColor = AgendaCalendarLayout.Fade(category.Color, ModuxAppearance.Surface, past);
+            serviceCell.Style.ForeColor = past ? ModuxAppearance.Muted : category.TextColor;
             serviceCell.ToolTipText = category.Label + " • " + category.GoogleColorName
                 + (state == "Google • leitura" ? " (classificado pelo texto do evento)" : "");
             if (state == "Google • leitura")
@@ -636,6 +652,8 @@ internal sealed class AgendaPanel : UserControl
                 grid.Rows[index].DefaultCellStyle.BackColor = Color.FromArgb(255, 249, 223);
         }
         calendar.SetEntries(entries);
+        }
+        finally { grid.ResumeLayout(); }
     }
 
     private void ExportVisibleRows()
@@ -644,7 +662,7 @@ internal sealed class AgendaPanel : UserControl
         using var chooser = new SaveFileDialog
         {
             Title = "Exportar linhas visíveis da agenda", Filter = "Planilha CSV (*.csv)|*.csv",
-            FileName = "Agenda-Sao-Bento-" + DateTime.Today.ToString("yyyy-MM-dd") + ".csv"
+            FileName = "Agenda-MODUX-" + DateTime.Today.ToString("yyyy-MM-dd") + ".csv"
         };
         if (chooser.ShowDialog(this) != DialogResult.OK) return;
         try
@@ -878,7 +896,7 @@ internal sealed class AgendaPanel : UserControl
         var calendarId = googleOAuth.CalendarId!;
         var draft = local.AsGoogleDraft(companyId);
         var type = GoogleEventTypes().FirstOrDefault(candidate => local.ServiceIds.Contains(candidate.Id));
-        if (type is not null) draft = draft with { ServiceTypeId = type.Id, SelectedColorId = type.ColorId };
+        if (type is not null) draft = draft with { ServiceTypeIds = local.ServiceIds, SelectedColorId = type.ColorId };
         _ = draft.AsGoogleFields();
         var saved = await googleApi.EnsureOperationalEvent(draft);
         var link = await linkStore.Link(companyId, local, calendarId, saved);
@@ -968,7 +986,7 @@ internal sealed class AgendaPanel : UserControl
         var local = (grid.Rows[rowIndex].Tag as AgendaRowContext)?.Local;
         var link = calendarLinks.FirstOrDefault(l => l.CalendarId == googleOAuth.CalendarId && l.EventId == google.Id);
         using var editor = new GoogleCalendarEventDialog(google, google.Date, local is not null && link is not null,
-            GoogleEventTypes());
+            GoogleEventTypes(), local?.ServiceIds);
         if (editor.ShowDialog(this) != DialogResult.OK) return;
         SetBusy(true);
         var changedOnGoogle = false;
@@ -979,7 +997,12 @@ internal sealed class AgendaPanel : UserControl
                 var updated = await googleApi.Update(google, draft);
                 changedOnGoogle = true;
                 if (local is not null && link is not null && companyId is not null)
+                {
+                    if (draft.ServiceTypeIds is { } ids)
+                        local = await appointmentStore.UpdateServices(companyId, local, ids,
+                            string.Join(" + ", ids.Select(id => serviceCatalog.Items.FirstOrDefault(item => item.Id == id)?.Label ?? id)));
                     await linkStore.Reconcile(companyId, link, local, updated);
+                }
                 Status(local is not null && link is not null
                     ? "Compromisso atualizado no Google e atendimento vinculado reconciliado."
                     : "Compromisso atualizado no Google Agenda.");
@@ -1090,10 +1113,9 @@ internal sealed class AgendaPanel : UserControl
             filterDate = null;
             var date = DateOnly.ParseExact(value.Date, "yyyy-MM-dd",
                 System.Globalization.CultureInfo.InvariantCulture);
-            if (calendar.DisplayedMonth.Month != date.Month ||
-                calendar.DisplayedMonth.Year != date.Year)
-                calendar.SetMonth(date);
-            else await LoadAppointments();
+            suspendRefresh = true; startDate.Value = date.ToDateTime(TimeOnly.MinValue); suspendRefresh = false;
+            calendar.SetView(date, SelectedMode);
+            await LoadAppointments();
         }
     }
 
@@ -1103,6 +1125,7 @@ internal sealed class AgendaPanel : UserControl
         {
             googleRefreshTimer.Stop();
             googleRefreshTimer.Dispose();
+            searchDelay.Dispose();
             googleFeed.Dispose();
             googleApi.Dispose();
             googleOAuth.Dispose();

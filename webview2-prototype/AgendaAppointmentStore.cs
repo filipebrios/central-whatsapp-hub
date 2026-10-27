@@ -6,6 +6,25 @@ namespace CentralWhatsApp.WebView2;
 internal sealed class AgendaAppointmentStore(
     Func<HttpMethod, string, object?, Task<HttpResponseMessage>> authorized)
 {
+    internal async Task<AgendaLocalSnapshot> UpdateServices(string companyId, AgendaLocalSnapshot original,
+        string[] ids, string label)
+    {
+        if (!Guid.TryParse(companyId, out _) || !Guid.TryParse(original.Id, out _) || original.Revision < 1 ||
+            ids.Length > 32 || ids.Any(id => !System.Text.RegularExpressions.Regex.IsMatch(id, "^[a-z0-9_]{1,80}$")))
+            throw new InvalidOperationException("Identidade ou serviços do atendimento inválidos.");
+        using var response = await authorized(HttpMethod.Patch,
+            "rest/v1/agenda_appointments?id=eq." + Uri.EscapeDataString(original.Id) +
+            "&company_id=eq." + Uri.EscapeDataString(companyId) + "&revision=eq." + original.Revision + "&deleted_at=is.null",
+            new { service_ids = ids, primary_service = string.IsNullOrWhiteSpace(label) ? "Não identificado" : label });
+        if (!response.IsSuccessStatusCode) throw new InvalidOperationException("Os serviços do atendimento não foram confirmados. Confira em Editar atendimento.");
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        if (json.RootElement.ValueKind != JsonValueKind.Array || json.RootElement.GetArrayLength() != 1)
+            throw new InvalidOperationException("O atendimento mudou. Confira os serviços em Editar atendimento; o Google já foi atualizado.");
+        var updated = AgendaLocalSnapshot.Parse(json.RootElement[0]);
+        if (updated.Id != original.Id || updated.Revision <= original.Revision)
+            throw new InvalidOperationException("Confira a revisão dos serviços antes de continuar.");
+        return updated;
+    }
     internal async Task<bool> HasCalendarLink(string companyId, string appointmentId)
     {
         using var response = await authorized(HttpMethod.Get,
