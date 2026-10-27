@@ -1,4 +1,4 @@
-name: MODUX 1.9.0 - pacote consolidado
+name: MODUX - pacote consolidado
 
 on:
   push:
@@ -12,22 +12,7 @@ permissions:
   contents: read
 
 jobs:
-  stop-stale-preparation:
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write
-      contents: read
-    steps:
-      - name: Encerrar apenas execuções antigas desta entrega
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          for run in 40375340663 40375340490; do
-            status=$(gh run view "$run" --repo filipebrios/central-whatsapp-hub --json status --jq .status)
-            if [ "$status" != "completed" ]; then gh run cancel "$run" --repo filipebrios/central-whatsapp-hub; fi
-          done
   verify:
-    needs: stop-stale-preparation
     uses: ./.github/workflows/validate-modux-19.yml
   package:
     needs: verify
@@ -41,7 +26,11 @@ jobs:
         shell: pwsh
         run: |
           $release = Get-Content modux-agenda/RELEASE-1.9.0.json -Raw | ConvertFrom-Json
-          if ($release.version -ne "1.9.0" -or $release.tag -ne "modux-v1.9.0-beta1") { throw "Manifesto de release inválido" }
+          if ($release.version -notmatch '^1\.\d+\.\d+$' -or $release.tag -ne "modux-v$($release.version)-beta1") { throw "Manifesto de release inválido" }
+          if ($release.notes -notmatch '^modux-agenda/RELEASE-[0-9.]+\.md$') { throw "Notas de release inválidas" }
+          "MODUX_VERSION=$($release.version)" >> $env:GITHUB_ENV
+          "MODUX_TAG=$($release.tag)" >> $env:GITHUB_ENV
+          "MODUX_NOTES=$($release.notes)" >> $env:GITHUB_ENV
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
@@ -53,7 +42,9 @@ jobs:
         shell: pwsh
         run: |
           $version = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path "webview2-prototype/publish/MODUX.exe")).ProductVersion
-          if (-not $version.StartsWith("1.9.0")) { throw "Versão incorreta: $version" }
+          if (-not $version.StartsWith($env:MODUX_VERSION)) { throw "Versão incorreta: $version" }
+          $forbidden = Get-ChildItem webview2-prototype/publish -Recurse | Where-Object { $_.Name -match '^(accounts\.json|preferences\.json|profiles|Cookies|Login Data|google-oauth.*|client_secret.*|\.env)$' }
+          if ($forbidden) { throw "Pacote contém configuração ou perfil local: $($forbidden.Name -join ', ')" }
           $script = Get-Content webview2-prototype/CentralWhatsApp.iss -Raw
           if ($script -match '\[UninstallDelete\]' -or $script -match 'Type: filesandordirs') { throw "Revisar remoção de dados no instalador" }
       - name: Preparar Inno Setup
@@ -87,7 +78,7 @@ jobs:
           Set-Content $sentinel "fixture de preservação"
           $fixtureHash = (Get-FileHash $sentinel -Algorithm SHA256).Hash
           $destination = Join-Path $env:RUNNER_TEMP "modux-install-test"
-          $setup = Resolve-Path "webview2-prototype/installer-output/MODUX-Setup-1.9.0.exe"
+          $setup = Resolve-Path "webview2-prototype/installer-output/MODUX-Setup-$env:MODUX_VERSION.exe"
           $process = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", '/TASKS=""', "/DIR=`"$destination`"" -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Instalação falhou: $($process.ExitCode)" }
           if (-not (Test-Path (Join-Path $destination "MODUX.exe")) -or -not (Test-Path $sentinel)) { throw "Instalação ou perfil não preservado" }
@@ -98,12 +89,12 @@ jobs:
       - name: Calcular SHA-256
         shell: pwsh
         run: |
-          $asset = "webview2-prototype/installer-output/MODUX-Setup-1.9.0.exe"
+          $asset = "webview2-prototype/installer-output/MODUX-Setup-$env:MODUX_VERSION.exe"
           $hash = (Get-FileHash $asset -Algorithm SHA256).Hash.ToLower()
-          "$hash  MODUX-Setup-1.9.0.exe" | Set-Content webview2-prototype/installer-output/SHA256SUMS.txt
+          "$hash  MODUX-Setup-$env:MODUX_VERSION.exe" | Set-Content webview2-prototype/installer-output/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: MODUX-Setup-1.9.0-consolidado
+          name: MODUX-Setup-consolidado
           path: webview2-prototype/installer-output/
           if-no-files-found: error
           retention-days: 14
@@ -112,22 +103,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "modux-v1.9.0-beta1"
+          $tag = $env:MODUX_TAG
           gh release view $tag 2>$null
           if ($LASTEXITCODE -eq 0) { throw "A release já existe e será preservada. Confira o artefato desta execução." }
-          gh release create $tag webview2-prototype/installer-output/MODUX-Setup-1.9.0.exe webview2-prototype/installer-output/SHA256SUMS.txt --target ${{ github.sha }} --title "MODUX 1.9.0 beta • Windows x64" --notes-file modux-agenda/RELEASE-1.9.0.md --prerelease --draft
+          gh release create $tag "webview2-prototype/installer-output/MODUX-Setup-$env:MODUX_VERSION.exe" webview2-prototype/installer-output/SHA256SUMS.txt --target ${{ github.sha }} --title "MODUX $env:MODUX_VERSION beta • Windows x64 • ARANY" --notes-file $env:MODUX_NOTES --prerelease --draft
       - name: Conferir assets publicados e liberar beta consolidada
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "modux-v1.9.0-beta1"
+          $tag = $env:MODUX_TAG
           $release = gh release view $tag --json isDraft,assets | ConvertFrom-Json
           if (-not $release.isDraft -or $release.assets.Count -ne 2) { throw "Conferir estado/assets antes de publicar" }
-          gh release download $tag --dir release-check --pattern "MODUX-Setup-1.9.0.exe" --pattern "SHA256SUMS.txt"
+          gh release download $tag --dir release-check --pattern "MODUX-Setup-$env:MODUX_VERSION.exe" --pattern "SHA256SUMS.txt"
           if ($LASTEXITCODE -ne 0) { throw "Download de conferência falhou" }
           $expected = (Get-Content release-check/SHA256SUMS.txt -Raw).Split(" ")[0].Trim()
-          $actual = (Get-FileHash release-check/MODUX-Setup-1.9.0.exe -Algorithm SHA256).Hash.ToLower()
+          $actual = (Get-FileHash "release-check/MODUX-Setup-$env:MODUX_VERSION.exe" -Algorithm SHA256).Hash.ToLower()
           if ($expected -ne $actual) { throw "SHA-256 do asset não confere" }
           gh release edit $tag --draft=false --prerelease --latest=false
           if ($LASTEXITCODE -ne 0) { throw "Não foi possível publicar a beta" }

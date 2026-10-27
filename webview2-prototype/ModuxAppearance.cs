@@ -140,6 +140,7 @@ internal static class ModuxAppearance
                     break;
                 case Label label:
                     if (label.Tag as string is "service-color" or "chrome-text") break;
+                    if (label.Tag as string == "muted") { label.ForeColor = Muted; break; }
                     // Keep service swatches and deliberate warning/success colors.
                     if (label.BackColor.R > 210 && label.BackColor.G > 210 && label.BackColor.B > 210)
                         label.BackColor = Color.Transparent;

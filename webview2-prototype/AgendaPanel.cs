@@ -192,6 +192,8 @@ internal sealed class AgendaPanel : UserControl
         AddAction(catalogButton, ConfigureCatalog);
         AddAction(googleApiButton, ManageGoogle);
         AddAction(googleButton, ConnectFeed);
+        tools.Items.Add(new ToolStripSeparator());
+        AddAction(signOut, () => { Logout(); return Task.CompletedTask; });
         tools.Opening += (_, _) =>
         {
             tools.BackColor = ModuxAppearance.Surface;
@@ -205,7 +207,6 @@ internal sealed class AgendaPanel : UserControl
         more.Click += (_, _) => { if (!busy) tools.Show(more, new Point(0, more.Height)); };
         more.Disposed += (_, _) => tools.Dispose();
         bar.Controls.Add(more);
-        bar.Controls.Add(signOut);
         Resize += (_, _) => calendar.Height = Math.Clamp(ClientSize.Height - 340, 220, 430);
         UpdateGoogleLabel();
         googleRefreshTimer.Tick += async (_, _) =>
@@ -219,7 +220,8 @@ internal sealed class AgendaPanel : UserControl
             ("Data", 65), ("Hora", 45), ("Cliente", 145), ("Serviço", 115),
             ("Situação", 85), ("Telefone", 105), ("Endereço", 155)
         })
-            grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = name, FillWeight = weight });
+            grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = name, FillWeight = weight,
+                MinimumWidth = name switch { "Data" => 100, "Hora" => 70, "Cliente" => 140, "Serviço" => 110, "Situação" => 130, _ => 100 } });
         grid.ColumnHeadersHeight = 40; grid.RowTemplate.Height = 38;
         grid.SelectionChanged += (_, _) => UpdateLinkButton();
         grid.CellDoubleClick += async (_, e) =>

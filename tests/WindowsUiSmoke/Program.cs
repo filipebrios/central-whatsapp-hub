@@ -108,11 +108,14 @@ internal static class Program
             typeof(MainForm).GetMethod("LoadAccounts", flags)!.Invoke(main, null);
             typeof(MainForm).GetMethod("ApplyPreferences", flags)!.Invoke(main, null);
             main.Show(); Pump();
+            typeof(MainForm).GetMethod("ApplyPreferences", flags)!.Invoke(main, null); Pump();
             var welcome = (Control)typeof(MainForm).GetField("welcomePanel", flags)!.GetValue(main)!;
             var aboutButton = (Control)typeof(MainForm).GetField("aboutButton", flags)!.GetValue(main)!;
             if (!welcome.Visible || !aboutButton.Visible || !aboutButton.Enabled ||
                 Descendants(main).Any(c => c.Text.Contains("São Bento", StringComparison.OrdinalIgnoreCase)))
                 throw new Exception("Primeira abertura não ficou neutra ou o botão Sobre desapareceu.");
+            if (aboutButton.BackColor != Color.FromArgb(240, 240, 243))
+                throw new Exception("Tema ARANY não alcançou os botões da janela principal.");
             Capture(main, "primeira-abertura-arany");
             main.Size = new Size(1024, 640); Pump(); Capture(main, "primeira-abertura-1024");
             main.Size = new Size(1440, 900);
@@ -121,8 +124,10 @@ internal static class Program
             Capture(main, "primeira-abertura-menu-recolhido");
             using var about = (Form)typeof(MainForm).GetMethod("CreateAboutDialog", flags)!.Invoke(main, null)!;
             about.Show(); Pump();
+            assembly.GetType("CentralWhatsApp.WebView2.ModuxAppearance", true)!
+                .GetMethod("Configure", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [false]); Pump();
             var text = string.Join("\n", Descendants(about).Select(c => c.Text));
-            if (!text.Contains("Desenvolvido e disponibilizado por ARANY") || !text.Contains("www.arany.com.br") || !text.Contains("Versão 1.9.0"))
+            if (!text.Contains("Desenvolvido e disponibilizado por ARANY") || !text.Contains("www.arany.com.br") || !text.Contains("Versão " + assembly.GetName().Version!.ToString(3)))
                 throw new Exception("Créditos, site ou versão ausentes do Sobre.");
             Capture(about, "sobre-arany"); about.Close();
             if (File.Exists(Path.Combine(temporary, "accounts.json"))) throw new Exception("Primeira abertura salvou conta predefinida.");
@@ -142,8 +147,10 @@ internal static class Program
 
     private static void Capture(Form form, string name)
     {
+        form.BringToFront(); form.Activate(); Pump();
         using var image = new Bitmap(form.Width, form.Height);
-        form.DrawToBitmap(image, new Rectangle(Point.Empty, form.Size));
+        using (var graphics = Graphics.FromImage(image))
+            graphics.CopyFromScreen(form.Location, Point.Empty, form.Size);
         image.Save("ui-smoke-output/" + name + ".png");
     }
     private static void Pump()

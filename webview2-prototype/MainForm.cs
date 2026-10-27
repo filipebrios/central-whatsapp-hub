@@ -525,7 +525,7 @@ public sealed class MainForm : Form
             Padding = new Padding(40), Margin = Padding.Empty, Tag = "card"
         };
         card.Controls.Add(new Label { Text = "M O D U X", AutoSize = true, Font = new Font("Segoe UI", 10, FontStyle.Bold),
-            ForeColor = ModuxAppearance.Muted, Margin = new Padding(0, 0, 0, 20) });
+            ForeColor = ModuxAppearance.Muted, Tag = "muted", Margin = new Padding(0, 0, 0, 20) });
         card.Controls.Add(new Label { Text = "Tudo no seu lugar.", AutoSize = true, Font = new Font("Segoe UI", 28, FontStyle.Bold),
             Margin = new Padding(0, 0, 0, 16) });
         card.Controls.Add(new Label { Text = "Suas conversas e sua rotina, em um só espaço.\nAdicione a primeira conta para começar.",
@@ -536,7 +536,7 @@ public sealed class MainForm : Form
         begin.Click += AddAccount;
         card.Controls.Add(begin);
         card.Controls.Add(new Label { Text = "Contas independentes. Organização sem distrações.", AutoSize = true,
-            ForeColor = ModuxAppearance.Muted, Font = new Font("Segoe UI", 9), Margin = new Padding(0, 0, 0, 28) });
+            ForeColor = ModuxAppearance.Muted, Tag = "muted", Font = new Font("Segoe UI", 9), Margin = new Padding(0, 0, 0, 28) });
         var credit = new LinkLabel { Text = "Desenvolvido e disponibilizado por ARANY  ↗", AutoSize = true,
             LinkColor = Color.FromArgb(100, 117, 186), ActiveLinkColor = Color.FromArgb(100, 117, 186),
             LinkBehavior = LinkBehavior.HoverUnderline, Font = new Font("Segoe UI", 9), Margin = Padding.Empty };
@@ -551,6 +551,7 @@ public sealed class MainForm : Form
         var empty = accounts.Count == 0;
         welcomePanel.Visible = empty && !showingAgenda;
         installButton.Enabled = reloadButton.Enabled = clearCacheButton.Enabled = !empty && !showingAgenda;
+        installButton.Visible = reloadButton.Visible = clearCacheButton.Visible = !empty;
         if (!empty) return;
         activeAccount = null;
         activeAccountPicture.Image?.Dispose(); activeAccountPicture.Image = null;
@@ -1048,6 +1049,7 @@ public sealed class MainForm : Form
         var current = accounts.FirstOrDefault(item => item.Id == activeAccount.Id) ?? activeAccount;
         activeAccount = current;
         activeMarkerLabel.Text = "EM USO AGORA";
+        installButton.Visible = reloadButton.Visible = clearCacheButton.Visible = true;
         activeAccountPicture.Image?.Dispose();
         activeAccountPicture.Image = BuildAccountIcon(current);
         activeNameLabel.Text = current.Name;

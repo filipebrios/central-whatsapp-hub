@@ -2,8 +2,13 @@
 Não modifica o WhatsApp, perfis, dados nem extensões. Idempotente.
 """
 from pathlib import Path
+import json
+import re
 
 root = Path(__file__).resolve().parents[1]
+manifest = json.loads((root / "modux-agenda" / "RELEASE-1.9.0.json").read_text())
+version = manifest["version"]
+assert re.fullmatch(r"1\.\d+\.\d+", version), "Versão Windows inválida"
 path = root / "webview2-prototype" / "MainForm.cs"
 s = path.read_text(encoding="utf-8-sig")
 if "ConfigureAgendaFeature();" in s:
@@ -43,6 +48,6 @@ assert p.count("<Version>1.6.1</Version>") == 1, "csproj version wrong"
 assert i.count('#define MyAppVersion "1.6.1"') == 1, "Inno version wrong"
 
 path.write_text(s, encoding="utf-8")
-project.write_text(p.replace("<Version>1.6.1</Version>", "<Version>1.9.0</Version>", 1), encoding="utf-8")
-installer.write_text(i.replace('#define MyAppVersion "1.6.1"', '#define MyAppVersion "1.9.0"', 1), encoding="utf-8")
-print("Encaixe Agenda São Bento v1.9.0 aplicado com sucesso")
+project.write_text(p.replace("<Version>1.6.1</Version>", f"<Version>{version}</Version>", 1), encoding="utf-8")
+installer.write_text(i.replace('#define MyAppVersion "1.6.1"', f'#define MyAppVersion "{version}"', 1), encoding="utf-8")
+print(f"Encaixe Agenda MODUX v{version} aplicado com sucesso")

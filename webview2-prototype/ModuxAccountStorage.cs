@@ -15,7 +15,7 @@ internal static class ModuxAccountStorage
             try
             {
                 var saved = JsonSerializer.Deserialize<List<ModuxAccountInfo>>(File.ReadAllText(file));
-                if (saved is null || saved.Any(a => string.IsNullOrWhiteSpace(a.Id) ||
+                if (saved is null || saved.Any(a => a is null || string.IsNullOrWhiteSpace(a.Id) ||
                     a.Id != Path.GetFileName(a.Id) || a.Id.IndexOfAny(['/', '\\']) >= 0 || a.Id is "." or ".." ||
                     string.IsNullOrWhiteSpace(a.Name)) || saved.Select(a => a.Id).Distinct().Count() != saved.Count)
                     throw new InvalidOperationException("Cadastro local de contas inválido.");
