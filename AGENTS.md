@@ -61,7 +61,9 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
-- **27/10 — Serviços a confirmar em validação:** usuário aprovou fila assistida de confirmações de hoje/amanhã, textos individuais e próxima conversa. Implementada tela dedicada com filtro, prévia, contato incompleto visível, janela compacta e ações Enviei e próxima/Pular/Rever pulados. Reutiliza revisão/ETag, fila e link exclusivos existentes; só registra enviada_manual após declaração explícita. Cancelar revisão/abrir/pular nunca marca envio. Testes de seleção/ocorrência/personalização e compilação passaram no CI #40509821188; smoke interrompeu na reflexão do construtor público da fixture, corrigida para nova execução. Capturas e aprovação completa ainda pendentes. Sem disparo automático, sem novo instalador.
+- **27/10 — atualização consolidada 1.9.3 em preparação:** CI #40510147320 aprovado integralmente (C#/HTTP/cores/protocolo, compilação, fila Windows real com transportes fictícios, navegador e verificador isolado). Capturas da fila clara/escura e janela compacta conferidas. Manifesto reúne Serviços a confirmar e correção da cor padrão da desinsetização. Pipeline repetirá validações e testará instalação/preservação de cadastros/perfis; ainda não declarar instalador publicado.
+
+- **27/10 — Serviços a confirmar em validação:** usuário aprovou fila assistida de confirmações de hoje/amanhã, textos individuais e próxima conversa. Implementada tela dedicada com filtro, prévia, contato incompleto visível, janela compacta e ações Enviei e próxima/Pular/Rever pulados. Reutiliza revisão/ETag, fila e link exclusivos existentes; só registra enviada_manual após declaração explícita. Cancelar revisão/abrir/pular nunca marca envio. Testes de seleção/ocorrência/personalização e compilação passaram no CI #40509821188; smoke interrompeu na reflexão do construtor público da fixture, corrigida para nova execução. Capturas e aprovação completa ainda pendentes. Sem disparo automático; aprovação completa no CI #40510147320, capturas conferidas e empacotamento consolidado 1.9.3 em preparação.
 
 - **27/10 — correção do salvamento de cores em validação:** usuário relatou desinsetização salva em Mirtilo (desratização). Causa identificada no RGB aproximado entre paleta pastel da API e nomes/tons da interface Google. Desinsetização passa a herdar explicitamente a cor padrão do calendário; desratização mantém ID 9. PATCH limpa override anterior apenas quando operador seleciona o tipo; edição comum e eventos existentes não são recoloridos em lote. CI #40506528202 aprovado (regressão HTTP, testes C#/cores/protocolo, build, smoke Windows e navegador). Commit da correção: 3b6edbd2a6631287e36eaa6b10f7bd84eea7f737. Sem novo instalador por ajuste isolado: a release 1.9.2 permanece com a falha até a próxima atualização consolidada.
 
@@ -152,7 +154,7 @@ Requisitos permanentes:
 
 ## Pendências priorizadas
 
-- Validar CI e capturas da fila Serviços a confirmar (incluindo revisão cancelada, próxima individual e pular sem envio). Consolidar com correção da cor padrão na próxima atualização; 1.9.2 ainda não contém nenhuma destas duas mudanças. Cadastros só do Google não são importados automaticamente; exigem atendimento/vínculo e contato autorizado.
+- CI #40510147320 e capturas da fila aprovados (incluindo revisão cancelada, próxima individual e pular sem envio). Aguardar verificação repetida, instalação e assets/SHA da atualização consolidada 1.9.3; 1.9.2 ainda não contém nenhuma destas duas mudanças. Cadastros só do Google não são importados automaticamente; exigem atendimento/vínculo e contato autorizado.
 
 - Incorporar à próxima atualização consolidada a correção já aprovada no CI #40506528202: desinsetização herda padrão e desratização mantém Mirtilo, com dois serviços preservados. Instalador atual 1.9.2 ainda contém a falha; não afirmar que atualizar a tela instala esta correção.
 
@@ -328,6 +330,11 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-27 — preparação da atualização consolidada 1.9.3
+
+- CI #40510147320 passou integralmente; fila real Windows testou revisão cancelada, abertura por destinatário com texto/link individuais, declaração de envio separada e próxima conversa, contato incompleto e pular/rever sem envio. Capturas clara/escura/compacta revisadas. Testes não abriram WhatsApp real nem escreveram dados de clientes.
+- Manifesto reúne fila e correção de cor em uma atualização; não são instaladores isolados por ajuste. Pipeline verifica novamente antes de gerar/testar instalador, contas/perfil fictícios e download/SHA de assets. Preserva releases anteriores. Aguardar conclusão para anunciar disponibilidade.
 
 ### 2026-10-27 — fila assistida Serviços a confirmar
 
