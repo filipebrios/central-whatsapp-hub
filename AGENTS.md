@@ -61,7 +61,7 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
-- **27/10 — apresentação pública solicitada:** layout do aplicativo inspirado no site `filipebrios/arany/src/styles.css` (cabeçalho grafite #202125, superfícies #fafafa/#f0f0f3, lavanda, cantos arredondados). Primeira instalação sem conta/nome pré-criado; sessões e nomes existentes preservados ao atualizar. Interface da Agenda neutralizada; backend continua protegido por autorização da equipe, sem ativação pública de cadastros. Sobre mostra versão, crédito ARANY e site oficial. Em validação Windows; sem novo instalador nesta etapa.
+- **27/10 — apresentação pública solicitada:** layout do aplicativo inspirado no site `filipebrios/arany/src/styles.css` (cabeçalho grafite #202125, superfícies #fafafa/#f0f0f3, lavanda, cantos arredondados). Primeira instalação sem conta/nome pré-criado; sessões e nomes existentes preservados ao atualizar. Interface da Agenda neutralizada; backend continua protegido por autorização da equipe, sem ativação pública de cadastros. Sobre mostra versão, crédito ARANY e site oficial. CI #40498741432 aprovou a revisão da abertura neutra, Sobre e layout. Capturas nativas conferidas; últimos ajustes de largura do cartão, bordas e tamanho inicial entram na verificação repetida do pacote 1.9.1 beta. Não considerar instalador publicado antes de confirmar a release.
 
 - **27/10 — feedback real da beta:** usuário conseguiu login e ativou Google API operacional no Windows (captura: 257 eventos Google editáveis, sem iCal duplicado). Relatou cores divergentes e pediu seleção explícita de serviço/evento. Correção em desenvolvimento: paleta Google dinâmica e cor herdada do calendário; seletor no editor Google com metadado privado, sem alterar títulos nem recolorir eventos por leitura. CI Windows #40494905388 passou (testes C#/HTTP, build principal, smoke e verificador isolado); capturas do seletor claro/escuro revisadas. Nenhum novo instalador publicado.
 
@@ -308,6 +308,11 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-27 — atualização consolidada 1.9.1 preparada
+
+- Manifesto reúne cores/tipo de evento, visual ARANY, abertura neutra e Sobre em um único instalador beta Windows. Pipeline versionado preserva a release 1.9.0, confere ARANY no executável, rejeita dados/configuração/perfis no conteúdo do pacote e compara hashes de cadastro de contas/perfil fictício antes/depois de instalar/desinstalar.
+- Verificação C#/smoke/navegador repetida pelo próprio empacotamento, seguida de geração, download de assets e SHA-256 antes da publicação. Últimos ajustes: cartão de boas-vindas mantém largura suficiente para o texto, janela inicial respeita área útil do monitor e botões nativos sem bordas recortadas. Aguardar conclusão e revisão das capturas; não declarar release 1.9.1 disponível antes disso.
 
 ### 2026-10-27 — visual ARANY, primeira abertura neutra e Sobre
 

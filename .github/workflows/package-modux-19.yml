@@ -43,6 +43,8 @@ jobs:
         run: |
           $version = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path "webview2-prototype/publish/MODUX.exe")).ProductVersion
           if (-not $version.StartsWith($env:MODUX_VERSION)) { throw "Versão incorreta: $version" }
+          $company = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path "webview2-prototype/publish/MODUX.exe")).CompanyName
+          if ($company -ne "ARANY") { throw "Crédito do executável incorreto" }
           $forbidden = Get-ChildItem webview2-prototype/publish -Recurse | Where-Object { $_.Name -match '^(accounts\.json|preferences\.json|profiles|Cookies|Login Data|google-oauth.*|client_secret.*|\.env)$' }
           if ($forbidden) { throw "Pacote contém configuração ou perfil local: $($forbidden.Name -join ', ')" }
           $script = Get-Content webview2-prototype/CentralWhatsApp.iss -Raw
@@ -77,15 +79,20 @@ jobs:
           $sentinel = Join-Path $profiles "modux-ci-sentinel.txt"
           Set-Content $sentinel "fixture de preservação"
           $fixtureHash = (Get-FileHash $sentinel -Algorithm SHA256).Hash
+          $accountFixture = Join-Path $profiles "accounts.json"
+          '[{"Id":"waseller-account","Name":"Atendimento de teste"},{"Id":"account-fixture","Name":"Pessoal de teste"}]' | Set-Content $accountFixture
+          $accountsHash = (Get-FileHash $accountFixture -Algorithm SHA256).Hash
           $destination = Join-Path $env:RUNNER_TEMP "modux-install-test"
           $setup = Resolve-Path "webview2-prototype/installer-output/MODUX-Setup-$env:MODUX_VERSION.exe"
           $process = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", '/TASKS=""', "/DIR=`"$destination`"" -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Instalação falhou: $($process.ExitCode)" }
           if (-not (Test-Path (Join-Path $destination "MODUX.exe")) -or -not (Test-Path $sentinel)) { throw "Instalação ou perfil não preservado" }
+          if ((Get-FileHash $accountFixture -Algorithm SHA256).Hash -ne $accountsHash) { throw "Instalação alterou as contas" }
           $uninstall = Join-Path $destination "unins000.exe"
           $process = Start-Process $uninstall -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
           if ($process.ExitCode -ne 0 -or -not (Test-Path $sentinel)) { throw "Desinstalação afetou dados do perfil" }
           if ((Get-FileHash $sentinel -Algorithm SHA256).Hash -ne $fixtureHash) { throw "Conteúdo do perfil foi alterado" }
+          if ((Get-FileHash $accountFixture -Algorithm SHA256).Hash -ne $accountsHash) { throw "Desinstalação alterou as contas" }
       - name: Calcular SHA-256
         shell: pwsh
         run: |

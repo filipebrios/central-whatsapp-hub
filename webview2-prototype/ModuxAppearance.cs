@@ -73,7 +73,7 @@ internal static class ModuxAppearance
             var chrome = state.Role == "chrome";
             var account = state.Role == "account";
             action.FlatStyle = FlatStyle.Flat;
-            action.FlatAppearance.BorderSize = state.Role is "secondary" or "sidebar" ? 1 : 0;
+            action.FlatAppearance.BorderSize = 0;
             action.FlatAppearance.BorderColor = Border;
             action.FlatAppearance.MouseOverBackColor = chrome ? Color.FromArgb(70, 72, 83) : Selection;
             if (!account)
@@ -161,7 +161,7 @@ internal static class ModuxAppearance
         control.Invalidate();
     }
 
-    private static void Round(Button button)
+    internal static void Round(Button button)
     {
         if (button.Width < 4 || button.Height < 4 || SystemInformation.HighContrast) return;
         var radius = Math.Min(18, Math.Min(button.Width, button.Height) / 2);

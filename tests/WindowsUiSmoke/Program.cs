@@ -117,8 +117,9 @@ internal static class Program
             if (aboutButton.BackColor != Color.FromArgb(240, 240, 243))
                 throw new Exception("Tema ARANY não alcançou os botões da janela principal.");
             Capture(main, "primeira-abertura-arany");
+            var initialSize = main.Size;
             main.Size = new Size(1024, 640); Pump(); Capture(main, "primeira-abertura-1024");
-            main.Size = new Size(1440, 900);
+            main.Size = initialSize;
             typeof(MainForm).GetMethod("ToggleSidebar", flags)!.Invoke(main, null); Pump();
             if (!aboutButton.Visible || aboutButton.Width < 35) throw new Exception("Sobre não está acessível no menu recolhido.");
             Capture(main, "primeira-abertura-menu-recolhido");

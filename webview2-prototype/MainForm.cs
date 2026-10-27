@@ -179,8 +179,8 @@ public sealed class MainForm : Form
     {
         if (dataFolder is not null) appDataFolder = dataFolder;
         Text = $"MODUX {AppVersion} — Gestão Multicontas";
-        Width = 1440;
-        Height = 900;
+        Width = Math.Min(1440, Screen.PrimaryScreen?.WorkingArea.Width ?? 1440);
+        Height = Math.Min(900, Screen.PrimaryScreen?.WorkingArea.Height ?? 900);
         MinimumSize = new Size(1024, 640);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(11, 19, 43);
@@ -521,6 +521,7 @@ public sealed class MainForm : Form
         var card = new FlowLayoutPanel
         {
             AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Width = 620,
+            MinimumSize = new Size(620, 0), MaximumSize = new Size(620, 0),
             FlowDirection = FlowDirection.TopDown, WrapContents = false,
             Padding = new Padding(40), Margin = Padding.Empty, Tag = "card"
         };

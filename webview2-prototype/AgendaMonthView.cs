@@ -92,6 +92,7 @@ internal sealed class AgendaMonthView : UserControl
         };
         more.Click += (_, _) => ShowLegend();
         legend.Controls.Add(more);
+        ModuxAppearance.Round(more);
     }
 
     private static Button Button(string text) => new()
@@ -144,6 +145,7 @@ internal sealed class AgendaMonthView : UserControl
             button.BackColor = ModuxAppearance.Field;
             button.ForeColor = ModuxAppearance.Accent;
             button.FlatAppearance.BorderSize = 0;
+            ModuxAppearance.Round(button);
         }
         Render();
     }
