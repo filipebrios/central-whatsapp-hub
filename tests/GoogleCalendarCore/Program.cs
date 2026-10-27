@@ -981,6 +981,26 @@ await new AgendaWorkflowStore(contactTransport).ValidateSchedule(company, new Ag
 var contactMessage = AgendaWorkflowRules.Message(new AgendaWorkItem(editedContact.Local, "confirmacao", "A confirmar"), "{cliente}: {servico}, {data}, {hora}");
 if (contactMessage.Phone != "5535999992222" || !contactMessage.Text.Contains("Desinsetização + Reservatório"))
     throw new Exception("Fila não usou telefone editado/serviços combinados.");
+var beforeOtherCompany = contactCalls;
+await ExpectFailure(() => contactStore.Save(company, contactUser, contactCalendar,
+    contactGoogle with { OperationalCompanyId = Guid.Parse(contactUser) }, null, "35999991111", ["desinsetizacao"], "Desinsetização", ContactRead), "outra empresa");
+if (contactCalls != beforeOtherCompany) throw new Exception("Evento de outra empresa chegou à escrita de contato.");
+var missingIdentityCreates = 0;
+var missingIdentityStore = new AgendaGoogleContactStore((method, path, data) =>
+{
+    if (method != HttpMethod.Get) { missingIdentityCreates++; throw new Exception("Atendimento identificado não pode ser recriado."); }
+    return Task.FromResult(CalendarTestHandler.Json("[]"));
+});
+await ExpectFailure(() => missingIdentityStore.Save(company, contactUser, contactCalendar,
+    contactGoogle with { OperationalCompanyId = Guid.Parse(company), OperationalAppointmentId = Guid.NewGuid() }, null,
+    "35999991111", ["desinsetizacao"], "Desinsetização", ContactRead), "atendimento indisponível");
+if (missingIdentityCreates != 0) throw new Exception("Identidade operacional existente foi ignorada.");
+contactLink = null;
+var reusedIdentity = await contactStore.Save(company, contactUser, contactCalendar,
+    contactGoogle with { OperationalCompanyId = Guid.Parse(company), OperationalAppointmentId = Guid.Parse(contactId) }, null,
+    "35999994444", ["desinsetizacao"], "Desinsetização", ContactRead);
+if (contactCreates != 1 || reusedIdentity.Local.Id != contactId || reusedIdentity.Local.Phone != "5535999994444")
+    throw new Exception("Cadastro explicitamente identificado pelo Google foi duplicado.");
 Console.WriteLine("PASS: contato de Google existente, telefone com DDD, vínculo explícito, falha recuperável sem duplicata/telefone liberado, CAS e rascunho correto; sem escrita no Google.");
 
 static async Task ExpectFailure(Func<Task> operation, string message)

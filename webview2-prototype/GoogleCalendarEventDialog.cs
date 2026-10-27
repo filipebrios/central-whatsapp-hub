@@ -38,7 +38,9 @@ internal sealed class GoogleCalendarEventDialog : Form
         original = source;
         linked = linkedAppointment;
         Text = source is null ? "Criar evento no Google Agenda" : "Editar evento do Google Agenda";
-        Width = 720; Height = 800; MinimumSize = new Size(620, 700);
+        var available = Screen.FromControl(Form.ActiveForm ?? this).WorkingArea;
+        Width = Math.Min(720, available.Width - 24); Height = Math.Min(800, available.Height - 24);
+        MinimumSize = new Size(Math.Min(620, Width), Math.Min(600, Height));
         Font = new Font("Segoe UI", 10);
         StartPosition = FormStartPosition.CenterParent;
         BackColor = Color.White;
@@ -124,6 +126,12 @@ internal sealed class GoogleCalendarEventDialog : Form
             finally { savingContact = false; if (!IsDisposed) layout.Enabled = footer.Enabled = true; }
         };
         FormClosing += (_, e) => { if (savingContact) e.Cancel = true; };
+        Shown += (_, _) =>
+        {
+            var area = Screen.FromControl(Owner ?? this).WorkingArea;
+            Location = new Point(Math.Clamp(Left, area.Left, Math.Max(area.Left, area.Right - Width)),
+                Math.Clamp(Top, area.Top, Math.Max(area.Top, area.Bottom - Height)));
+        };
 
         if (source is not null)
         {

@@ -18,6 +18,8 @@ internal sealed class AgendaGoogleContactStore(Func<HttpMethod, string, object?,
         var normalized = AgendaWorkflowRules.Phone(phone) ?? throw new InvalidOperationException("Informe um WhatsApp válido com DDD.");
         if (!Guid.TryParse(company, out _) || !Guid.TryParse(user, out _) || string.IsNullOrWhiteSpace(calendar))
             throw new InvalidOperationException("Entre novamente na Agenda para salvar o contato.");
+        if (original.OperationalCompanyId is { } identityCompany && identityCompany.ToString("D") != company)
+            throw new InvalidOperationException("O evento identifica outra empresa. Confira o vínculo antes de cadastrar o contato.");
         if (original.AllDay || original.SpansMultipleDays || original.Duration > 1440)
             throw new InvalidOperationException("O contato para confirmação exige evento de um dia com horário definido.");
         var current = await readEvent(original.Id);
@@ -48,8 +50,10 @@ internal sealed class AgendaGoogleContactStore(Func<HttpMethod, string, object?,
             if (serviceIds.Length == 0 || serviceIds.Length > 32 ||
                 serviceIds.Any(id => !System.Text.RegularExpressions.Regex.IsMatch(id, "^[a-z0-9_]{1,80}$")))
                 throw new InvalidOperationException("Marque o serviço do evento antes de cadastrar o WhatsApp.");
-            var id = ContactId(company, calendar, original.Id);
+            var id = original.OperationalAppointmentId?.ToString("D") ?? ContactId(company, calendar, original.Id);
             local = (await Read(company, id))!;
+            if (local is null && original.OperationalAppointmentId is not null)
+                throw new InvalidOperationException("O evento já identifica um atendimento indisponível. Confira o vínculo; não crie outro cadastro.");
             if (local is null)
             {
                 // Sem telefone até o vínculo ser confirmado: falha parcial não libera mensagens.

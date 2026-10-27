@@ -79,11 +79,16 @@ internal static class Program
         var source = Activator.CreateInstance(sourceType,
             ["event-contact-ui", "v1", "Cliente fictício", "", "Endereço fictício", new DateOnly(2026,10,27), "14:00", false, 60, null, null]);
         var editorType = assembly.GetType("CentralWhatsApp.WebView2.GoogleCalendarEventDialog", true)!;
+        var contactChoiceType = assembly.GetType("CentralWhatsApp.WebView2.GoogleEventTypeChoice", true)!;
+        var contactChoices = Array.CreateInstance(contactChoiceType, 2);
+        contactChoices.SetValue(Activator.CreateInstance(contactChoiceType, ["desinsetizacao", "Desinsetização", "0"]), 0);
+        contactChoices.SetValue(Activator.CreateInstance(contactChoiceType, ["reservatorio", "Higienização de reservatório", "7"]), 1);
         var writes = 0; string savedPhone = "";
         Func<string, string[], Task> saveContact = (phone, ids) => { writes++; savedPhone = phone; return Task.CompletedTask; };
         using var editor = (Form)Activator.CreateInstance(editorType, flags, null,
-            [source, new DateOnly(2026,10,27), false, null, null, "", saveContact], null)!;
+            [source, new DateOnly(2026,10,27), false, contactChoices, new[]{"desinsetizacao","reservatorio"}, "", saveContact], null)!;
         editor.Show(owner); Pump();
+        if (!Screen.FromControl(editor).WorkingArea.Contains(editor.Bounds)) throw new Exception("Editor e botões ficaram fora da área útil.");
         var phoneBox = (TextBox)editorType.GetField("phone", flags)!.GetValue(editor)!;
         var savePhone = (Button)editorType.GetField("savePhone", flags)!.GetValue(editor)!;
         if (!phoneBox.Visible || !phoneBox.Enabled || !savePhone.Enabled) throw new Exception("WhatsApp não está editável no evento Google.");
@@ -166,6 +171,7 @@ internal static class Program
         using var queue = (Form)Activator.CreateInstance(dialogType, flags, null,
             [store, company, validate, open, (Func<DateOnly>)(() => today), (Func<string,bool>)(_ => true)], null)!;
         queue.Show(owner); Pump();
+        if (!Screen.FromControl(queue).WorkingArea.Contains(queue.Bounds)) throw new Exception("Fila e botões ficaram fora da área útil.");
         T Field<T>(string name) => (T)dialogType.GetField(name, flags)!.GetValue(queue)!;
         var list = Field<ListBox>("list"); var prepare = Field<Button>("prepare"); var sent = Field<Button>("sentNext");
         if (list.Items.Count != 3 || !prepare.Enabled || sent.Enabled || !Field<TextBox>("preview").Text.Contains("Desinsetização + Limpeza"))

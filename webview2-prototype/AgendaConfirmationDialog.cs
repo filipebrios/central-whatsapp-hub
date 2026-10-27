@@ -40,7 +40,9 @@ internal sealed class AgendaConfirmationDialog : Form
             "?\nO registro não comprova entrega e não confirma o serviço pelo cliente.", "Registrar envio e avançar",
             MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes);
         Text = "Serviços a confirmar • MODUX";
-        Width = 900; Height = 660; MinimumSize = new Size(740, 530);
+        var available = Screen.FromControl(Form.ActiveForm ?? this).WorkingArea;
+        Width = Math.Min(900, available.Width - 24); Height = Math.Min(660, available.Height - 24);
+        MinimumSize = new Size(Math.Min(740, Width), Math.Min(530, Height));
         StartPosition = FormStartPosition.CenterParent; Font = new Font("Segoe UI", 10);
         var filters = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 48, Padding = new Padding(10, 5, 10, 5) };
         period.Items.AddRange(["Hoje e amanhã", "Hoje", "Amanhã"]); period.SelectedIndex = 0;
@@ -84,7 +86,13 @@ internal sealed class AgendaConfirmationDialog : Form
         });
         expand.Click += (_, _) => SetCompact(false);
         FormClosing += (_, e) => { if (busy) e.Cancel = true; };
-        Shown += async (_, _) => await Run(LoadItems);
+        Shown += async (_, _) =>
+        {
+            var area = Screen.FromControl(Owner ?? this).WorkingArea;
+            Location = new Point(Math.Clamp(Left, area.Left, Math.Max(area.Left, area.Right - Width)),
+                Math.Clamp(Top, area.Top, Math.Max(area.Top, area.Bottom - Height)));
+            await Run(LoadItems);
+        };
         UpdateSelection();
     }
 
