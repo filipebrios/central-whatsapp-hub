@@ -57,6 +57,7 @@ public sealed partial class MainForm
         {
             agendaPanel = new AgendaPanel();
             agendaPanel.ComposeRequested += QueueCompose;
+            agendaPanel.OpenConfirmationDraft = QueueAgendaCompose;
         }
         if (!browserHost.Controls.Contains(agendaPanel))
             browserHost.Controls.Add(agendaPanel);

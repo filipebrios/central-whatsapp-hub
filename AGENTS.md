@@ -61,6 +61,8 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- **27/10 — Serviços a confirmar em validação:** usuário aprovou fila assistida de confirmações de hoje/amanhã, textos individuais e próxima conversa. Implementada tela dedicada com filtro, prévia, contato incompleto visível, janela compacta e ações Enviei e próxima/Pular/Rever pulados. Reutiliza revisão/ETag, fila e link exclusivos existentes; só registra enviada_manual após declaração explícita. Cancelar revisão/abrir/pular nunca marca envio. Testes de seleção/ocorrência/personalização e smoke Windows preparados; compilação/CI ainda pendentes. Sem disparo automático, sem novo instalador.
+
 - **27/10 — correção do salvamento de cores em validação:** usuário relatou desinsetização salva em Mirtilo (desratização). Causa identificada no RGB aproximado entre paleta pastel da API e nomes/tons da interface Google. Desinsetização passa a herdar explicitamente a cor padrão do calendário; desratização mantém ID 9. PATCH limpa override anterior apenas quando operador seleciona o tipo; edição comum e eventos existentes não são recoloridos em lote. CI #40506528202 aprovado (regressão HTTP, testes C#/cores/protocolo, build, smoke Windows e navegador). Commit da correção: 3b6edbd2a6631287e36eaa6b10f7bd84eea7f737. Sem novo instalador por ajuste isolado: a release 1.9.2 permanece com a falha até a próxima atualização consolidada.
 
 - **27/10 — MODUX 1.9.2 beta PUBLICADA:** release `modux-v1.9.2-beta1`, commit do pacote `bbd5f2ec9f4c746a008d069aeb6d1858c5b2696c`, CI #40503361048 totalmente aprovado. EXE `MODUX-Setup-1.9.2.exe`, 51.295.725 bytes, SHA-256 `1fa302524ba566b76acfc8134034bb4b6c07322038b7a97a0f3957a9f75b3515`. Release pública, não rascunho, prerelease. Download: https://github.com/filipebrios/central-whatsapp-hub/releases/download/modux-v1.9.2-beta1/MODUX-Setup-1.9.2.exe .
@@ -149,6 +151,8 @@ Requisitos permanentes:
 - Alterações atribuídas ao Manus não estão no repositório conhecido.
 
 ## Pendências priorizadas
+
+- Validar CI e capturas da fila Serviços a confirmar (incluindo revisão cancelada, próxima individual e pular sem envio). Consolidar com correção da cor padrão na próxima atualização; 1.9.2 ainda não contém nenhuma destas duas mudanças. Cadastros só do Google não são importados automaticamente; exigem atendimento/vínculo e contato autorizado.
 
 - Incorporar à próxima atualização consolidada a correção já aprovada no CI #40506528202: desinsetização herda padrão e desratização mantém Mirtilo, com dois serviços preservados. Instalador atual 1.9.2 ainda contém a falha; não afirmar que atualizar a tela instala esta correção.
 
@@ -324,6 +328,13 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-27 — fila assistida Serviços a confirmar
+
+- Atalho principal substitui Pendências e pós-venda, preservado em Mais ações. Fila modeless dedicada de hoje/amanhã, ordenada por data/hora/cliente, uma confirmação por ID/ocorrência, excluindo tratadas/canceladas/confirmadas/concluídas e mantendo contatos incompletos visíveis.
+- Prévia personalizada e revisão editável/conta explícita existentes preservadas. Reconsulta fila/revisão e valida horário/ETag antes de preparar cada cliente e emitir seu link. Janela fica compacta após navegar; Enviei e próxima exige declaração explícita e CAS por empresa/ID/estado antes de abrir o próximo rascunho. Pular apenas adia na sessão; Rever pulados recupera sem gravação. Nenhuma lista de transmissão/disparo em lote.
+- Composição informa sucesso apenas após navegação para o WhatsApp; cancelar ou falhar mantém confirmação pendente. Logout/descarte fecha fila; pós-venda e lembretes existentes mantidos. Sem mudança de schema/RLS, sem dados reais e sem envio real durante desenvolvimento.
+- Regressões de identidade/ocorrência, filtros, texto individual, contato incompleto e adiamento; smoke usa transporte totalmente fictício para prévia, cancelamento, abrir, marcar/próxima e pular, com capturas clara/escura/compacta. Aguardando CI antes de declarar aprovação; manifesto de instalador preservado.
 
 ### 2026-10-27 — gravação da cor padrão para desinsetização
 

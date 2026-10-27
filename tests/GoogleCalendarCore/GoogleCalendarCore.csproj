@@ -15,6 +15,7 @@
     <Compile Include="../../webview2-prototype/AgendaViewTools.cs" Link="AgendaViewTools.cs" />
     <Compile Include="../../webview2-prototype/ComposeRequest.cs" Link="ComposeRequest.cs" />
     <Compile Include="../../webview2-prototype/AgendaWorkflow.cs" Link="AgendaWorkflow.cs" />
+    <Compile Include="../../webview2-prototype/AgendaConfirmationQueue.cs" Link="AgendaConfirmationQueue.cs" />
     <Compile Include="../../webview2-prototype/AgendaServiceColors.cs" Link="AgendaServiceColors.cs" />
     <Compile Include="../../webview2-prototype/AgendaServiceCatalog.cs" Link="AgendaServiceCatalog.cs" />
     <Compile Include="../../webview2-prototype/AgendaAppointmentInput.cs" Link="AgendaAppointmentInput.cs" />

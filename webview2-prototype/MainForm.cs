@@ -71,7 +71,7 @@ public sealed class MainForm : Form
     private bool sidebarCollapsed;
     private bool composeReady;
     private bool handlingCompose;
-    private readonly Queue<ComposeRequest> composeRequests = new();
+    private readonly Queue<(ComposeRequest Request, TaskCompletionSource<bool>? Completion)> composeRequests = new();
     private UserPreferences preferences = new();
 
     private static string AppVersion => Assembly.GetExecutingAssembly().GetName().Version is { } version
@@ -394,8 +394,17 @@ public sealed class MainForm : Form
     internal void QueueCompose(ComposeRequest request)
     {
         if (composeRequests.Count >= 10) return;
-        composeRequests.Enqueue(request);
+        composeRequests.Enqueue((request, null));
         if (composeReady) _ = DrainComposeRequests();
+    }
+
+    internal Task<bool> QueueAgendaCompose(ComposeRequest request)
+    {
+        if (composeRequests.Count >= 10 || IsDisposed) return Task.FromResult(false);
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        composeRequests.Enqueue((request, completion));
+        if (composeReady) _ = DrainComposeRequests();
+        return completion.Task;
     }
 
     private async Task DrainComposeRequests()
@@ -404,70 +413,78 @@ public sealed class MainForm : Form
         handlingCompose = true;
         try
         {
-            while (composeRequests.TryDequeue(out var request))
+            while (composeRequests.TryDequeue(out var item))
             {
-                RestoreFromTray();
-                if (accounts.Count == 0)
+                var opened = false;
+                try { opened = await ReviewCompose(item.Request); }
+                catch (Exception error)
                 {
-                    MessageBox.Show("Adicione uma conta do WhatsApp ao MODUX antes de abrir a mensagem.", "MODUX");
-                    continue;
+                    Log("Falha ao preparar rascunho: " + error.GetType().Name);
+                    MessageBox.Show("Não foi possível preparar a mensagem. O envio não foi executado pelo MODUX.", "MODUX");
                 }
-                var agendaOrigin = request.Source == "saobento";
-                var origin = agendaOrigin ? "Agenda" : "Integração Criatta";
-                var preferencePath = Path.Combine(appDataFolder, agendaOrigin ? "saobento-account-v1.txt" : "criatta-account-v2.txt");
-                string? preferred = null;
-                try { if (File.Exists(preferencePath)) preferred = File.ReadAllText(preferencePath); } catch { }
-                using var preview = new Form { Text = origin + " · Revisar mensagem", Width = 620, Height = 560,
-                    StartPosition = FormStartPosition.CenterParent, MinimizeBox = false, MaximizeBox = false };
-                var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18), ColumnCount = 1, RowCount = 6 };
-                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
-                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
-                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-                layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
-                var description = new Label { Text = $"Escolha o WhatsApp da {origin}. Esta conta ficará vinculada aos próximos rascunhos desta origem.", Dock = DockStyle.Fill };
-                var accountBox = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList, DisplayMember = "Name" };
-                foreach (var account in accounts.ToArray()) accountBox.Items.Add(account);
-                var selectedId = ComposeAccountSelection.Resolve(preferred, accounts.Select(a => a.Id));
-                accountBox.SelectedIndex = -1;
-                if (selectedId is not null)
-                    accountBox.SelectedItem = accounts.First(a => a.Id == selectedId);
-                var accountLabel = new Label { Text = $"Conta da {origin} (obrigatório):", Dock = DockStyle.Fill };
-                var recipient = new Label { Text = "Destinatário: +" + request.Phone, Dock = DockStyle.Fill };
-                var text = new TextBox { Text = request.Text, Multiline = true, ReadOnly = false, MaxLength = ComposeRequest.MaxTextLength,
-                    ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill };
-                var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
-                var open = new Button { Text = "Selecione a conta", AutoSize = true, Enabled = false, DialogResult = DialogResult.OK };
-                var cancel = new Button { Text = "Cancelar", AutoSize = true, DialogResult = DialogResult.Cancel };
-                void UpdateComposeAccount()
-                {
-                    open.Enabled = accountBox.SelectedItem is ModuxAccountInfo;
-                    open.Text = accountBox.SelectedItem is ModuxAccountInfo choice ? $"Preparar em {choice.Name}" : "Selecione a conta";
-                }
-                accountBox.SelectedIndexChanged += (_, _) => UpdateComposeAccount();
-                UpdateComposeAccount();
-                actions.Controls.Add(open); actions.Controls.Add(cancel);
-                layout.Controls.Add(description); layout.Controls.Add(accountLabel); layout.Controls.Add(accountBox); layout.Controls.Add(recipient);
-                layout.Controls.Add(text); layout.Controls.Add(actions);
-                preview.Controls.Add(layout); preview.CancelButton = cancel;
-                if (preview.ShowDialog(this) != DialogResult.OK || accountBox.SelectedItem is not ModuxAccountInfo selected) continue;
-                if (string.IsNullOrWhiteSpace(text.Text) || text.Text.Length > ComposeRequest.MaxTextLength ||
-                    text.Text.Any(c => char.IsControl(c) && c is not ('\n' or '\r' or '\t')))
-                { MessageBox.Show("Confira o texto da mensagem.", "MODUX"); continue; }
-                await ActivateAccount(selected);
-                if (!browsers.TryGetValue(selected.Id, out var browser) || browser.CoreWebView2 is null) continue;
-                try { File.WriteAllText(preferencePath, selected.Id); } catch { }
-                browser.CoreWebView2.Navigate((request with { Text = text.Text }).WhatsAppUrl);
-                statusLabel.Text = $"{selected.Name} — abrindo o rascunho. O WhatsApp pode recarregar; o envio é manual.";
+                finally { item.Completion?.TrySetResult(opened); }
             }
         }
-        catch (Exception error)
-        {
-            Log("Falha ao preparar rascunho: " + error.GetType().Name);
-            MessageBox.Show("Não foi possível preparar a mensagem. O envio não foi executado pelo MODUX.", "MODUX");
-        }
         finally { handlingCompose = false; }
+    }
+
+    private async Task<bool> ReviewCompose(ComposeRequest request)
+    {
+        RestoreFromTray();
+        if (accounts.Count == 0)
+        {
+            MessageBox.Show("Adicione uma conta do WhatsApp ao MODUX antes de abrir a mensagem.", "MODUX");
+            return false;
+        }
+        var agendaOrigin = request.Source == "saobento";
+        var origin = agendaOrigin ? "Agenda" : "Integração Criatta";
+        var preferencePath = Path.Combine(appDataFolder, agendaOrigin ? "saobento-account-v1.txt" : "criatta-account-v2.txt");
+        string? preferred = null;
+        try { if (File.Exists(preferencePath)) preferred = File.ReadAllText(preferencePath); } catch { }
+        using var preview = new Form { Text = origin + " · Revisar mensagem", Width = 620, Height = 560,
+            StartPosition = FormStartPosition.CenterParent, MinimizeBox = false, MaximizeBox = false };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18), ColumnCount = 1, RowCount = 6 };
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+        var description = new Label { Text = $"Escolha o WhatsApp da {origin}. Esta conta ficará vinculada aos próximos rascunhos desta origem.", Dock = DockStyle.Fill };
+        var accountBox = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList, DisplayMember = "Name" };
+        foreach (var account in accounts.ToArray()) accountBox.Items.Add(account);
+        var selectedId = ComposeAccountSelection.Resolve(preferred, accounts.Select(a => a.Id));
+        accountBox.SelectedIndex = -1;
+        if (selectedId is not null)
+            accountBox.SelectedItem = accounts.First(a => a.Id == selectedId);
+        var accountLabel = new Label { Text = $"Conta da {origin} (obrigatório):", Dock = DockStyle.Fill };
+        var recipient = new Label { Text = "Destinatário: +" + request.Phone, Dock = DockStyle.Fill };
+        var text = new TextBox { Text = request.Text, Multiline = true, ReadOnly = false, MaxLength = ComposeRequest.MaxTextLength,
+            ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill };
+        var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
+        var open = new Button { Text = "Selecione a conta", AutoSize = true, Enabled = false, DialogResult = DialogResult.OK };
+        var cancel = new Button { Text = "Cancelar", AutoSize = true, DialogResult = DialogResult.Cancel };
+        void UpdateComposeAccount()
+        {
+            open.Enabled = accountBox.SelectedItem is ModuxAccountInfo;
+            open.Text = accountBox.SelectedItem is ModuxAccountInfo choice ? $"Preparar em {choice.Name}" : "Selecione a conta";
+        }
+        accountBox.SelectedIndexChanged += (_, _) => UpdateComposeAccount();
+        UpdateComposeAccount();
+        actions.Controls.Add(open); actions.Controls.Add(cancel);
+        layout.Controls.Add(description); layout.Controls.Add(accountLabel); layout.Controls.Add(accountBox); layout.Controls.Add(recipient);
+        layout.Controls.Add(text); layout.Controls.Add(actions);
+        preview.Controls.Add(layout); preview.CancelButton = cancel;
+        if (preview.ShowDialog(this) != DialogResult.OK || accountBox.SelectedItem is not ModuxAccountInfo selected) return false;
+        if (string.IsNullOrWhiteSpace(text.Text) || text.Text.Length > ComposeRequest.MaxTextLength ||
+            text.Text.Any(c => char.IsControl(c) && c is not ('\n' or '\r' or '\t')))
+        { MessageBox.Show("Confira o texto da mensagem.", "MODUX"); return false; }
+        await ActivateAccount(selected);
+        if (!browsers.TryGetValue(selected.Id, out var browser) || browser.CoreWebView2 is null) return false;
+        try { File.WriteAllText(preferencePath, selected.Id); } catch { }
+        browser.CoreWebView2.Navigate((request with { Text = text.Text }).WhatsAppUrl);
+        statusLabel.Text = $"{selected.Name} — abrindo o rascunho. O WhatsApp pode recarregar; o envio é manual.";
+        return true;
     }
 
     private string AccountsFile => Path.Combine(appDataFolder, "accounts.json");

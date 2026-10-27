@@ -541,6 +541,39 @@ var preparedMessage = AgendaWorkflowRules.Message(reminderWork, "Olá, {cliente}
 if (preparedMessage.Source != "saobento" || preparedMessage.Phone != "5535999999999" ||
     !preparedMessage.Text.Contains("26/10/2026") || !preparedMessage.WhatsAppUrl.StartsWith("https://web.whatsapp.com/send?"))
     throw new Exception("Rascunho perdeu origem, telefone ou data.");
+// A fila de confirmação tem uma mensagem por atendimento, sem misturar lembrete/NPS.
+var secondConfirmation = todayAppointment with { Id = "55555555-5555-5555-5555-555555555555", Date = "2026-10-27", Client = "Outro cliente", Time = "14:00" };
+var blockedConfirmation = todayAppointment with { Id = "66666666-6666-6666-6666-666666666666", Phone = "123", Time = "09:00" };
+var confirmationFixtures = new[] { secondConfirmation, todayAppointment, todayAppointment,
+    blockedConfirmation, todayAppointment with { Status = "confirmado" }, completedAppointment,
+    todayAppointment with { Status = "cancelado" }, todayAppointment with { Date = "2026-10-28" } };
+var confirmationRows = AgendaConfirmationQueue.Build(confirmationFixtures, [], workflowToday);
+if (confirmationRows.Count != 3 || confirmationRows[0].Work.Appointment.Id != todayAppointment.Id ||
+    confirmationRows[1].HasPhone || confirmationRows[2].Work.Appointment.Id != secondConfirmation.Id ||
+    confirmationRows.Any(r => r.Work.TemplateKey != "confirmacao"))
+    throw new Exception("Fila repetiu cliente/rotina, perdeu cadastro incompleto ou ordem cronológica.");
+if (AgendaConfirmationQueue.Build(confirmationFixtures, [], workflowToday, 1).Count != 2 ||
+    AgendaConfirmationQueue.Build(confirmationFixtures, [], workflowToday, 2).Single().Work.Appointment.Id != secondConfirmation.Id)
+    throw new Exception("Filtro de hoje/amanhã incorreto.");
+var confirmationJob = new AgendaMessageJob("job-fixture", todayAppointment.Id, "confirmacao", confirmationRows[0].Work.Occurrence, "enviada_manual");
+foreach (var terminal in new[] { "enviada_manual", "tratada_manual", "cancelada" })
+    if (AgendaConfirmationQueue.Build(confirmationFixtures, [confirmationJob with { State = terminal }], workflowToday).Count != 2)
+        throw new Exception("Confirmação tratada reapareceu para envio.");
+if (AgendaConfirmationQueue.Build(confirmationFixtures, [confirmationJob with { TemplateKey = "lembrete_d0" }], workflowToday).Count != 3 ||
+    AgendaConfirmationQueue.Build(confirmationFixtures, [confirmationJob with { Occurrence = "horario-anterior" }], workflowToday).Count != 3 ||
+    AgendaConfirmationQueue.Build(confirmationFixtures, [confirmationJob with { State = "preparada" }], workflowToday).Count != 3)
+    throw new Exception("Fila confundiu lembrete/ocorrência anterior/preparação com envio confirmado.");
+var deferredConfirmations = new HashSet<string> { confirmationRows[0].Key };
+if (AgendaConfirmationQueue.Build(confirmationFixtures, [], workflowToday, deferred: deferredConfirmations).Count != 2)
+    throw new Exception("Pular por enquanto não adiou a conversa da sessão.");
+deferredConfirmations.Clear();
+if (AgendaConfirmationQueue.Build(confirmationFixtures, [], workflowToday, deferred: deferredConfirmations).Count != 3)
+    throw new Exception("Rever pulados perdeu uma confirmação.");
+var otherMessage = AgendaWorkflowRules.Message(new AgendaWorkItem(secondConfirmation, "confirmacao", "A confirmar"), "{cliente}: {servico}, {data} {hora}");
+if (!otherMessage.Text.Contains("Outro cliente") || !otherMessage.Text.Contains("27/10/2026 14:00") || otherMessage.Text == preparedMessage.Text)
+    throw new Exception("Mensagens de dois clientes não foram personalizadas separadamente.");
+Console.WriteLine("PASS: serviços a confirmar por identidade/ocorrência, filtros, ordem, contatos incompletos, adiamento e texto individual.");
+
 var workflowCalls = 0;
 var workflow = new AgendaWorkflowStore((method, path, data) =>
 {

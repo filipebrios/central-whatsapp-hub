@@ -33,6 +33,9 @@ internal sealed class AgendaPanel : UserControl
     private readonly AgendaAppointmentStore appointmentStore;
     private readonly AgendaServiceCatalog serviceCatalog;
     internal event Action<ComposeRequest>? ComposeRequested;
+    internal Func<ComposeRequest, Task<bool>>? OpenConfirmationDraft { get; set; }
+    private AgendaConfirmationDialog? confirmationDialog;
+    private readonly Button confirmationsButton = MakeButton("Serviços a confirmar");
     private readonly AgendaWorkflowStore workflowStore;
     private readonly TextBox search = new() { Width = 250, PlaceholderText = "Buscar neste período: cliente, telefone, serviço..." };
     private readonly ComboBox filterState = new() { Width = 170, DropDownStyle = ComboBoxStyle.DropDownList };
@@ -179,7 +182,8 @@ internal sealed class AgendaPanel : UserControl
         googleNewButton.BackColor = Color.FromArgb(7, 106, 63);
         googleNewButton.Click += async (_, _) => await CreateGoogleEvent();
         bar.Controls.Add(refresh); bar.Controls.Add(add);
-        bar.Controls.Add(workflowButton);
+        bar.Controls.Add(confirmationsButton);
+        confirmationsButton.Click += (_, _) => ShowConfirmations();
         workflowButton.Click += async (_, _) => await ShowWorkflow();
         catalogButton.Click += async (_, _) => await ConfigureCatalog();
         editLocalButton.Click += async (_, _) => await EditSelectedAppointment();
@@ -202,6 +206,7 @@ internal sealed class AgendaPanel : UserControl
         AddAction(reconcileButton, ReconcileSelectedEvent);
         AddAction(inviteGoogleButton, InviteSelectedGoogleEvent);
         tools.Items.Add(new ToolStripSeparator());
+        AddAction(workflowButton, ShowWorkflow);
         AddAction(catalogButton, ConfigureCatalog);
         AddAction(googleApiButton, ManageGoogle);
         AddAction(googleButton, ConnectFeed);
@@ -308,7 +313,7 @@ internal sealed class AgendaPanel : UserControl
         exportButton.Enabled = !value && companyId is not null;
         googleButton.Enabled = googleApiButton.Enabled = !value;
         catalogButton.Enabled = !value && currentRole == "admin";
-        workflowButton.Enabled = !value && companyId is not null;
+        workflowButton.Enabled = confirmationsButton.Enabled = !value && companyId is not null;
         googleNewButton.Enabled = !value && googleOAuth.CanWriteSelectedCalendar;
         UpdateLinkButton();
     }
@@ -361,6 +366,7 @@ internal sealed class AgendaPanel : UserControl
     }
     private void Logout()
     {
+        confirmationDialog?.Dispose(); confirmationDialog = null;
         accessToken = refreshToken = companyId = currentUserId = currentRole = null;
         loadedRange = null; loadedCompany = loadedCalendar = null; searchDelay.Stop();
         password.Clear();
@@ -735,6 +741,19 @@ internal sealed class AgendaPanel : UserControl
         { MessageBox.Show(this, error.Message, "Conferir convite", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
         finally { SetBusy(false); }
         await LoadAppointments();
+    }
+
+    private void ShowConfirmations()
+    {
+        if (busy || companyId is null || OpenConfirmationDraft is null) return;
+        if (confirmationDialog is { IsDisposed: false })
+        { confirmationDialog.Show(); confirmationDialog.WindowState = FormWindowState.Normal; confirmationDialog.Activate(); return; }
+        var company = companyId;
+        var store = new AgendaWorkflowStore(Authorized);
+        confirmationDialog = new AgendaConfirmationDialog(store, company,
+            work => store.ValidateSchedule(company, work, googleOAuth.CalendarId, id => googleApi.Event(id)),
+            OpenConfirmationDraft);
+        confirmationDialog.Show(FindForm());
     }
 
     private async Task ShowWorkflow()
@@ -1126,6 +1145,7 @@ internal sealed class AgendaPanel : UserControl
     {
         if (disposing)
         {
+            confirmationDialog?.Dispose();
             googleRefreshTimer.Stop();
             googleRefreshTimer.Dispose();
             searchDelay.Dispose();

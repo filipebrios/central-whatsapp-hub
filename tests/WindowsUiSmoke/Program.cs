@@ -64,10 +64,106 @@ internal static class Program
         }
         editor.Close();
         CheckCalendarViews(assembly, panel, form, configure);
+        CheckConfirmations(assembly, form, configure);
         CheckPublicFirstRun(assembly);
         form.Close();
         Console.WriteLine("PASS: painel Windows inicia, aplica temas, preserva cor de serviço e mantém grade operacional.");
         return 0;
+    }
+
+    private static bool allowDraft;
+    private static readonly List<(string Phone, string Text)> drafts = [];
+    private static Task FixtureValidate<T>(T work) => Task.CompletedTask;
+    private static Task<bool> FixtureDraft<T>(T request)
+    {
+        if (allowDraft)
+        {
+            var type = request!.GetType();
+            drafts.Add(((string)type.GetProperty("Phone")!.GetValue(request)!, (string)type.GetProperty("Text")!.GetValue(request)!));
+        }
+        return Task.FromResult(allowDraft);
+    }
+
+    private static void CheckConfirmations(Assembly assembly, Form owner, MethodInfo configure)
+    {
+        var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        var storeType = assembly.GetType("CentralWhatsApp.WebView2.AgendaWorkflowStore", true)!;
+        var dialogType = assembly.GetType("CentralWhatsApp.WebView2.AgendaConfirmationDialog", true)!;
+        var workType = assembly.GetType("CentralWhatsApp.WebView2.AgendaWorkItem", true)!;
+        var requestType = assembly.GetType("CentralWhatsApp.WebView2.ComposeRequest", true)!;
+        var today = new DateOnly(2026, 10, 27);
+        var company = "11111111-1111-1111-1111-111111111111";
+        var first = "22222222-2222-2222-2222-222222222222";
+        var second = "33333333-3333-3333-3333-333333333333";
+        var third = "44444444-4444-4444-4444-444444444444";
+        var states = new Dictionary<string, string>();
+        var marks = 0;
+        HttpResponseMessage Json(object value) => new(System.Net.HttpStatusCode.OK)
+        { Content = new StringContent(System.Text.Json.JsonSerializer.Serialize(value)) };
+        Func<HttpMethod, string, object?, Task<HttpResponseMessage>> transport = (method, path, data) =>
+        {
+            if (method == HttpMethod.Get && path.StartsWith("rest/v1/agenda_appointments?"))
+                return Task.FromResult(Json(new[] {
+                    new { id=first, revision=1, client="Cliente Alfa", phone="(35) 99999-1111", primary_service="Desinsetização + Limpeza de reservatório", service_ids=new[]{"desinsetizacao","reservatorio"}, date="2026-10-27", time="08:00", status="agendado", address="Endereço de teste", duration=60 },
+                    new { id=second, revision=1, client="Cliente Beta", phone="(35) 99999-2222", primary_service="Desratização", service_ids=new[]{"desratizacao"}, date="2026-10-28", time="14:00", status="agendado", address="Outro endereço", duration=60 },
+                    new { id=third, revision=1, client="Completar contato", phone="", primary_service="Reservatório", service_ids=new[]{"reservatorio"}, date="2026-10-28", time="16:00", status="agendado", address="", duration=60 }
+                }));
+            if (method == HttpMethod.Get && path.StartsWith("rest/v1/agenda_message_templates?"))
+                return Task.FromResult(Json(new[] { new { key="confirmacao", body="Olá, {cliente}! Podemos confirmar {servico} para {data} às {hora}? Endereço: {endereco}." } }));
+            string Occurrence(string id) => id == first ? "2026-10-27T08:00" : "2026-10-28T14:00";
+            object Job(string id) => new { id, appointment_id=id, template_key="confirmacao", occurrence_key=Occurrence(id), state=states[id] };
+            if (method == HttpMethod.Get && path.StartsWith("rest/v1/agenda_message_queue?"))
+                return Task.FromResult(Json(states.Keys.Select(Job).ToArray()));
+            if (method == HttpMethod.Post && path == "rest/v1/rpc/agenda_prepare_manual_message")
+            {
+                var payload = System.Text.Json.JsonSerializer.SerializeToElement(data);
+                var id = payload.GetProperty("p_appointment_id").GetString()!;
+                if (payload.GetProperty("p_company_id").GetString() != company) throw new Exception("Empresa incorreta na fila.");
+                states.TryAdd(id, "preparada"); return Task.FromResult(Json(Job(id)));
+            }
+            if (method == HttpMethod.Post && path == "rest/v1/rpc/agenda_issue_response_token")
+                return Task.FromResult(Json(new { token=new string('a',64), expires_at=DateTimeOffset.UtcNow.AddHours(1).ToString("O") }));
+            if (method == HttpMethod.Patch && path.StartsWith("rest/v1/agenda_message_queue?"))
+            {
+                if (!path.Contains("company_id=eq." + company) || !path.Contains("state=eq.preparada")) throw new Exception("Registro sem CAS/empresa.");
+                var id = path.Contains("id=eq." + first) ? first : second;
+                marks++; states[id] = "enviada_manual"; return Task.FromResult(Json(new[] { Job(id) }));
+            }
+            throw new Exception("HTTP inesperado na fila fictícia: " + path);
+        };
+        var store = Activator.CreateInstance(storeType, flags, null, [transport], null)!;
+        var validate = typeof(Program).GetMethod(nameof(FixtureValidate), BindingFlags.Static | BindingFlags.NonPublic)!
+            .MakeGenericMethod(workType).CreateDelegate(typeof(Func<,>).MakeGenericType(workType, typeof(Task)));
+        var open = typeof(Program).GetMethod(nameof(FixtureDraft), BindingFlags.Static | BindingFlags.NonPublic)!
+            .MakeGenericMethod(requestType).CreateDelegate(typeof(Func<,>).MakeGenericType(requestType, typeof(Task<bool>)));
+        using var queue = (Form)Activator.CreateInstance(dialogType, flags, null,
+            [store, company, validate, open, (Func<DateOnly>)(() => today), (Func<string,bool>)(_ => true)], null)!;
+        queue.Show(owner); Pump();
+        T Field<T>(string name) => (T)dialogType.GetField(name, flags)!.GetValue(queue)!;
+        var list = Field<ListBox>("list"); var prepare = Field<Button>("prepare"); var sent = Field<Button>("sentNext");
+        if (list.Items.Count != 3 || !prepare.Enabled || sent.Enabled || !Field<TextBox>("preview").Text.Contains("Desinsetização + Limpeza"))
+            throw new Exception("Fila inicial/prévia múltipla incorreta.");
+        foreach (var dark in new[] { false, true })
+        { configure.Invoke(null, [dark]); Pump(); Capture(queue, "confirmacoes-" + (dark ? "escuro" : "claro")); }
+        allowDraft = false; drafts.Clear(); prepare.PerformClick(); Pump();
+        if (sent.Enabled || marks != 0 || drafts.Count != 0) throw new Exception("Cancelar revisão foi interpretado como envio.");
+        allowDraft = true; prepare.PerformClick(); Pump();
+        if (!sent.Enabled || drafts.Count != 1 || marks != 0 || drafts[0].Phone != "5535999991111" ||
+            !drafts[0].Text.Contains("Cliente Alfa") || !drafts[0].Text.Contains("27/10/2026 às 08:00") ||
+            !drafts[0].Text.Contains("modux-resposta.html#token="))
+            throw new Exception("Abrir conversa perdeu dados/link ou registrou envio sozinho.");
+        Capture(queue, "confirmacoes-navegador-compacto");
+        sent.PerformClick(); Pump();
+        if (marks != 1 || drafts.Count != 2 || drafts[1].Phone != "5535999992222" ||
+            !drafts[1].Text.Contains("Cliente Beta") || !drafts[1].Text.Contains("28/10/2026 às 14:00") || list.Items.Count != 2)
+            throw new Exception("Enviei e próxima não avançou para o cliente correto.");
+        Field<Button>("skip").PerformClick(); Pump();
+        if (marks != 1 || sent.Enabled || prepare.Enabled || drafts.Count != 2 || list.Items.Count != 1)
+            throw new Exception("Pular marcou envio ou contato inválido abriu conversa.");
+        Field<Button>("restoreSkipped").PerformClick(); Pump();
+        if (list.Items.Count != 2 || states[second] != "preparada") throw new Exception("Rever pulados perdeu pendência compartilhada.");
+        queue.Close();
+        Console.WriteLine("PASS: fila Windows real, prévia, revisão cancelada, abertura individual/link, envio manual separado, próxima e pular sem envio; zero rede real.");
     }
 
     private static void CheckCalendarViews(Assembly assembly, Control panel, Form form, MethodInfo configure)
