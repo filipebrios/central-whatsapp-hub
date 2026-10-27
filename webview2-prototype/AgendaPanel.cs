@@ -1008,8 +1008,18 @@ internal sealed class AgendaPanel : UserControl
         var local = (grid.Rows[rowIndex].Tag as AgendaRowContext)?.Local;
         var link = calendarLinks.FirstOrDefault(l => l.CalendarId == googleOAuth.CalendarId && l.EventId == google.Id);
         using var editor = new GoogleCalendarEventDialog(google, google.Date, local is not null && link is not null,
-            GoogleEventTypes(), local?.ServiceIds);
-        if (editor.ShowDialog(this) != DialogResult.OK) return;
+            GoogleEventTypes(), local?.ServiceIds, local?.Phone, async (phone, ids) =>
+            {
+                if (companyId is null || currentUserId is null || googleOAuth.CalendarId is null)
+                    throw new InvalidOperationException("Entre novamente na Agenda.");
+                var result = await new AgendaGoogleContactStore(Authorized).Save(companyId, currentUserId,
+                    googleOAuth.CalendarId, google, local, phone, ids,
+                    string.Join(" + ", ids.Select(id => serviceCatalog.Items.FirstOrDefault(s => s.Id == id)?.Label ?? id)),
+                    id => googleApi.Event(id));
+                local = result.Local; link = result.Link;
+            });
+        if (editor.ShowDialog(this) != DialogResult.OK)
+        { if (editor.ContactSaved) await LoadAppointments(); return; }
         SetBusy(true);
         var changedOnGoogle = false;
         try

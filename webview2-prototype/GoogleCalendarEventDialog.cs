@@ -18,7 +18,13 @@ internal sealed class GoogleCalendarEventDialog : Form
     private readonly CheckBox allDay = new()
     { Text = "Dia inteiro", Dock = DockStyle.Top, AutoSize = true };
     private readonly GoogleEventSnapshot? original;
-    private readonly bool linked;
+    private bool linked;
+    private readonly TextBox phone = new() { Dock = DockStyle.Fill, MaxLength = 30, PlaceholderText = "DDD + número do WhatsApp" };
+    private readonly Button savePhone = Button("Salvar WhatsApp");
+    private readonly Label contactStatus = new() { Dock = DockStyle.Bottom, Height = 38, Padding = new Padding(20, 3, 20, 0), AutoEllipsis = true };
+    private bool savingContact;
+    private string phoneSavedValue = "";
+    internal bool ContactSaved { get; private set; }
     private readonly CheckedListBox serviceType = new() { Dock = DockStyle.Fill, CheckOnClick = true, IntegralHeight = false, BorderStyle = BorderStyle.FixedSingle };
     private bool serviceTypeChanged;
 
@@ -26,7 +32,8 @@ internal sealed class GoogleCalendarEventDialog : Form
     internal GoogleEventDraft? Draft { get; private set; }
 
     internal GoogleCalendarEventDialog(GoogleEventSnapshot? source, DateOnly initialDay, bool linkedAppointment = false,
-        IEnumerable<GoogleEventTypeChoice>? eventTypes = null, IReadOnlyList<string>? originalServices = null)
+        IEnumerable<GoogleEventTypeChoice>? eventTypes = null, IReadOnlyList<string>? originalServices = null,
+        string? originalPhone = null, Func<string, string[], Task>? saveContact = null)
     {
         original = source;
         linked = linkedAppointment;
@@ -64,19 +71,27 @@ internal sealed class GoogleCalendarEventDialog : Form
 
         var layout = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 8,
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 9,
             Padding = new Padding(24, 16, 24, 14), AutoScroll = true
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         AddRow(layout, 0, "Título *", title, 48);
-        AddRow(layout, 1, "Endereço / local", location, 48);
-        AddRow(layout, 2, "Data", date, 48);
-        AddRow(layout, 3, "Hora", time, 48);
-        AddRow(layout, 4, "Duração (min)", minutes, 48);
-        AddRow(layout, 5, "Período", allDay, 48);
-        AddRow(layout, 6, "Serviços / tipo de evento\nMarque um ou mais", serviceType, 130);
-        AddRow(layout, 7, "Observações", description, 110);
+        phone.Text = originalPhone ?? "";
+        phoneSavedValue = phone.Text;
+        var contactRow = new Panel { Dock = DockStyle.Fill };
+        savePhone.Dock = DockStyle.Right;
+        savePhone.AutoSize = false; savePhone.Width = 150; savePhone.Height = 34;
+        contactRow.Controls.Add(phone); contactRow.Controls.Add(savePhone);
+        contactRow.Enabled = source is not null && saveContact is not null && !source.AllDay;
+        AddRow(layout, 1, "WhatsApp do cliente", contactRow, 42);
+        AddRow(layout, 2, "Endereço / local", location, 42);
+        AddRow(layout, 3, "Data", date, 42);
+        AddRow(layout, 4, "Hora", time, 42);
+        AddRow(layout, 5, "Duração (min)", minutes, 42);
+        AddRow(layout, 6, "Período", allDay, 42);
+        AddRow(layout, 7, "Serviços / tipo de evento\nMarque um ou mais", serviceType, 110);
+        AddRow(layout, 8, "Observações", description, 90);
 
         var footer = new FlowLayoutPanel
         {
@@ -89,6 +104,26 @@ internal sealed class GoogleCalendarEventDialog : Form
         footer.Controls.Add(save); footer.Controls.Add(cancel);
         save.Click += (_, _) => Submit();
         cancel.Click += (_, _) => DialogResult = DialogResult.Cancel;
+        contactStatus.Text = source is null ? "Para cadastrar cliente com WhatsApp, use + Agendamento, ou salve o evento e abra-o novamente." :
+            "Salvar WhatsApp cadastra o contato deste atendimento para as confirmações. Não envia mensagem.";
+        savePhone.Click += async (_, _) =>
+        {
+            if (savingContact || saveContact is null) return;
+            var normalized = ContactPhone.Normalize(phone.Text);
+            if (normalized is null) { contactStatus.Text = "Informe um WhatsApp válido com DDD."; phone.Focus(); return; }
+            savingContact = true; layout.Enabled = footer.Enabled = false;
+            try
+            {
+                await saveContact(normalized, serviceType.CheckedItems.Cast<GoogleEventTypeChoice>().Select(type => type.Id).ToArray());
+                if (IsDisposed) return;
+                phone.Text = phoneSavedValue = normalized; ContactSaved = true; linked = true;
+                contactStatus.Text = "WhatsApp salvo. Use Serviços a confirmar para revisar e enviar a mensagem.";
+            }
+            catch (Exception error) when (error is InvalidOperationException or HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+            { if (!IsDisposed) contactStatus.Text = "Contato não salvo: " + error.Message; }
+            finally { savingContact = false; if (!IsDisposed) layout.Enabled = footer.Enabled = true; }
+        };
+        FormClosing += (_, e) => { if (savingContact) e.Cancel = true; };
 
         if (source is not null)
         {
@@ -97,7 +132,7 @@ internal sealed class GoogleCalendarEventDialog : Form
             delete.Click += (_, _) =>
             {
                 if (MessageBox.Show(this,
-                    linkedAppointment
+                    linked
                         ? "Excluir este evento do Google e marcar o atendimento vinculado como cancelado? O cadastro e histórico serão preservados."
                         : "Excluir este evento do Google Agenda? Essa ação removerá o compromisso do calendário original.",
                     "Confirmar exclusão", MessageBoxButtons.YesNo,
@@ -115,7 +150,7 @@ internal sealed class GoogleCalendarEventDialog : Form
                 ? "Evento recorrente: alterações serão aplicadas SOMENTE a esta ocorrência. Convidados não serão notificados automaticamente."
                 : "Somente o calendário Google selecionado será alterado; eventos e lembretes do WhatsApp não serão enviados."
         };
-        Controls.Add(layout); Controls.Add(hint); Controls.Add(footer);
+        Controls.Add(layout); Controls.Add(contactStatus); Controls.Add(hint); Controls.Add(footer);
         AcceptButton = save;
         CancelButton = cancel;
     }
@@ -142,6 +177,8 @@ internal sealed class GoogleCalendarEventDialog : Form
 
     private void Submit()
     {
+        if (phone.Enabled && phone.Text != phoneSavedValue)
+        { contactStatus.Text = "Clique em Salvar WhatsApp para confirmar a alteração do telefone antes de salvar o evento."; phone.Focus(); return; }
         var day = DateOnly.FromDateTime(date.Value);
         var clock = TimeOnly.FromDateTime(time.Value);
         var proposal = new GoogleEventDraft(

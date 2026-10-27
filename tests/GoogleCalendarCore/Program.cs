@@ -894,6 +894,95 @@ using (var historicalApi = new GoogleCalendarApi(new FakeCalendarAuthorization()
 }
 Console.WriteLine("PASS: bug RGB reproduzido, desinsetização herda azul padrão, PATCH remove override, criação omite cor e desratização mantém Mirtilo.");
 
+// Contato explícito do evento Google: vínculo exato, recuperação sem duplicar e PATCH só de telefone.
+var contactGoogle = item with { Id = "contact-event-fixture", Date = workflowToday, Time = "08:00", Duration = 60 };
+var contactCalendar = "contact-fixture@group.calendar.google.com";
+var contactUser = "99999999-9999-9999-9999-999999999999";
+var contactId = AgendaGoogleContactStore.ContactId(company, contactCalendar, contactGoogle.Id);
+if (contactId != AgendaGoogleContactStore.ContactId(company, contactCalendar, contactGoogle.Id) ||
+    contactId == AgendaGoogleContactStore.ContactId(company, "another-calendar", contactGoogle.Id) ||
+    contactId == AgendaGoogleContactStore.ContactId(contactUser, contactCalendar, contactGoogle.Id))
+    throw new Exception("Identidade do contato não é estável/isolada por empresa e calendário.");
+AgendaLocalSnapshot? contactLocal = null;
+AgendaCalendarLink? contactLink = null;
+var contactCalls = 0; var contactCreates = 0; var contactPatches = 0; var failContactLink = true;
+object ContactDbRow(AgendaLocalSnapshot a) => new { id=a.Id, revision=a.Revision, client=a.Client, primary_service=a.Service,
+    service_ids=a.ServiceIds, date=a.Date, time=a.Time, status=a.Status, phone=a.Phone, address=a.Address, duration=a.Duration, notes=a.Notes };
+object ContactLinkRow(AgendaCalendarLink l) => new { company_id=l.CompanyId, appointment_id=l.AppointmentId,
+    calendar_id=l.CalendarId, event_id=l.EventId, event_etag=l.ETag, sync_status=l.SyncStatus };
+Task<HttpResponseMessage> ContactJson(object value) => Task.FromResult(CalendarTestHandler.Json(JsonSerializer.Serialize(value)));
+var contactTransport = (HttpMethod method, string path, object? data) =>
+{
+    contactCalls++;
+    if (method == HttpMethod.Get && path.StartsWith("rest/v1/agenda_calendar_links?"))
+    {
+        if (!path.Contains("company_id=eq." + company)) throw new Exception("Contato sem empresa.");
+        return ContactJson(contactLink is null ? Array.Empty<object>() : new[] { ContactLinkRow(contactLink) });
+    }
+    if (method == HttpMethod.Get && path.StartsWith("rest/v1/agenda_appointments?"))
+    {
+        if (!path.Contains("id=eq." + contactId) || !path.Contains("company_id=eq." + company)) throw new Exception("Contato sem ID exato/empresa.");
+        return ContactJson(contactLocal is null ? Array.Empty<object>() : new[] { ContactDbRow(contactLocal) });
+    }
+    if (method == HttpMethod.Post && path == "rest/v1/agenda_appointments")
+    {
+        contactCreates++;
+        var fields = JsonSerializer.SerializeToElement(data);
+        if (contactLocal is not null || fields.GetProperty("id").GetString() != contactId ||
+            fields.GetProperty("phone").GetString() != "" || fields.GetProperty("company_id").GetString() != company)
+            throw new Exception("Criou duplicata ou liberou telefone antes de confirmar vínculo.");
+        contactLocal = new(contactId, 1, fields.GetProperty("client").GetString()!, fields.GetProperty("primary_service").GetString()!,
+            ["desinsetizacao", "reservatorio"], contactGoogle.Date.ToString("yyyy-MM-dd"), contactGoogle.Time, "agendado", "", contactGoogle.Location, 60, "nota preservada");
+        return ContactJson(new[] { ContactDbRow(contactLocal) });
+    }
+    if (method == HttpMethod.Post && path == "rest/v1/rpc/agenda_link_google_event")
+    {
+        if (failContactLink) return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError));
+        var fields = JsonSerializer.SerializeToElement(data);
+        if (fields.GetProperty("p_event_id").GetString() != contactGoogle.Id || fields.GetProperty("p_calendar_id").GetString() != contactCalendar ||
+            fields.GetProperty("p_expected_revision").GetInt32() != contactLocal!.Revision)
+            throw new Exception("Vínculo sem identidade/revisão.");
+        contactLink = new(company, contactId, contactCalendar, contactGoogle.Id, contactGoogle.ETag);
+        return ContactJson(ContactLinkRow(contactLink));
+    }
+    if (method == HttpMethod.Patch && path.StartsWith("rest/v1/agenda_appointments?"))
+    {
+        contactPatches++;
+        var fields = JsonSerializer.SerializeToElement(data);
+        if (fields.EnumerateObject().Count() != 1 || !fields.TryGetProperty("phone", out var phoneValue) ||
+            !path.Contains("revision=eq." + contactLocal!.Revision) || !path.Contains("company_id=eq." + company))
+            throw new Exception("Editar telefone alterou outros campos ou perdeu CAS.");
+        contactLocal = contactLocal! with { Phone = phoneValue.GetString()!, Revision = contactLocal!.Revision + 1 };
+        return ContactJson(new[] { ContactDbRow(contactLocal) });
+    }
+    throw new Exception("Operação inesperada no contato: " + method + " " + path);
+};
+var contactStore = new AgendaGoogleContactStore(contactTransport);
+Task<GoogleEventSnapshot> ContactRead(string id) => Task.FromResult(contactGoogle);
+await ExpectFailure(() => contactStore.Save(company, contactUser, contactCalendar, contactGoogle, null, "123", ["desinsetizacao"], "Desinsetização", ContactRead), "DDD");
+if (contactCalls != 0) throw new Exception("Telefone inválido chegou ao servidor.");
+await ExpectFailure(() => contactStore.Save(company, contactUser, contactCalendar, contactGoogle, null, "35999991111", ["desinsetizacao","reservatorio"], "Desinsetização + Reservatório", ContactRead), "HTTP");
+if (contactCreates != 1 || contactPatches != 0 || contactLocal!.Phone != "" || contactLink is not null)
+    throw new Exception("Falha parcial liberou contato ou perdeu cadastro recuperável.");
+failContactLink = false;
+var savedContact = await contactStore.Save(company, contactUser, contactCalendar, contactGoogle, null, "35999991111", ["desinsetizacao","reservatorio"], "Desinsetização + Reservatório", ContactRead);
+if (contactCreates != 1 || contactPatches != 1 || savedContact.Local.Phone != "5535999991111" || contactLink is null)
+    throw new Exception("Recuperação duplicou cadastro ou não habilitou o WhatsApp.");
+var editedContact = await contactStore.Save(company, contactUser, contactCalendar, contactGoogle, savedContact.Local, "(35) 99999-2222", [], "", ContactRead);
+if (contactCreates != 1 || contactPatches != 2 || editedContact.Local.Phone != "5535999992222" ||
+    editedContact.Local.Notes != "nota preservada" || editedContact.Local.ServiceIds.Length != 2)
+    throw new Exception("Editar telefone perdeu demais dados.");
+await ExpectFailure(() => contactStore.Save(company, contactUser, contactCalendar, contactGoogle, savedContact.Local, "35999993333", [], "", ContactRead), "contato mudou");
+var beforeStaleGoogle = contactCalls;
+await ExpectFailure(() => contactStore.Save(company, contactUser, contactCalendar, contactGoogle, editedContact.Local, "35999993333", [], "",
+    _ => Task.FromResult(contactGoogle with { ETag = "changed" })), "Google mudou");
+if (contactCalls != beforeStaleGoogle || contactPatches != 2) throw new Exception("Revisão antiga/Google alterado escreveu contato.");
+await new AgendaWorkflowStore(contactTransport).ValidateSchedule(company, new AgendaWorkItem(editedContact.Local, "confirmacao", "A confirmar"), contactCalendar, ContactRead);
+var contactMessage = AgendaWorkflowRules.Message(new AgendaWorkItem(editedContact.Local, "confirmacao", "A confirmar"), "{cliente}: {servico}, {data}, {hora}");
+if (contactMessage.Phone != "5535999992222" || !contactMessage.Text.Contains("Desinsetização + Reservatório"))
+    throw new Exception("Fila não usou telefone editado/serviços combinados.");
+Console.WriteLine("PASS: contato de Google existente, telefone com DDD, vínculo explícito, falha recuperável sem duplicata/telefone liberado, CAS e rascunho correto; sem escrita no Google.");
+
 static async Task ExpectFailure(Func<Task> operation, string message)
 {
     try { await operation(); }

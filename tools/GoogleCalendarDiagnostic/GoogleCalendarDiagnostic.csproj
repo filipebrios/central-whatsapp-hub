@@ -10,6 +10,7 @@
     <DebugType>none</DebugType>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../webview2-prototype/ContactPhone.cs" Link="ContactPhone.cs" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <Compile Include="../../webview2-prototype/GoogleCalendarWriteGuard.cs" Link="GoogleCalendarWriteGuard.cs" />
     <Compile Include="../../webview2-prototype/GoogleDesktopOAuth.cs" Link="GoogleDesktopOAuth.cs" />

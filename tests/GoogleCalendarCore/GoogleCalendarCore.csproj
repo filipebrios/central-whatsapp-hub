@@ -7,6 +7,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../webview2-prototype/ContactPhone.cs" Link="ContactPhone.cs" />
+    <Compile Include="../../webview2-prototype/AgendaGoogleContactStore.cs" Link="AgendaGoogleContactStore.cs" />
     <Compile Include="../../webview2-prototype/AgendaCalendarLayout.cs" Link="AgendaCalendarLayout.cs" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <Compile Include="../../webview2-prototype/GoogleCalendarWriteGuard.cs" Link="GoogleCalendarWriteGuard.cs" />

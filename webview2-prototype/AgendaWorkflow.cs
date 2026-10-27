@@ -23,12 +23,7 @@ internal sealed record AgendaMessageJob(string Id, string AppointmentId, string 
 
 internal static class AgendaWorkflowRules
 {
-    internal static string? Phone(string value)
-    {
-        var digits = string.Concat(value.Where(c => c is >= '0' and <= '9'));
-        if (digits.Length is 10 or 11) digits = "55" + digits;
-        return Regex.IsMatch(digits, "^55[0-9]{10,11}$") ? digits : null;
-    }
+    internal static string? Phone(string value) => ContactPhone.Normalize(value);
 
     internal static IReadOnlyList<AgendaWorkItem> Plan(IEnumerable<AgendaLocalSnapshot> appointments, DateOnly today, bool includeRecorded = false)
     {
@@ -103,6 +98,8 @@ internal sealed class AgendaWorkflowStore(
     internal IReadOnlyList<AgendaLocalSnapshot> Appointments { get; private set; } = [];
     internal IReadOnlyList<AgendaMessageJob> Jobs { get; private set; } = [];
     internal IReadOnlyDictionary<string, string> Templates { get; private set; } = new Dictionary<string, string>();
+    internal Task<AgendaLocalSnapshot> UpdatePhone(string companyId, AgendaLocalSnapshot original, string phone)
+        => new AgendaAppointmentStore(authorized).UpdatePhone(companyId, original, phone);
 
     internal async Task Load(string companyId, DateOnly today)
     {

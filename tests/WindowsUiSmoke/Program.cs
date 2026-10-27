@@ -48,7 +48,7 @@ internal static class Program
         choices.SetValue(Activator.CreateInstance(choiceType, ["orcamento", "Orçamento", "5"]), 1);
         using var editor = (Form)Activator.CreateInstance(editorType,
             BindingFlags.Instance | BindingFlags.NonPublic, null,
-            [null, new DateOnly(2026, 10, 27), false, choices, null], null)!;
+            [null, new DateOnly(2026, 10, 27), false, choices, null, null, null], null)!;
         editor.Show(); Pump();
         var selector = (CheckedListBox)editorType.GetField("serviceType", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(editor)!;
         if (!selector.Visible || !selector.Enabled || selector.Items.Count != 2 || !selector.CheckOnClick)
@@ -64,11 +64,38 @@ internal static class Program
         }
         editor.Close();
         CheckCalendarViews(assembly, panel, form, configure);
+        CheckGoogleContactEditor(assembly, form, configure);
         CheckConfirmations(assembly, form, configure);
         CheckPublicFirstRun(assembly);
         form.Close();
         Console.WriteLine("PASS: painel Windows inicia, aplica temas, preserva cor de serviço e mantém grade operacional.");
         return 0;
+    }
+
+    private static void CheckGoogleContactEditor(Assembly assembly, Form owner, MethodInfo configure)
+    {
+        var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        var sourceType = assembly.GetType("CentralWhatsApp.WebView2.GoogleEventSnapshot", true)!;
+        var source = Activator.CreateInstance(sourceType,
+            ["event-contact-ui", "v1", "Cliente fictício", "", "Endereço fictício", new DateOnly(2026,10,27), "14:00", false, 60, null, null]);
+        var editorType = assembly.GetType("CentralWhatsApp.WebView2.GoogleCalendarEventDialog", true)!;
+        var writes = 0; string savedPhone = "";
+        Func<string, string[], Task> saveContact = (phone, ids) => { writes++; savedPhone = phone; return Task.CompletedTask; };
+        using var editor = (Form)Activator.CreateInstance(editorType, flags, null,
+            [source, new DateOnly(2026,10,27), false, null, null, "", saveContact], null)!;
+        editor.Show(owner); Pump();
+        var phoneBox = (TextBox)editorType.GetField("phone", flags)!.GetValue(editor)!;
+        var savePhone = (Button)editorType.GetField("savePhone", flags)!.GetValue(editor)!;
+        if (!phoneBox.Visible || !phoneBox.Enabled || !savePhone.Enabled) throw new Exception("WhatsApp não está editável no evento Google.");
+        phoneBox.Text = "123"; savePhone.PerformClick(); Pump();
+        if (writes != 0) throw new Exception("Telefone inválido foi salvo pela tela.");
+        phoneBox.Text = "(35) 99999-1111"; savePhone.PerformClick(); Pump();
+        if (writes != 1 || savedPhone != "5535999991111" || !(bool)editorType.GetProperty("ContactSaved", flags)!.GetValue(editor)!)
+            throw new Exception("Salvar WhatsApp não persistiu telefone válido.");
+        foreach (var dark in new[] { false, true })
+        { configure.Invoke(null, [dark]); Pump(); Capture(editor, "editor-whatsapp-" + (dark ? "escuro" : "claro")); }
+        editor.Close();
+        Console.WriteLine("PASS: editor Google oferece telefone/Salvar WhatsApp, valida DDD e mantém sucesso ao voltar; zero envio.");
     }
 
     private static bool allowDraft;

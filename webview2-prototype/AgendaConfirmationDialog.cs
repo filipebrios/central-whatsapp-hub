@@ -21,6 +21,7 @@ internal sealed class AgendaConfirmationDialog : Form
     private readonly Button skip = new() { Text = "Pular por enquanto", AutoSize = true };
     private readonly Button expand = new() { Text = "Ver fila", AutoSize = true, Visible = false };
     private readonly Button refresh = new() { Text = "Atualizar", AutoSize = true };
+    private readonly Button editPhone = new() { Text = "Editar WhatsApp", AutoSize = true };
     private readonly Button restoreSkipped = new() { Text = "Rever pulados", AutoSize = true };
     private readonly FlowLayoutPanel actions = new() { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(10), WrapContents = true };
     private AgendaConfirmationRow? openedRow;
@@ -43,7 +44,7 @@ internal sealed class AgendaConfirmationDialog : Form
         StartPosition = FormStartPosition.CenterParent; Font = new Font("Segoe UI", 10);
         var filters = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 48, Padding = new Padding(10, 5, 10, 5) };
         period.Items.AddRange(["Hoje e amanhã", "Hoje", "Amanhã"]); period.SelectedIndex = 0;
-        filters.Controls.AddRange([period, refresh, restoreSkipped]);
+        filters.Controls.AddRange([period, refresh, restoreSkipped, editPhone]);
         var hint = new Label { Dock = DockStyle.Top, Height = 55, Padding = new Padding(12, 5, 12, 0),
             Text = "Atendimentos cadastrados na equipe, ainda não confirmados. Eventos só do Google precisam de cadastro/vínculo.\nCada cliente recebe seu próprio texto e link. Revise e envie no WhatsApp." };
         var previewTitle = new Label { Text = "Prévia — o link exclusivo será acrescentado ao abrir a conversa", Dock = DockStyle.Top, Height = 30, Padding = new Padding(12, 5, 0, 0) };
@@ -55,6 +56,23 @@ internal sealed class AgendaConfirmationDialog : Form
         period.SelectedIndexChanged += (_, _) => Populate();
         refresh.Click += async (_, _) => await Run(LoadItems);
         restoreSkipped.Click += (_, _) => { deferred.Clear(); Populate(); };
+        editPhone.Click += async (_, _) =>
+        {
+            if (busy || list.SelectedItem is not AgendaConfirmationRow row) return;
+            using var prompt = new Form { Text = "WhatsApp do cliente • " + row.Work.Appointment.Client,
+                Width = 480, Height = 190, StartPosition = FormStartPosition.CenterParent, Font = Font };
+            var input = new TextBox { Dock = DockStyle.Top, Text = row.Work.Appointment.Phone, MaxLength = 30, PlaceholderText = "DDD + número do WhatsApp" };
+            var save = new Button { Text = "Salvar WhatsApp", Dock = DockStyle.Bottom, Height = 40, DialogResult = DialogResult.OK };
+            var hint = new Label { Text = "Informe o telefone com DDD. Salvar não envia mensagem.", Dock = DockStyle.Top, Height = 42, Padding = new Padding(10) };
+            prompt.Controls.Add(input); prompt.Controls.Add(hint); prompt.Controls.Add(save); prompt.AcceptButton = save;
+            if (prompt.ShowDialog(this) != DialogResult.OK) return;
+            await Run(async () =>
+            {
+                await store.UpdatePhone(company, row.Work.Appointment, input.Text); EnsureActive();
+                openedRow = null; openedJob = null;
+                await LoadItems();
+            });
+        };
         prepare.Click += async (_, _) => await Run(OpenSelected);
         sentNext.Click += async (_, _) => await Run(MarkAndNext);
         skip.Click += async (_, _) => await Run(async () =>
@@ -142,6 +160,7 @@ internal sealed class AgendaConfirmationDialog : Form
         sentNext.Enabled = !busy && openedJob is not null && row?.Key == openedRow?.Key;
         skip.Enabled = !busy && row is not null;
         restoreSkipped.Enabled = !busy && deferred.Count > 0;
+        editPhone.Enabled = !busy && row is not null;
     }
 
     private async Task OpenSelected()

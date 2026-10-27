@@ -6,6 +6,24 @@ namespace CentralWhatsApp.WebView2;
 internal sealed class AgendaAppointmentStore(
     Func<HttpMethod, string, object?, Task<HttpResponseMessage>> authorized)
 {
+    internal async Task<AgendaLocalSnapshot> UpdatePhone(string companyId, AgendaLocalSnapshot original, string phone)
+    {
+        var normalized = AgendaWorkflowRules.Phone(phone) ?? throw new InvalidOperationException("Informe um WhatsApp válido com DDD.");
+        if (!Guid.TryParse(companyId, out _) || !Guid.TryParse(original.Id, out _) || original.Revision < 1)
+            throw new InvalidOperationException("Identidade/revisão do contato incompleta.");
+        using var response = await authorized(HttpMethod.Patch,
+            "rest/v1/agenda_appointments?id=eq." + Uri.EscapeDataString(original.Id) +
+            "&company_id=eq." + Uri.EscapeDataString(companyId) + "&revision=eq." + original.Revision + "&deleted_at=is.null",
+            new { phone = normalized });
+        if (!response.IsSuccessStatusCode) throw new InvalidOperationException("Telefone não confirmado. Atualize antes de repetir.");
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        if (json.RootElement.ValueKind != JsonValueKind.Array || json.RootElement.GetArrayLength() != 1)
+            throw new InvalidOperationException("O contato mudou. Atualize antes de salvar novamente.");
+        var updated = AgendaLocalSnapshot.Parse(json.RootElement[0]);
+        if (updated.Id != original.Id || updated.Revision <= original.Revision || updated.Phone != normalized)
+            throw new InvalidOperationException("Resposta sem confirmação do telefone. Atualize a agenda.");
+        return updated;
+    }
     internal async Task<AgendaLocalSnapshot> UpdateServices(string companyId, AgendaLocalSnapshot original,
         string[] ids, string label)
     {

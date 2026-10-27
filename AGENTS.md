@@ -61,6 +61,8 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- **27/10 — telefone no editor Google em validação:** captura real mostra que o editor não oferecia WhatsApp, tornando a fila inacessível aos eventos sem cadastro. Implementado campo WhatsApp do cliente/Salvar WhatsApp no editor existente e Editar WhatsApp na fila. Cadastro explícito para o evento atual, ID estável por empresa/calendário/evento, vínculo por IDs e telefone liberado somente após vínculo confirmado; edição posterior faz PATCH apenas do telefone por revisão. Não cria evento Google nem envia mensagem. Regressões e capturas aguardam CI; 1.9.3 ainda não contém a correção.
+
 - **27/10 — MODUX 1.9.3 beta PUBLICADA:** release `modux-v1.9.3-beta1`, commit do pacote `28f59a14be5205ee40adf7ce04f4b9f1080f5cf1`, CI #40510559720 integralmente aprovado. EXE `MODUX-Setup-1.9.3.exe`, 51.298.732 bytes, SHA-256 `f4b597b360b77cf66a2e40c9854f3077238d975261c96cad6b33ffbb00212fd0`. Release pública, não rascunho, prerelease. Download: https://github.com/filipebrios/central-whatsapp-hub/releases/download/modux-v1.9.3-beta1/MODUX-Setup-1.9.3.exe .
 - Entrega reúne fila Serviços a confirmar de hoje/amanhã e correção da cor padrão da desinsetização. Prévia/link individual, revisão editável/conta explícita, janela compacta, Enviei e próxima, Pular/Rever pulados. Testes C#/HTTP/cores/protocolo, navegador, UI Windows, instalação/desinstalação e hashes de contas/perfil fictícios aprovados; capturas revisadas. Assets baixados e SHA comparado pelo pipeline antes de publicar. Versões anteriores preservadas. Sem envio real pelas ferramentas; confirmação continua manual e eventos somente do Google exigem cadastro/vínculo/contato. A validação real pelo usuário permanece pendente.
 
@@ -156,6 +158,8 @@ Requisitos permanentes:
 - Alterações atribuídas ao Manus não estão no repositório conhecido.
 
 ## Pendências priorizadas
+
+- Validar CI e capturas do WhatsApp no editor Google/fila, incluindo recuperação de vínculo parcial sem duplicata, telefone só após vínculo, CAS, preservação de dados e rascunho no número editado. Corrigir o bloqueio de uso e entregar atualização consolidada; não anunciar pronta antes de compilação/instalador verificados.
 
 - Após entrega 1.9.3: recolher retorno real da fila (revisão, próxima, pular/rever), conta selecionada e cor da desinsetização. CI #40510559720 e instalação/assets/SHA aprovados. 1.9.2 permanece sem estas mudanças; atualizar pelo instalador 1.9.3. Cadastros só do Google não são importados automaticamente; exigem atendimento/vínculo e contato autorizado.
 
@@ -333,6 +337,12 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-27 — contato WhatsApp do evento e da fila
+
+- Campo visível WhatsApp do cliente com Salvar WhatsApp no editor de evento Google existente. Mantém mudanças do evento separadas; telefone digitado e não salvo bloqueia Salvar no Google com orientação. Depois de salvar contato, voltar recarrega a Agenda. Fila oferece Editar WhatsApp, sem marcar envio.
+- Cadastro do atendimento a partir do evento selecionado é explícito. ID determinístico por empresa/calendário/evento recupera falha ambígua sem nova criação. Releitura Google/ETag, vínculo exato e revisão existentes preservados. Criação inicial usa telefone vazio para não liberar mensagens antes do vínculo; falha parcial permite retry no mesmo ID. Contato já vinculado usa PATCH apenas phone por empresa/ID/revisão. Não altera descrição/telefone no Google, não cria outro evento nem dispara WhatsApp.
+- Normalização brasileira extraída em helper compartilhado sem Supabase para preservar compilação do diagnóstico isolado. Regressões HTTP de recuperação/CAS/isolamento/telefone válido e editor Windows com captura preparados; aguardando CI. Sem mudança de schema/RLS ou dados reais.
 
 ### 2026-10-27 — entrega consolidada 1.9.3 beta
 
