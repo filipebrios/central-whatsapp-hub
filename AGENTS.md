@@ -61,6 +61,9 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- **27/10 — MODUX 1.9.3 beta PUBLICADA:** release `modux-v1.9.3-beta1`, commit do pacote `28f59a14be5205ee40adf7ce04f4b9f1080f5cf1`, CI #40510559720 integralmente aprovado. EXE `MODUX-Setup-1.9.3.exe`, 51.298.732 bytes, SHA-256 `f4b597b360b77cf66a2e40c9854f3077238d975261c96cad6b33ffbb00212fd0`. Release pública, não rascunho, prerelease. Download: https://github.com/filipebrios/central-whatsapp-hub/releases/download/modux-v1.9.3-beta1/MODUX-Setup-1.9.3.exe .
+- Entrega reúne fila Serviços a confirmar de hoje/amanhã e correção da cor padrão da desinsetização. Prévia/link individual, revisão editável/conta explícita, janela compacta, Enviei e próxima, Pular/Rever pulados. Testes C#/HTTP/cores/protocolo, navegador, UI Windows, instalação/desinstalação e hashes de contas/perfil fictícios aprovados; capturas revisadas. Assets baixados e SHA comparado pelo pipeline antes de publicar. Versões anteriores preservadas. Sem envio real pelas ferramentas; confirmação continua manual e eventos somente do Google exigem cadastro/vínculo/contato. A validação real pelo usuário permanece pendente.
+
 - **27/10 — atualização consolidada 1.9.3 em preparação:** CI #40510147320 aprovado integralmente (C#/HTTP/cores/protocolo, compilação, fila Windows real com transportes fictícios, navegador e verificador isolado). Capturas da fila clara/escura e janela compacta conferidas. Manifesto reúne Serviços a confirmar e correção da cor padrão da desinsetização. Pipeline repetirá validações e testará instalação/preservação de cadastros/perfis; ainda não declarar instalador publicado.
 
 - **27/10 — Serviços a confirmar em validação:** usuário aprovou fila assistida de confirmações de hoje/amanhã, textos individuais e próxima conversa. Implementada tela dedicada com filtro, prévia, contato incompleto visível, janela compacta e ações Enviei e próxima/Pular/Rever pulados. Reutiliza revisão/ETag, fila e link exclusivos existentes; só registra enviada_manual após declaração explícita. Cancelar revisão/abrir/pular nunca marca envio. Testes de seleção/ocorrência/personalização e compilação passaram no CI #40509821188; smoke interrompeu na reflexão do construtor público da fixture, corrigida para nova execução. Capturas e aprovação completa ainda pendentes. Sem disparo automático; aprovação completa no CI #40510147320, capturas conferidas e empacotamento consolidado 1.9.3 em preparação.
@@ -154,9 +157,9 @@ Requisitos permanentes:
 
 ## Pendências priorizadas
 
-- CI #40510147320 e capturas da fila aprovados (incluindo revisão cancelada, próxima individual e pular sem envio). Aguardar verificação repetida, instalação e assets/SHA da atualização consolidada 1.9.3; 1.9.2 ainda não contém nenhuma destas duas mudanças. Cadastros só do Google não são importados automaticamente; exigem atendimento/vínculo e contato autorizado.
+- Após entrega 1.9.3: recolher retorno real da fila (revisão, próxima, pular/rever), conta selecionada e cor da desinsetização. CI #40510559720 e instalação/assets/SHA aprovados. 1.9.2 permanece sem estas mudanças; atualizar pelo instalador 1.9.3. Cadastros só do Google não são importados automaticamente; exigem atendimento/vínculo e contato autorizado.
 
-- Incorporar à próxima atualização consolidada a correção já aprovada no CI #40506528202: desinsetização herda padrão e desratização mantém Mirtilo, com dois serviços preservados. Instalador atual 1.9.2 ainda contém a falha; não afirmar que atualizar a tela instala esta correção.
+- Correção de cor incorporada à 1.9.3: desinsetização herda padrão e desratização mantém Mirtilo, com dois serviços preservados. 1.9.2 contém a falha. Para corrigir override de um evento antigo, selecionar explicitamente o tipo no editor (desmarcar/marcar se já estava selecionado); salvar edição sem alterar tipos preserva a cor anterior. Não há recoloração em lote.
 
 - Após entrega 1.9.2: recolher retorno real das três visões, velocidade percebida e edição de serviços combinados na conta do usuário. Cache não elimina latência de rede; Atualizar força consulta, edição mantém GET/revisão/ETag. Limites de séries/multidia, recuperação manual de falhas parciais e acesso restrito da Agenda continuam explícitos.
 
@@ -330,6 +333,12 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-27 — entrega consolidada 1.9.3 beta
+
+- CI #40510559720 aprovou novamente testes C#/HTTP/cores/protocolo, UI Windows real da fila e navegador, publicação autocontida, versão ARANY, auditoria de dados no pacote e instalação/desinstalação preservando hashes de duas contas e perfil fictícios.
+- Release `modux-v1.9.3-beta1` pública somente após baixar assets e conferir SHA. EXE 51.298.732 bytes, SHA-256 `f4b597b360b77cf66a2e40c9854f3077238d975261c96cad6b33ffbb00212fd0`, fonte `28f59a14be5205ee40adf7ce04f4b9f1080f5cf1`. Releases anteriores preservadas. Capturas clara/escura/compacta da mesma implementação aprovadas.
+- Fila e cor entregues juntas; nenhum envio real ou alteração de evento executado pelas ferramentas. Usuário deve validar a beta no Windows; base Electron e PR #1 não foram alteradas/mescladas.
 
 ### 2026-10-27 — preparação da atualização consolidada 1.9.3
 
