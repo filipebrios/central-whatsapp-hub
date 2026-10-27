@@ -61,6 +61,9 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- **27/10 — MODUX 1.9.1 beta PUBLICADA:** release `modux-v1.9.1-beta1`, commit do pacote `9c538a232265972edd6a9727ebc53a965444d285`, CI #40499144282 totalmente aprovado. EXE `MODUX-Setup-1.9.1.exe`, 51.280.337 bytes, SHA-256 `7f1209f278e5012c71a31e616ef1c98aa7307a1518d0a61c8275c7e875e64d75`. Release pública, não rascunho, prerelease. Download: https://github.com/filipebrios/central-whatsapp-hub/releases/download/modux-v1.9.1-beta1/MODUX-Setup-1.9.1.exe .
+- Inclui cores Google/tipo explícito, visual inspirado no ARANY, instalação nova sem contas/nomes de empresas, Sobre com versão/crédito ARANY/site e identificação ARANY no executável/instalador. Preserva contas/sessões existentes. Capturas nativas de boas-vindas, janela 1024 e Sobre revisadas. Testes C#/HTTP/cores/protocolo, navegador, smoke, instalação/desinstalação com hashes de perfil e cadastro fictícios passaram; assets baixados e SHA comparado antes de publicar. Beta1 1.9.0 preservada. Validação real no Windows do usuário ainda necessária; Agenda continua de equipe autorizada, sem SaaS público novo.
+
 - **27/10 — apresentação pública solicitada:** layout do aplicativo inspirado no site `filipebrios/arany/src/styles.css` (cabeçalho grafite #202125, superfícies #fafafa/#f0f0f3, lavanda, cantos arredondados). Primeira instalação sem conta/nome pré-criado; sessões e nomes existentes preservados ao atualizar. Interface da Agenda neutralizada; backend continua protegido por autorização da equipe, sem ativação pública de cadastros. Sobre mostra versão, crédito ARANY e site oficial. CI #40498741432 aprovou a revisão da abertura neutra, Sobre e layout. Capturas nativas conferidas; últimos ajustes de largura do cartão, bordas e tamanho inicial entram na verificação repetida do pacote 1.9.1 beta. Não considerar instalador publicado antes de confirmar a release.
 
 - **27/10 — feedback real da beta:** usuário conseguiu login e ativou Google API operacional no Windows (captura: 257 eventos Google editáveis, sem iCal duplicado). Relatou cores divergentes e pediu seleção explícita de serviço/evento. Correção em desenvolvimento: paleta Google dinâmica e cor herdada do calendário; seletor no editor Google com metadado privado, sem alterar títulos nem recolorir eventos por leitura. CI Windows #40494905388 passou (testes C#/HTTP, build principal, smoke e verificador isolado); capturas do seletor claro/escuro revisadas. Nenhum novo instalador publicado.
@@ -140,7 +143,7 @@ Requisitos permanentes:
 
 ## Pendências priorizadas
 
-- Validar primeira abertura limpa, preservação de contas/perfil antigo, tela Sobre/ARANY, layout 1024 e capturas clara/escura. Consolidar com cores/tipo de evento antes da próxima entrega; não anunciar distribuição geral da Agenda como SaaS (provisionamento de equipes não faz parte desta mudança).
+- Após entrega 1.9.1: recolher feedback real de aparência, cores Google, sessões e WaSeller. Primeira abertura/preservação/Sobre/layout já testados internamente; não anunciar distribuição geral da Agenda como SaaS (provisionamento de equipes não faz parte desta mudança).
 
 - Correção das cores Google e seletor de tipo passou no CI #40494905388 e teve capturas revisadas; consolidar com demais feedbacks antes de outro instalador. Acabamento Apple completo permanece pendente; tema/arredondamento nativo da beta não equivale ao redesign completo.
 
@@ -308,6 +311,12 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-27 — entrega consolidada 1.9.1 beta ARANY
+
+- CI #40499144282 concluiu verificação e pacote. Instalador gerado com ARANY como desenvolvedora; auditoria não encontrou contas, preferências ou perfis no conteúdo. Instalação/desinstalação mantiveram hashes de cadastro de duas contas e arquivo de sessão fictícios.
+- Release `modux-v1.9.1-beta1` publicada somente após download dos assets e conferência SHA. EXE 51.280.337 bytes, SHA-256 `7f1209f278e5012c71a31e616ef1c98aa7307a1518d0a61c8275c7e875e64d75`; versão anterior mantida.
+- Revisadas capturas reais do Windows com cabeçalho grafite, cartão de boas-vindas dimensionado, janela 1024 e Sobre/ARANY. Primeira instalação não cria conta; atualização conserva nomes/IDs/perfis. Não altera sites ARANY/São Bento nem backend/contas reais, não envia mensagens e não transforma Agenda em SaaS aberto.
 
 ### 2026-10-27 — atualização consolidada 1.9.1 preparada
 
