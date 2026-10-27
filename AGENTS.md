@@ -61,6 +61,10 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- **27/10 — MODUX 1.9.5 beta e página São Bento PUBLICADOS:** fonte do pacote `153ac5b24def41792b619db6b6988c362857ddff`, CI #40558332082 integralmente aprovado. EXE `MODUX-Setup-1.9.5.exe`, 51.308.367 bytes, SHA-256 `38621db5d49d7afdf1b17cae1b9d1660f00d52b6e5e53c45f3a61edbbaf3c7df`. Release `modux-v1.9.5-beta1` pública, não rascunho, prerelease. Download: https://github.com/filipebrios/central-whatsapp-hub/releases/download/modux-v1.9.5-beta1/MODUX-Setup-1.9.5.exe .
+- Confirmação/lembretes usam endereço atual Google após conferir vínculo/ETag/horário, fallback local, bloco para modelo sem variável e bloqueio se ambas fontes vazias. CI inclui rascunho, três rotinas, não duplicação, pós-venda, Windows/navegador e instalação/desinstalação com hashes de contas/perfil fictícios preservados. Assets baixados e SHA comparado pelo pipeline. Nenhum envio real nem escrita Google/banco pela leitura.
+- Página com marca oficial publicada no sbento PR #27 (merge comum `604ce497c22573c471a0ba15555020d78ccef602`), CI #40557886867 concluído e preview/build conferidos. Produção Vercel `dpl_7P62WQPgqhP9MFRTEdD1tsUaHdRv` READY. GET público HTML/CSS/logo conferido em https://sbento.com.br/modux-resposta.html ; PNG idêntico ao favicon oficial por SHA. Mesmo link e fluxos/capacidade preservados, sem alteração ERP/login/banco. Teste real do novo rascunho pelo usuário ainda pendente.
+
 - **27/10 — endereço/identidade aprovados, pacote 1.9.5 em preparação:** CI #40557858902 passou integralmente (C#/HTTP/endereço, cores/protocolo, compilação, smoke Windows, navegador e diagnóstico). Capturas da página móvel/desktop revisadas; logo oficial e paleta conferidas. Manifesto 1.9.5 reúne correção dos rascunhos e referência à página institucional. Publicação do site está no PR sbento #27, aguardando Bun/build/preview; instalador ainda não disponível.
 
 - **27/10 — endereço nas mensagens e marca São Bento em validação:** modelo remoto já contém {endereco}, mas rascunho usava endereço local vazio/desatualizado. Validação do evento vinculado agora devolve endereço atual do Google sem regravar cadastro por leitura; confirmação e lembretes incluem endereço mesmo em modelo sem variável e bloqueiam preparo se ambas as fontes estiverem vazias. Página usa logo oficial do favicon do site e paleta #1A3626/#95C11E; CSP só permite imagem local. Regressões e capturas aguardam CI. Correção ainda não está no instalador 1.9.4 nem no site publicado.
@@ -168,7 +172,7 @@ Requisitos permanentes:
 
 ## Pendências priorizadas
 
-- CI #40557858902 e capturas aprovados para endereço e marca. Aguardar teste do pacote 1.9.5 e assets/SHA; concluir Bun/build/preview e publicação do PR sbento #27, depois conferir HTML/CSS/logo do domínio público sem usar token real. 1.9.4 permanece sem correção de endereço.
+- Após entrega 1.9.5: usuário deve atualizar e gerar novamente o rascunho para validar endereço real. Página pública já usa identidade São Bento no mesmo link. CI/pacote/assets/SHA e HTTP público aprovados; 1.9.4 permanece sem correção de endereço. Mensagem antiga já aberta no WhatsApp não é alterada automaticamente.
 
 - Após entrega 1.9.4: recolher validação real do telefone no evento existente → Salvar WhatsApp → Serviços a confirmar e da edição na fila. CI #40548665870 e capturas/instalação/assets/SHA aprovados. Preservar sessões e envio manual. Contato é do atendimento selecionado, sem sincronização do catálogo global do WhatsApp; eventos de dia inteiro/multidia exigem horário definido.
 
@@ -348,6 +352,12 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-27 — entrega 1.9.5 e identidade São Bento publicada
+
+- CI #40558332082 concluiu com sucesso validações e pacote; instalação/desinstalação e hashes de contas/perfil fictícios preservados, versão ARANY e auditoria de dados no pacote. Release pública após download dos assets e comparação SHA. EXE 51.308.367 bytes, SHA `38621db5d49d7afdf1b17cae1b9d1660f00d52b6e5e53c45f3a61edbbaf3c7df`, fonte `153ac5b24def41792b619db6b6988c362857ddff`.
+- sbento PR #27 mesclado por merge comum após CI Bun/check/build e preview READY/HTTP 200. Produção `dpl_7P62WQPgqhP9MFRTEdD1tsUaHdRv`, commit `604ce497c22573c471a0ba15555020d78ccef602`, READY; HTML/CSS/logo públicos conferidos, imagem com SHA idêntico ao favicon oficial. Sem mudança do handler, tokens, ERP, login ou banco. Capturas móvel/desktop e testes de confirmação/cancelamento/NPS zero aprovados.
+- Nenhum WhatsApp/evento/contato real alterado ou enviado pelas ferramentas. Atualizar e gerar novo rascunho é necessário para validar endereço; releases anteriores preservadas.
 
 ### 2026-10-27 — preparação consolidada 1.9.5
 
