@@ -1,6 +1,6 @@
 #define MyAppName "MODUX"
 #define MyAppVersion "1.6.1"
-#define MyAppPublisher "MODUX"
+#define MyAppPublisher "ARANY"
 #define MyAppExeName "MODUX.exe"
 
 [Setup]
@@ -8,6 +8,8 @@ AppId={{B1A14D26-5498-48D7-BABD-9FB9B4AD739E}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
+AppPublisherURL=https://www.arany.com.br
+AppSupportURL=https://www.arany.com.br
 DefaultDirName={localappdata}\Programs\Central WhatsApp
 DefaultGroupName=MODUX
 DisableProgramGroupPage=yes
@@ -17,6 +19,7 @@ OutputBaseFilename=MODUX-Setup-{#MyAppVersion}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
+WizardResizable=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=yes

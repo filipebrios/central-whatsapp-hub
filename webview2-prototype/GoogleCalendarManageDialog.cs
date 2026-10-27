@@ -38,7 +38,7 @@ internal sealed class GoogleCalendarManageDialog : Form
     {
         this.oauth = oauth;
         this.api = api;
-        Text = "Conta Google • Agenda São Bento";
+        Text = "Conta Google • Agenda MODUX";
         Width = 610; Height = 490; MinimumSize = MaximumSize = Size;
         Font = new Font("Segoe UI", 10);
         BackColor = Color.White;
@@ -314,7 +314,7 @@ internal sealed class GoogleCalendarManageDialog : Form
             : $"ATIVAR ESCRITA NA AGENDA OPERACIONAL “{item.Name}”?\n\n" +
               "Após esta confirmação, o MODUX poderá criar, editar e excluir compromissos nesse calendário, " +
               "mediante suas ações nos formulários. Eventos antigos não serão importados ou recoloridos automaticamente.\n\n" +
-              "Confirme somente se este é o calendário correto da São Bento.";
+              "Confirme somente se este é o calendário correto da sua equipe.";
         if (MessageBox.Show(this, message, test ? "Confirmar testes" : "Ativar agenda operacional",
             MessageBoxButtons.YesNo, test ? MessageBoxIcon.Question : MessageBoxIcon.Warning,
             MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;

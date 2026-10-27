@@ -9,7 +9,7 @@ internal sealed class AgendaMonthView : UserControl
 {
     private static readonly CultureInfo Br = CultureInfo.GetCultureInfo("pt-BR");
     private readonly TableLayoutPanel days = new() { Dock = DockStyle.Fill, ColumnCount = 7, RowCount = 7, BackColor = Color.FromArgb(230, 235, 231), CellBorderStyle = TableLayoutPanelCellBorderStyle.Single };
-    private readonly Label caption = new() { AutoSize = true, Font = new Font("Segoe UI", 11f, FontStyle.Bold), ForeColor = Color.FromArgb(11, 19, 43), Margin = new Padding(10, 9, 10, 5) };
+    private readonly Label caption = new() { AutoSize = true, Font = new Font("Segoe UI", 14f, FontStyle.Bold), ForeColor = Color.FromArgb(11, 19, 43), Margin = new Padding(10, 9, 10, 5) };
     private readonly Button previous = Button("‹");
     private readonly Button next = Button("›");
     private readonly Button current = Button("Hoje");
@@ -42,7 +42,7 @@ internal sealed class AgendaMonthView : UserControl
             days.RowStyles.Add(new RowStyle(SizeType.Percent, 100f / 6f));
         var header = new FlowLayoutPanel
         {
-            Dock = DockStyle.Top, Height = 46, WrapContents = false,
+            Dock = DockStyle.Top, Height = 54, WrapContents = false,
             BackColor = Color.White, Padding = new Padding(6, 4, 5, 2)
         };
         header.Controls.Add(previous); header.Controls.Add(current); header.Controls.Add(next); header.Controls.Add(caption);
@@ -142,7 +142,7 @@ internal sealed class AgendaMonthView : UserControl
         foreach (var button in new[] { previous, next, current })
         {
             button.BackColor = ModuxAppearance.Field;
-            button.ForeColor = ModuxAppearance.Dark ? Color.FromArgb(150, 214, 178) : Color.FromArgb(22, 88, 60);
+            button.ForeColor = ModuxAppearance.Accent;
             button.FlatAppearance.BorderSize = 0;
         }
         Render();
@@ -183,7 +183,7 @@ internal sealed class AgendaMonthView : UserControl
                     Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4,
                     Margin = Padding.Empty, Padding = new Padding(2),
                     BackColor = date == selectedDate
-                        ? (ModuxAppearance.Dark ? Color.FromArgb(33, 67, 54) : Color.FromArgb(225, 242, 231))
+                        ? (ModuxAppearance.Selection)
                         : date.Month == displayedMonth.Month
                             ? ModuxAppearance.Surface : ModuxAppearance.Canvas,
                     Cursor = Cursors.Hand,
@@ -199,7 +199,7 @@ internal sealed class AgendaMonthView : UserControl
                     Dock = DockStyle.Fill, Margin = Padding.Empty,
                     Font = new Font("Segoe UI", 8.5f,
                         date == today ? FontStyle.Bold : FontStyle.Regular),
-                    ForeColor = date == today ? (ModuxAppearance.Dark ? Color.FromArgb(150, 214, 178) : Color.FromArgb(22, 88, 60))
+                    ForeColor = date == today ? (ModuxAppearance.Accent)
                         : date.Month == displayedMonth.Month ? ModuxAppearance.Text : ModuxAppearance.Muted,
                     Text = $"{date.Day}{(date == today ? " •" : "")}",
                     Cursor = Cursors.Hand,
@@ -264,7 +264,7 @@ internal sealed class AgendaMonthView : UserControl
     {
         using var form = new Form
         {
-            Text = "Cores dos serviços • São Bento",
+            Text = "Cores dos serviços • MODUX",
             Width = 410, Height = 515,
             StartPosition = FormStartPosition.CenterParent,
             Font = new Font("Segoe UI", 10), BackColor = Color.White
@@ -289,7 +289,7 @@ internal sealed class AgendaMonthView : UserControl
         }
         container.Controls.Add(new Label
         {
-            Text = "Classificação pelo serviço do evento. As cores originais do Google Agenda não são alteradas.",
+            Text = "Eventos Google usam sua cor original. O catálogo define as cores dos serviços locais.",
             Width = 350, Height = 58, ForeColor = Color.FromArgb(60, 78, 80),
             Margin = new Padding(2, 13, 3, 3)
         });

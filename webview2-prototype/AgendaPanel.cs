@@ -74,7 +74,7 @@ internal sealed class AgendaPanel : UserControl
 
     private static Button MakeButton(string text) => new()
     {
-        Text = text, AutoSize = true, Height = 35, Padding = new Padding(10, 4, 10, 4),
+        Text = text, AutoSize = true, Height = 38, Padding = new Padding(14, 6, 14, 6),
         FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(0, 103, 44),
         ForeColor = Color.White, Margin = new Padding(5)
     };
@@ -87,6 +87,7 @@ internal sealed class AgendaPanel : UserControl
         serviceCatalog = new AgendaServiceCatalog(Authorized);
         workflowStore = new AgendaWorkflowStore(Authorized);
         Dock = DockStyle.Fill;
+        Padding = new Padding(20, 12, 20, 0);
         BackColor = Color.FromArgb(248, 250, 252);
         Font = new Font("Segoe UI", 10);
         var card = new FlowLayoutPanel
@@ -95,7 +96,7 @@ internal sealed class AgendaPanel : UserControl
             WrapContents = false, Height = 350, Padding = new Padding(28),
             BackColor = Color.White
         };
-        card.Controls.Add(new Label { Text = "Agenda Inteligente • São Bento",
+        card.Controls.Add(new Label { Text = "Agenda Inteligente • MODUX",
             AutoSize = true, Font = new Font("Segoe UI", 16, FontStyle.Bold),
             Margin = new Padding(5, 5, 5, 18) });
         card.Controls.Add(new Label
@@ -117,7 +118,7 @@ internal sealed class AgendaPanel : UserControl
         card.Controls.Add(signIn); card.Controls.Add(recoverButton);
         card.Controls.Add(new Label
         {
-            Text = "É necessário convidar a conta no Supabase Auth e vinculá-la à São Bento.",
+            Text = "Peça ao administrador da sua equipe para liberar seu acesso.",
             AutoSize = true, ForeColor = Color.FromArgb(71, 85, 105),
             Margin = new Padding(5, 15, 5, 0)
         });
@@ -136,7 +137,7 @@ internal sealed class AgendaPanel : UserControl
             AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Padding = new Padding(10, 13, 5, 5), BackColor = Color.White
         };
-        bar.Controls.Add(new Label { Text = "A partir de:", AutoSize = true, Margin = new Padding(6, 10, 5, 0) });
+        bar.Controls.Add(new Label { Text = "Período", AutoSize = true, Margin = new Padding(6, 10, 5, 0) });
         bar.Controls.Add(startDate); bar.Controls.Add(period);
         googleButton.BackColor = Color.FromArgb(24, 82, 139);
         async Task ConnectFeed()
@@ -219,7 +220,7 @@ internal sealed class AgendaPanel : UserControl
             ("Situação", 85), ("Telefone", 105), ("Endereço", 155)
         })
             grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = name, FillWeight = weight });
-        grid.ColumnHeadersHeight = 36; grid.RowTemplate.Height = 34;
+        grid.ColumnHeadersHeight = 40; grid.RowTemplate.Height = 38;
         grid.SelectionChanged += (_, _) => UpdateLinkButton();
         grid.CellDoubleClick += async (_, e) =>
         {
@@ -320,7 +321,7 @@ internal sealed class AgendaPanel : UserControl
             if (members.RootElement.GetArrayLength() == 0)
             {
                 Logout();
-                Status("Conta autenticada, mas sem permissão ativa para a Agenda São Bento.");
+                Status("Conta autenticada, mas sem permissão ativa para a Agenda MODUX.");
                 return;
             }
             companyId = members.RootElement[0].GetProperty("company_id").GetString();

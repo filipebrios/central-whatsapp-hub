@@ -10,9 +10,8 @@ namespace CentralWhatsApp.WebView2;
 
 public sealed class MainForm : Form
 {
-    private sealed record AccountInfo(string Id, string Name, string? AvatarData = null, int UnreadCount = 0);
     private sealed record UserPreferences(
-        string Theme = "Sistema",
+        string Theme = "Claro",
         string FontFamily = "Segoe UI",
         int InterfaceSize = 100,
         int WhatsAppZoom = 100);
@@ -97,6 +96,8 @@ public sealed class MainForm : Form
     private readonly Button addAccountButton = CreateToolbarButton("+ Adicionar conta");
     private readonly Button manageAccountsButton = CreateToolbarButton("⚙ Gerenciar contas");
     private readonly Button preferencesButton = CreateToolbarButton("◈ Preferências");
+    private readonly Button aboutButton = CreateToolbarButton("Sobre o MODUX");
+    private readonly Panel welcomePanel = new() { Dock = DockStyle.Fill, Tag = "modux-content" };
     private readonly Button collapseButton = CreateToolbarButton("◀");
     private readonly Button installButton = CreateToolbarButton("Instalar WaSeller nesta conta");
     private readonly Button reloadButton = CreateToolbarButton("Recarregar");
@@ -167,12 +168,16 @@ public sealed class MainForm : Form
         Margin = new Padding(12, 15, 8, 8)
     };
 
-    private readonly List<AccountInfo> accounts = [];
+    private readonly List<ModuxAccountInfo> accounts = [];
     private readonly Dictionary<string, Microsoft.Web.WebView2.WinForms.WebView2> browsers = [];
-    private AccountInfo? activeAccount;
+    private ModuxAccountInfo? activeAccount;
 
-    public MainForm()
+    public MainForm() : this(null, true) { }
+
+    // Isolated Windows smoke tests supply a temporary profile and skip browser/tray services.
+    internal MainForm(string? dataFolder, bool initializeServices)
     {
+        if (dataFolder is not null) appDataFolder = dataFolder;
         Text = $"MODUX {AppVersion} — Gestão Multicontas";
         Width = 1440;
         Height = 900;
@@ -182,41 +187,45 @@ public sealed class MainForm : Form
         brandLogo = LoadBrandLogo();
         var appIcon = LoadBrandIcon();
         if (appIcon is not null) Icon = appIcon;
-        ConfigureTrayIcon();
+        if (initializeServices) ConfigureTrayIcon();
 
         sidebar.Dock = DockStyle.Left;
         sidebar.Width = ExpandedSidebarWidth;
         sidebar.BackColor = Color.FromArgb(6, 12, 28);
         sidebar.Padding = new Padding(0, 10, 0, 0);
         brand.Dock = DockStyle.Top;
-        brand.Height = 55;
+        brand.Height = 76;
         brand.Text = "";
         brand.ForeColor = Color.White;
         brand.Font = new Font("Segoe UI", 12, FontStyle.Bold);
         brand.TextAlign = ContentAlignment.MiddleLeft;
         brand.Paint += DrawBrand;
         sidebarBottom.Dock = DockStyle.Bottom;
-        sidebarBottom.Height = 160;
+        sidebarBottom.Height = 206;
         sidebarBottom.Padding = new Padding(10, 4, 10, 8);
         manageAccountsButton.Dock = DockStyle.Top;
         manageAccountsButton.Height = 42;
         preferencesButton.Dock = DockStyle.Top;
         preferencesButton.Height = 42;
+        aboutButton.Dock = DockStyle.Top;
+        aboutButton.Height = 42;
         addAccountButton.Dock = DockStyle.Bottom;
         addAccountButton.Height = 42;
         sidebarBottom.Controls.Add(preferencesButton);
         sidebarBottom.Controls.Add(manageAccountsButton);
+        sidebarBottom.Controls.Add(aboutButton);
         sidebarBottom.Controls.Add(addAccountButton);
         sidebar.Controls.Add(accountsPanel);
         sidebar.Controls.Add(sidebarBottom);
         sidebar.Controls.Add(brand);
 
         toolbar.Dock = DockStyle.Top;
-        toolbar.Height = 64;
+        toolbar.Height = 76;
         toolbar.FlowDirection = FlowDirection.LeftToRight;
         toolbar.WrapContents = false;
         toolbar.BackColor = Color.FromArgb(11, 19, 43);
-        toolbar.Padding = new Padding(8, 4, 8, 4);
+        toolbar.Padding = new Padding(12, 10, 12, 8);
+        toolbar.AutoScroll = true;
         collapseButton.Width = 44;
         collapseButton.Padding = new Padding(4);
         collapseButton.AccessibleName = "Recolher ou abrir menu de contas";
@@ -232,10 +241,22 @@ public sealed class MainForm : Form
         toolbar.Controls.Add(installButton);
         toolbar.Controls.Add(reloadButton);
         toolbar.Controls.Add(clearCacheButton);
-        toolbar.Controls.Add(statusLabel);
+        statusLabel.AutoSize = false;
+        statusLabel.Dock = DockStyle.Bottom;
+        statusLabel.Height = 30;
+        statusLabel.Padding = new Padding(18, 6, 10, 0);
+        foreach (var button in new[] { collapseButton, installButton, reloadButton, clearCacheButton })
+            ModuxAppearance.Role(button, "chrome");
+        foreach (var button in new[] { addAccountButton, manageAccountsButton, preferencesButton, aboutButton })
+            ModuxAppearance.Role(button, "sidebar");
+        foreach (var label in new[] { activeMarkerLabel, activeNameLabel, activeDetailsLabel, activeChevronLabel, statusLabel })
+            label.Tag = "chrome-text";
+        BuildWelcome();
+        browserHost.Controls.Add(welcomePanel);
 
         var rightPanel = new Panel { Dock = DockStyle.Fill };
         rightPanel.Controls.Add(browserHost);
+        rightPanel.Controls.Add(statusLabel);
         rightPanel.Controls.Add(toolbar);
 
         Controls.Add(rightPanel);
@@ -251,6 +272,7 @@ public sealed class MainForm : Form
         activeAccountCard.Click += ShowAccountSwitcher;
         manageAccountsButton.Click += ManageAccounts;
         preferencesButton.Click += ShowPreferences;
+        aboutButton.Click += (_, _) => ShowAbout();
         addAccountButton.Click += AddAccount;
         installButton.Click += InstallExtension;
         reloadButton.Click += (_, _) => ActiveBrowser()?.CoreWebView2?.Reload();
@@ -262,6 +284,7 @@ public sealed class MainForm : Form
         };
         Shown += async (_, _) =>
         {
+            if (!initializeServices) return;
             try
             {
                 await Start();
@@ -282,7 +305,7 @@ public sealed class MainForm : Form
         };
         Activated += (_, _) => UpdateTaskbarBadge();
         FormClosing += HandleFormClosing;
-        HandleCreated += (_, _) => InitializeTaskbar();
+        HandleCreated += (_, _) => { if (initializeServices) InitializeTaskbar(); };
     }
 
     private static Button CreateToolbarButton(string text) => new()
@@ -386,11 +409,11 @@ public sealed class MainForm : Form
                 RestoreFromTray();
                 if (accounts.Count == 0)
                 {
-                    MessageBox.Show("Adicione uma conta do WhatsApp ao MODUX antes de abrir a mensagem.", "Criatta · MODUX");
+                    MessageBox.Show("Adicione uma conta do WhatsApp ao MODUX antes de abrir a mensagem.", "MODUX");
                     continue;
                 }
                 var agendaOrigin = request.Source == "saobento";
-                var origin = agendaOrigin ? "São Bento" : "Criatta";
+                var origin = agendaOrigin ? "Agenda" : "Integração Criatta";
                 var preferencePath = Path.Combine(appDataFolder, agendaOrigin ? "saobento-account-v1.txt" : "criatta-account-v2.txt");
                 string? preferred = null;
                 try { if (File.Exists(preferencePath)) preferred = File.ReadAllText(preferencePath); } catch { }
@@ -419,8 +442,8 @@ public sealed class MainForm : Form
                 var cancel = new Button { Text = "Cancelar", AutoSize = true, DialogResult = DialogResult.Cancel };
                 void UpdateComposeAccount()
                 {
-                    open.Enabled = accountBox.SelectedItem is AccountInfo;
-                    open.Text = accountBox.SelectedItem is AccountInfo choice ? $"Preparar em {choice.Name}" : "Selecione a conta";
+                    open.Enabled = accountBox.SelectedItem is ModuxAccountInfo;
+                    open.Text = accountBox.SelectedItem is ModuxAccountInfo choice ? $"Preparar em {choice.Name}" : "Selecione a conta";
                 }
                 accountBox.SelectedIndexChanged += (_, _) => UpdateComposeAccount();
                 UpdateComposeAccount();
@@ -428,7 +451,7 @@ public sealed class MainForm : Form
                 layout.Controls.Add(description); layout.Controls.Add(accountLabel); layout.Controls.Add(accountBox); layout.Controls.Add(recipient);
                 layout.Controls.Add(text); layout.Controls.Add(actions);
                 preview.Controls.Add(layout); preview.CancelButton = cancel;
-                if (preview.ShowDialog(this) != DialogResult.OK || accountBox.SelectedItem is not AccountInfo selected) continue;
+                if (preview.ShowDialog(this) != DialogResult.OK || accountBox.SelectedItem is not ModuxAccountInfo selected) continue;
                 if (string.IsNullOrWhiteSpace(text.Text) || text.Text.Length > ComposeRequest.MaxTextLength ||
                     text.Text.Any(c => char.IsControl(c) && c is not ('\n' or '\r' or '\t')))
                 { MessageBox.Show("Confira o texto da mensagem.", "MODUX"); continue; }
@@ -468,6 +491,7 @@ public sealed class MainForm : Form
         LoadPreferences();
         ApplyPreferences();
         RenderAccountButtons();
+        UpdateEmptyState();
         if (accounts.Count > 0 && composeRequests.Count == 0) await ActivateAccount(accounts[0]);
         Log("Inicialização concluída.");
     }
@@ -481,33 +505,116 @@ public sealed class MainForm : Form
         catch { }
     }
 
+    private void BuildWelcome()
+    {
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 3,
+            Padding = new Padding(28), BackColor = Color.Transparent, Tag = "canvas"
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 620));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+        var card = new FlowLayoutPanel
+        {
+            AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Width = 620,
+            FlowDirection = FlowDirection.TopDown, WrapContents = false,
+            Padding = new Padding(40), Margin = Padding.Empty, Tag = "card"
+        };
+        card.Controls.Add(new Label { Text = "M O D U X", AutoSize = true, Font = new Font("Segoe UI", 10, FontStyle.Bold),
+            ForeColor = ModuxAppearance.Muted, Margin = new Padding(0, 0, 0, 20) });
+        card.Controls.Add(new Label { Text = "Tudo no seu lugar.", AutoSize = true, Font = new Font("Segoe UI", 28, FontStyle.Bold),
+            Margin = new Padding(0, 0, 0, 16) });
+        card.Controls.Add(new Label { Text = "Suas conversas e sua rotina, em um só espaço.\nAdicione a primeira conta para começar.",
+            AutoSize = true, Font = new Font("Segoe UI", 12), Margin = new Padding(0, 0, 0, 28) });
+        var begin = CreateToolbarButton("+  Adicionar minha primeira conta");
+        begin.MinimumSize = new Size(290, 46); begin.Margin = new Padding(0, 0, 0, 24);
+        ModuxAppearance.Role(begin, "primary");
+        begin.Click += AddAccount;
+        card.Controls.Add(begin);
+        card.Controls.Add(new Label { Text = "Contas independentes. Organização sem distrações.", AutoSize = true,
+            ForeColor = ModuxAppearance.Muted, Font = new Font("Segoe UI", 9), Margin = new Padding(0, 0, 0, 28) });
+        var credit = new LinkLabel { Text = "Desenvolvido e disponibilizado por ARANY  ↗", AutoSize = true,
+            LinkColor = Color.FromArgb(100, 117, 186), ActiveLinkColor = Color.FromArgb(100, 117, 186),
+            LinkBehavior = LinkBehavior.HoverUnderline, Font = new Font("Segoe UI", 9), Margin = Padding.Empty };
+        credit.LinkClicked += (_, _) => OpenArany();
+        card.Controls.Add(credit);
+        layout.Controls.Add(card, 1, 1);
+        welcomePanel.Controls.Add(layout);
+    }
+
+    private void UpdateEmptyState()
+    {
+        var empty = accounts.Count == 0;
+        welcomePanel.Visible = empty && !showingAgenda;
+        installButton.Enabled = reloadButton.Enabled = clearCacheButton.Enabled = !empty && !showingAgenda;
+        if (!empty) return;
+        activeAccount = null;
+        activeAccountPicture.Image?.Dispose(); activeAccountPicture.Image = null;
+        activeMarkerLabel.Text = "SEU ESPAÇO DE TRABALHO";
+        activeNameLabel.Text = "Bem-vindo ao MODUX";
+        activeDetailsLabel.Text = "Adicione sua primeira conta";
+        statusLabel.Text = "Pronto para começar";
+        Text = $"MODUX {AppVersion} — Gestão Multicontas";
+        if (welcomePanel.Visible) welcomePanel.BringToFront();
+    }
+
+    private static void OpenArany()
+        => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://www.arany.com.br") { UseShellExecute = true });
+
+    private void ShowAbout()
+    {
+        using var about = CreateAboutDialog();
+        about.ShowDialog(this);
+    }
+
+    private Form CreateAboutDialog()
+    {
+        var about = new Form
+        {
+            Text = "Sobre o MODUX", Width = 580, Height = 500,
+            StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false, MinimizeBox = false, Font = CreateInterfaceFont(10)
+        };
+        var content = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false,
+            Padding = new Padding(36), AutoScroll = true
+        };
+        content.Controls.Add(new Label { Text = "MODUX", AutoSize = true, Font = CreateInterfaceFont(30, FontStyle.Bold), Margin = new Padding(0, 0, 0, 8) });
+        content.Controls.Add(new Label { Text = $"Versão {AppVersion}  ·  Windows", AutoSize = true, Margin = new Padding(0, 0, 0, 24) });
+        content.Controls.Add(new Label { Text = "Um espaço para organizar suas conversas,\nsuas contas e sua rotina de trabalho.",
+            AutoSize = true, Margin = new Padding(0, 0, 0, 28) });
+        content.Controls.Add(new Label { Text = "Desenvolvido e disponibilizado por ARANY", AutoSize = true,
+            Font = CreateInterfaceFont(11, FontStyle.Bold), Margin = new Padding(0, 0, 0, 10) });
+        var website = new LinkLabel { Text = "www.arany.com.br  ↗", AutoSize = true, LinkBehavior = LinkBehavior.HoverUnderline,
+            LinkColor = Color.FromArgb(100, 117, 186), Margin = new Padding(0, 0, 0, 28), AccessibleName = "Visitar o site da ARANY" };
+        website.LinkClicked += (_, _) => OpenArany();
+        content.Controls.Add(website);
+        content.Controls.Add(new Label { Text = "Tecnologia com clareza. Mais espaço para o que importa.",
+            AutoSize = true, Font = CreateInterfaceFont(9), Margin = Padding.Empty });
+        var close = CreateToolbarButton("Fechar"); close.DialogResult = DialogResult.OK;
+        ModuxAppearance.Role(close, "primary");
+        var footer = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 66, Padding = new Padding(18, 8, 18, 8), FlowDirection = FlowDirection.RightToLeft };
+        footer.Controls.Add(close);
+        about.Controls.Add(content); about.Controls.Add(footer); about.AcceptButton = close; about.CancelButton = close;
+        return about;
+    }
+
     private void LoadAccounts()
     {
-        try
+        try { accounts.AddRange(ModuxAccountStorage.Load(appDataFolder)); }
+        catch (Exception error)
         {
-            if (File.Exists(AccountsFile))
-            {
-                var saved = JsonSerializer.Deserialize<List<AccountInfo>>(File.ReadAllText(AccountsFile));
-                if (saved is { Count: > 0 }) accounts.AddRange(saved);
-            }
-        }
-        catch
-        {
-            // Se o arquivo local estiver corrompido, preservamos a sessão original como ponto de recuperação.
-        }
-
-        if (accounts.Count == 0)
-        {
-            accounts.Add(new AccountInfo("waseller-account", "São Bento + WaSeller"));
-            SaveAccounts();
+            Log("Falha ao ler contas: " + error.Message);
+            MessageBox.Show(error.Message, "Contas do MODUX", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 
-    private void SaveAccounts()
-    {
-        Directory.CreateDirectory(appDataFolder);
-        File.WriteAllText(AccountsFile, JsonSerializer.Serialize(accounts, new JsonSerializerOptions { WriteIndented = true }));
-    }
+    private void SaveAccounts() => ModuxAccountStorage.Save(appDataFolder, accounts);
 
     private void LoadPreferences()
     {
@@ -533,6 +640,8 @@ public sealed class MainForm : Form
         addAccountButton.Text = sidebarCollapsed ? "+" : "+ Adicionar conta";
         manageAccountsButton.Text = sidebarCollapsed ? "⚙" : "⚙ Gerenciar contas";
         preferencesButton.Text = sidebarCollapsed ? "◈" : "◈ Preferências";
+        aboutButton.Text = sidebarCollapsed ? "i" : "Sobre o MODUX";
+        aboutButton.AccessibleName = "Sobre o MODUX e a ARANY";
         collapseButton.Text = sidebarCollapsed ? "☰" : "◀";
         RenderAccountButtons();
     }
@@ -575,7 +684,7 @@ public sealed class MainForm : Form
             item.Click += async (_, _) =>
             {
                 menu.Close();
-                if (item.Tag is AccountInfo selected) await ActivateAccount(selected);
+                if (item.Tag is ModuxAccountInfo selected) await ActivateAccount(selected);
             };
             menu.Items.Add(item);
         }
@@ -588,6 +697,7 @@ public sealed class MainForm : Form
 
     private void RenderAccountButtons()
     {
+        foreach (Control old in accountsPanel.Controls.Cast<Control>().ToArray()) old.Dispose();
         accountsPanel.Controls.Clear();
         foreach (var account in accounts.ToArray())
         {
@@ -602,23 +712,24 @@ public sealed class MainForm : Form
                 Padding = sidebarCollapsed ? new Padding(0) : new Padding(8, 0, 8, 0),
                 FlatStyle = FlatStyle.Flat,
                 Font = CreateInterfaceFont(9f, FontStyle.Bold),
-                ForeColor = IsLightTheme() ? Color.FromArgb(11, 19, 43) : Color.White,
+                ForeColor = ModuxAppearance.Text,
                 BackColor = activeAccount?.Id == account.Id
-                    ? (IsLightTheme() ? Color.FromArgb(224, 242, 254) : Color.FromArgb(25, 45, 55))
-                    : (IsLightTheme() ? Color.White : Color.FromArgb(13, 22, 29)),
+                    ? ModuxAppearance.Selection : ModuxAppearance.Surface,
                 Margin = new Padding(0, 0, 0, 8),
                 Tag = account,
                 Image = BuildAccountIcon(account)
             };
-            button.FlatAppearance.BorderColor = activeAccount?.Id == account.Id ? Color.FromArgb(6, 182, 212) : Color.FromArgb(29, 78, 216);
+            ModuxAppearance.Role(button, "account");
+            button.FlatAppearance.BorderColor = activeAccount?.Id == account.Id ? ModuxAppearance.Accent : ModuxAppearance.Border;
             button.Click += async (_, _) => await ActivateAccount(account);
             accountsPanel.Controls.Add(button);
         }
     }
 
-    private async Task ActivateAccount(AccountInfo account)
+    private async Task ActivateAccount(ModuxAccountInfo account)
     {
         activeAccount = account;
+        welcomePanel.Visible = false;
         RenderAccountButtons();
 
         foreach (var existing in browsers.Values.ToArray()) existing.Visible = false;
@@ -694,7 +805,7 @@ public sealed class MainForm : Form
         _ = CaptureAvatarWithRetries(account.Id, browser);
     }
 
-    private Image BuildAccountIcon(AccountInfo account)
+    private Image BuildAccountIcon(ModuxAccountInfo account)
     {
         using var avatar = LoadAvatar(account);
         var icon = new Bitmap(52, 52);
@@ -736,7 +847,7 @@ public sealed class MainForm : Form
         return icon;
     }
 
-    private Image LoadAvatar(AccountInfo account)
+    private Image LoadAvatar(ModuxAccountInfo account)
     {
         try
         {
@@ -798,7 +909,7 @@ public sealed class MainForm : Form
             using var subtitleFont = CreateInterfaceFont(7.5f, FontStyle.Regular);
             using var titleBrush = new SolidBrush(IsLightTheme() ? Color.FromArgb(11, 19, 43) : Color.White);
             e.Graphics.DrawString("MODUX", titleFont, titleBrush, logoX + 53, logoY + 4);
-            using var cyan = new SolidBrush(Color.FromArgb(6, 182, 212));
+            using var cyan = new SolidBrush(ModuxAppearance.Muted);
             e.Graphics.DrawString($"GESTÃO MULTICONTAS  •  v{AppVersion}", subtitleFont, cyan, logoX + 54, logoY + 27);
         }
     }
@@ -933,9 +1044,10 @@ public sealed class MainForm : Form
 
     private void UpdateActiveAccountHeader()
     {
-        if (activeAccount is null) return;
+        if (activeAccount is null) { UpdateEmptyState(); return; }
         var current = accounts.FirstOrDefault(item => item.Id == activeAccount.Id) ?? activeAccount;
         activeAccount = current;
+        activeMarkerLabel.Text = "EM USO AGORA";
         activeAccountPicture.Image?.Dispose();
         activeAccountPicture.Image = BuildAccountIcon(current);
         activeNameLabel.Text = current.Name;
@@ -975,11 +1087,12 @@ public sealed class MainForm : Form
     private void ApplyPreferences()
     {
         var light = IsLightTheme();
-        var chrome = light ? Color.FromArgb(241, 245, 249) : Color.FromArgb(11, 19, 43);
-        var sidebarColor = light ? Color.FromArgb(226, 232, 240) : Color.FromArgb(6, 12, 28);
-        var card = light ? Color.White : Color.FromArgb(16, 29, 58);
-        var primaryText = light ? Color.FromArgb(11, 19, 43) : Color.White;
-        var secondaryText = light ? Color.FromArgb(71, 85, 105) : Color.FromArgb(156, 163, 175);
+        ModuxAppearance.Configure(!light);
+        var chrome = ModuxAppearance.Header;
+        var sidebarColor = ModuxAppearance.Field;
+        var card = ModuxAppearance.HeaderField;
+        var primaryText = Color.FromArgb(245, 245, 247);
+        var secondaryText = Color.FromArgb(179, 184, 202);
 
         BackColor = chrome;
         toolbar.BackColor = chrome;
@@ -989,9 +1102,11 @@ public sealed class MainForm : Form
         activeAccountCard.BackColor = card;
         activeNameLabel.ForeColor = primaryText;
         activeDetailsLabel.ForeColor = secondaryText;
-        statusLabel.ForeColor = secondaryText;
-        activeMarkerLabel.ForeColor = Color.FromArgb(6, 182, 212);
-        activeChevronLabel.ForeColor = Color.FromArgb(6, 182, 212);
+        statusLabel.ForeColor = ModuxAppearance.Muted;
+        statusLabel.BackColor = ModuxAppearance.Canvas;
+        activeMarkerLabel.ForeColor = Color.FromArgb(198, 206, 233);
+        activeChevronLabel.ForeColor = Color.FromArgb(198, 206, 233);
+        browserHost.BackColor = ModuxAppearance.Canvas;
 
         Font = CreateInterfaceFont(9f);
         activeMarkerLabel.Font = CreateInterfaceFont(7f, FontStyle.Bold);
@@ -1000,17 +1115,16 @@ public sealed class MainForm : Form
         statusLabel.Font = CreateInterfaceFont(9f);
         activeChevronLabel.Font = CreateInterfaceFont(12f, FontStyle.Bold);
 
-        foreach (var button in new[] { collapseButton, installButton, reloadButton, clearCacheButton, addAccountButton, manageAccountsButton, preferencesButton })
+        foreach (var button in new[] { collapseButton, installButton, reloadButton, clearCacheButton, addAccountButton, manageAccountsButton, preferencesButton, aboutButton })
         {
-            button.Font = CreateInterfaceFont(9f, FontStyle.Bold);
-            button.BackColor = Color.FromArgb(29, 78, 216);
-            button.ForeColor = Color.White;
+            button.Font = CreateInterfaceFont(9f, FontStyle.Regular);
+            button.MinimumSize = new Size(0, 38);
         }
         foreach (var browser in browsers.Values.ToArray())
             browser.ZoomFactor = preferences.WhatsAppZoom / 100d;
 
-        ModuxAppearance.Configure(!light);
         brand.Invalidate();
+        UpdateAgendaSidebar();
         RenderAccountButtons();
         UpdateActiveAccountHeader();
     }
@@ -1389,17 +1503,17 @@ public sealed class MainForm : Form
         var close = new Button { Text = "Fechar", Left = 510, Top = 292, Width = 105, Height = 38, DialogResult = DialogResult.OK };
         void RefreshList()
         {
-            var selectedId = list.SelectedItem is AccountInfo selected ? selected.Id : null;
+            var selectedId = list.SelectedItem is ModuxAccountInfo selected ? selected.Id : null;
             list.DataSource = null;
             list.DataSource = accounts.ToList();
-            list.DisplayMember = nameof(AccountInfo.Name);
+            list.DisplayMember = nameof(ModuxAccountInfo.Name);
             if (selectedId is not null)
                 list.SelectedItem = accounts.FirstOrDefault(item => item.Id == selectedId);
             if (list.SelectedIndex < 0 && list.Items.Count > 0) list.SelectedIndex = 0;
         }
         rename.Click += (_, _) =>
         {
-            if (list.SelectedItem is not AccountInfo selected) return;
+            if (list.SelectedItem is not ModuxAccountInfo selected) return;
             var newName = PromptForText("Renomear conta", "Novo nome da conta:", selected.Name);
             if (string.IsNullOrWhiteSpace(newName)) return;
             var index = accounts.FindIndex(item => item.Id == selected.Id);
@@ -1409,7 +1523,7 @@ public sealed class MainForm : Form
         };
         changePhoto.Click += (_, _) =>
         {
-            if (list.SelectedItem is not AccountInfo selected) return;
+            if (list.SelectedItem is not ModuxAccountInfo selected) return;
             using var picker = new OpenFileDialog
             {
                 Title = "Escolher foto da conta",
@@ -1443,7 +1557,7 @@ public sealed class MainForm : Form
         };
         refreshPhoto.Click += async (_, _) =>
         {
-            if (list.SelectedItem is not AccountInfo selected) return;
+            if (list.SelectedItem is not ModuxAccountInfo selected) return;
             if (activeAccount?.Id != selected.Id)
             {
                 MessageBox.Show("Abra esta conta no menu lateral e tente novamente.", "MODUX");
@@ -1455,7 +1569,7 @@ public sealed class MainForm : Form
         };
         remove.Click += async (_, _) =>
         {
-            if (list.SelectedItem is not AccountInfo selected) return;
+            if (list.SelectedItem is not ModuxAccountInfo selected) return;
             var confirmation = MessageBox.Show(
                 $"Remover “{selected.Name}” do MODUX?\n\nA conta sairá do menu. Os dados locais da sessão serão preservados.",
                 "Remover conta", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
@@ -1469,7 +1583,7 @@ public sealed class MainForm : Form
             if (activeAccount?.Id == selected.Id) activeAccount = null;
             SaveAccounts(); RefreshList(); RenderAccountButtons();
             if (activeAccount is null && accounts.Count > 0) await ActivateAccount(accounts[0]);
-            else if (accounts.Count == 0) statusLabel.Text = "Nenhuma conta adicionada";
+            else if (accounts.Count == 0) UpdateEmptyState();
         };
         dialog.Controls.AddRange([title, list, rename, changePhoto, refreshPhoto, remove, close]);
         dialog.AcceptButton = close;
@@ -1501,7 +1615,7 @@ public sealed class MainForm : Form
         var name = PromptForAccountName();
         if (string.IsNullOrWhiteSpace(name)) return;
 
-        var account = new AccountInfo($"account-{Guid.NewGuid():N}", name.Trim());
+        var account = new ModuxAccountInfo($"account-{Guid.NewGuid():N}", name.Trim());
         accounts.Add(account);
         SaveAccounts();
         RenderAccountButtons();
@@ -1521,7 +1635,7 @@ public sealed class MainForm : Form
             MinimizeBox = false
         };
         var label = new Label { Text = "Nome para identificar a conta:", Left = 20, Top = 20, Width = 350 };
-        var input = new TextBox { Left = 20, Top = 50, Width = 360, PlaceholderText = "Ex.: São Bento Mobile" };
+        var input = new TextBox { Left = 20, Top = 50, Width = 360, PlaceholderText = "Ex.: Atendimento ou Pessoal" };
         var confirm = new Button { Text = "Adicionar", DialogResult = DialogResult.OK, Left = 275, Top = 88, Width = 105 };
         var cancel = new Button { Text = "Cancelar", DialogResult = DialogResult.Cancel, Left = 170, Top = 88, Width = 95 };
         dialog.Controls.AddRange([label, input, cancel, confirm]);

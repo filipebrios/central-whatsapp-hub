@@ -23,7 +23,7 @@ internal sealed class AgendaWorkflowDialog : Form
     internal AgendaWorkflowDialog(AgendaWorkflowStore store, string company, bool admin, Func<AgendaWorkItem, Task>? validateSchedule = null)
     {
         this.store = store; this.company = company; this.admin = admin; this.validateSchedule = validateSchedule;
-        Text = "Pendências, lembretes e pós-venda • São Bento";
+        Text = "Pendências, lembretes e pós-venda • MODUX";
         Width = 1050; Height = 620; MinimumSize = new Size(830, 480);
         StartPosition = FormStartPosition.CenterParent; Font = new Font("Segoe UI", 10);
         var heading = new Label
@@ -153,10 +153,10 @@ internal sealed class AgendaWorkflowDialog : Form
     {
         if (busy || !admin) return;
         using var prompt = new Form
-        { Text = "Link oficial de avaliações da São Bento", Width = 640, Height = 210, StartPosition = FormStartPosition.CenterParent, Font = Font };
+        { Text = "Link oficial de avaliações da sua empresa", Width = 640, Height = 210, StartPosition = FormStartPosition.CenterParent, Font = Font };
         var url = new TextBox { Dock = DockStyle.Top, PlaceholderText = "https://...", MaxLength = 1200 };
         var save = new Button { Text = "Salvar convite para a equipe", Dock = DockStyle.Bottom, Height = 40, DialogResult = DialogResult.OK };
-        var hint = new Label { Text = "Cole o link oficial de avaliações Google da São Bento. O convite fica disponível após registrar nota a partir de 8.", Dock = DockStyle.Top, Height = 60, Padding = new Padding(10) };
+        var hint = new Label { Text = "Cole o link oficial de avaliações Google da sua empresa. O convite fica disponível após registrar nota a partir de 8.", Dock = DockStyle.Top, Height = 60, Padding = new Padding(10) };
         prompt.Controls.Add(url); prompt.Controls.Add(hint); prompt.Controls.Add(save);
         if (prompt.ShowDialog(this) != DialogResult.OK) return;
         await Run(async () => { await store.SaveReviewTemplate(company, url.Text.Trim()); await LoadItems(); });

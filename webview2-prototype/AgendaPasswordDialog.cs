@@ -38,7 +38,7 @@ internal sealed class AgendaPasswordDialog : Form
 
     internal AgendaPasswordDialog(string currentEmail)
     {
-        Text = "Definir senha • Agenda São Bento";
+        Text = "Definir senha • Agenda MODUX";
         Width = 540;
         Height = 550;
         MinimumSize = MaximumSize = Size;
@@ -196,7 +196,7 @@ internal sealed class AgendaPasswordDialog : Form
             confirmBox.Clear();
             codeBox.Clear();
             MessageBox.Show(this, "Senha definida com sucesso! Volte à Agenda e entre com seu e-mail e a nova senha.",
-                "Agenda São Bento", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                "Agenda MODUX", MessageBoxButtons.OK, MessageBoxIcon.Information);
             DialogResult = DialogResult.OK;
             Close();
         }

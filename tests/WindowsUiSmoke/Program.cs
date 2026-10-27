@@ -63,9 +63,88 @@ internal static class Program
             capture.Save("ui-smoke-output/editor-tipo-" + (dark ? "escuro" : "claro") + ".png");
         }
         editor.Close();
+        CheckPublicFirstRun(assembly);
         form.Close();
         Console.WriteLine("PASS: painel Windows inicia, aplica temas, preserva cor de serviço e mantém grade operacional.");
         return 0;
+    }
+
+    private static void CheckPublicFirstRun(Assembly assembly)
+    {
+        var temporary = Path.Combine(Path.GetTempPath(), "modux-public-smoke-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temporary);
+        try
+        {
+            var storage = assembly.GetType("CentralWhatsApp.WebView2.ModuxAccountStorage", true)!;
+            var load = storage.GetMethod("Load", BindingFlags.Static | BindingFlags.NonPublic)!;
+            object[] Read(string path) => ((System.Collections.IEnumerable)load.Invoke(null, [path])!).Cast<object>().ToArray();
+            if (Read(temporary).Length != 0 || File.Exists(Path.Combine(temporary, "accounts.json")))
+                throw new Exception("Instalação nova criou conta ou nome predefinido.");
+            var legacy = Path.Combine(temporary, "legacy");
+            Directory.CreateDirectory(Path.Combine(legacy, "waseller-account"));
+            File.WriteAllText(Path.Combine(legacy, "waseller-account", "session-sentinel"), "preserve");
+            var recovered = Read(legacy);
+            if (recovered.Length != 1 || recovered[0].GetType().GetProperty("Id")!.GetValue(recovered[0]) as string != "waseller-account")
+                throw new Exception("Sessão da versão antiga não pode ser recuperada.");
+            var emptyFile = Path.Combine(legacy, "accounts.json");
+            File.WriteAllText(emptyFile, "[]");
+            if (Read(legacy).Length != 0) throw new Exception("Conta removida reapareceu a partir do perfil preservado.");
+            var existing = Path.Combine(temporary, "existing"); Directory.CreateDirectory(existing);
+            var file = Path.Combine(existing, "accounts.json");
+            const string accounts = """[{"Id":"waseller-account","Name":"Atendimento"},{"Id":"account-fixture","Name":"Pessoal"}]""";
+            File.WriteAllText(file, accounts);
+            if (Read(existing).Length != 2 || File.ReadAllText(file) != accounts)
+                throw new Exception("Atualização perdeu ou reescreveu as contas existentes.");
+            var corrupt = Path.Combine(temporary, "corrupt"); Directory.CreateDirectory(corrupt);
+            var corruptFile = Path.Combine(corrupt, "accounts.json"); File.WriteAllText(corruptFile, "{broken");
+            try { Read(corrupt); throw new Exception("Cadastro corrompido foi aceito."); }
+            catch (TargetInvocationException error) when (error.InnerException is InvalidOperationException) { }
+            if (File.ReadAllText(corruptFile) != "{broken" || Directory.GetFiles(corrupt, "accounts-recovery-*.json").Length != 1)
+                throw new Exception("Cadastro corrompido não foi preservado para recuperação.");
+
+            using var main = (Form)Activator.CreateInstance(typeof(MainForm), BindingFlags.Instance | BindingFlags.NonPublic,
+                null, [temporary, false], null)!;
+            var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            typeof(MainForm).GetMethod("LoadAccounts", flags)!.Invoke(main, null);
+            typeof(MainForm).GetMethod("ApplyPreferences", flags)!.Invoke(main, null);
+            main.Show(); Pump();
+            var welcome = (Control)typeof(MainForm).GetField("welcomePanel", flags)!.GetValue(main)!;
+            var aboutButton = (Control)typeof(MainForm).GetField("aboutButton", flags)!.GetValue(main)!;
+            if (!welcome.Visible || !aboutButton.Visible || !aboutButton.Enabled ||
+                Descendants(main).Any(c => c.Text.Contains("São Bento", StringComparison.OrdinalIgnoreCase)))
+                throw new Exception("Primeira abertura não ficou neutra ou o botão Sobre desapareceu.");
+            Capture(main, "primeira-abertura-arany");
+            main.Size = new Size(1024, 640); Pump(); Capture(main, "primeira-abertura-1024");
+            main.Size = new Size(1440, 900);
+            typeof(MainForm).GetMethod("ToggleSidebar", flags)!.Invoke(main, null); Pump();
+            if (!aboutButton.Visible || aboutButton.Width < 35) throw new Exception("Sobre não está acessível no menu recolhido.");
+            Capture(main, "primeira-abertura-menu-recolhido");
+            using var about = (Form)typeof(MainForm).GetMethod("CreateAboutDialog", flags)!.Invoke(main, null)!;
+            about.Show(); Pump();
+            var text = string.Join("\n", Descendants(about).Select(c => c.Text));
+            if (!text.Contains("Desenvolvido e disponibilizado por ARANY") || !text.Contains("www.arany.com.br") || !text.Contains("Versão 1.9.0"))
+                throw new Exception("Créditos, site ou versão ausentes do Sobre.");
+            Capture(about, "sobre-arany"); about.Close();
+            if (File.Exists(Path.Combine(temporary, "accounts.json"))) throw new Exception("Primeira abertura salvou conta predefinida.");
+            Console.WriteLine("PASS: instalação nova vazia, atualização preserva contas, perfil legado recuperável, lista removida não reaparece, Sobre/ARANY e layout 1024.");
+        }
+        finally { Directory.Delete(temporary, true); }
+    }
+
+    private static IEnumerable<Control> Descendants(Control parent)
+    {
+        foreach (Control child in parent.Controls)
+        {
+            yield return child;
+            foreach (var nested in Descendants(child)) yield return nested;
+        }
+    }
+
+    private static void Capture(Form form, string name)
+    {
+        using var image = new Bitmap(form.Width, form.Height);
+        form.DrawToBitmap(image, new Rectangle(Point.Empty, form.Size));
+        image.Save("ui-smoke-output/" + name + ".png");
     }
     private static void Pump()
     {

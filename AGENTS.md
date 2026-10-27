@@ -61,6 +61,8 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- **27/10 — apresentação pública solicitada:** layout do aplicativo inspirado no site `filipebrios/arany/src/styles.css` (cabeçalho grafite #202125, superfícies #fafafa/#f0f0f3, lavanda, cantos arredondados). Primeira instalação sem conta/nome pré-criado; sessões e nomes existentes preservados ao atualizar. Interface da Agenda neutralizada; backend continua protegido por autorização da equipe, sem ativação pública de cadastros. Sobre mostra versão, crédito ARANY e site oficial. Em validação Windows; sem novo instalador nesta etapa.
+
 - **27/10 — feedback real da beta:** usuário conseguiu login e ativou Google API operacional no Windows (captura: 257 eventos Google editáveis, sem iCal duplicado). Relatou cores divergentes e pediu seleção explícita de serviço/evento. Correção em desenvolvimento: paleta Google dinâmica e cor herdada do calendário; seletor no editor Google com metadado privado, sem alterar títulos nem recolorir eventos por leitura. CI Windows #40494905388 passou (testes C#/HTTP, build principal, smoke e verificador isolado); capturas do seletor claro/escuro revisadas. Nenhum novo instalador publicado.
 
 - **26/10 — beta consolidada PUBLICADA:** release `modux-v1.9.0-beta1`, Windows x64, instalador `MODUX-Setup-1.9.0.exe` (51.268.369 bytes), commit do pacote `bdc0e6fd987d1d36dc417a49a4bdd9ed08e9aff9`. CI #40376455340 concluiu com sucesso todos os testes, smoke Windows, geração, instalação/desinstalação com perfil fictício, download dos assets e SHA-256. Release não está em rascunho e é prerelease. SHA-256 EXE: `90fec62ae89840ee85d68aceaa061a3944e32cadd1cae0862560d8ba38392bff`.
@@ -137,6 +139,8 @@ Requisitos permanentes:
 - Alterações atribuídas ao Manus não estão no repositório conhecido.
 
 ## Pendências priorizadas
+
+- Validar primeira abertura limpa, preservação de contas/perfil antigo, tela Sobre/ARANY, layout 1024 e capturas clara/escura. Consolidar com cores/tipo de evento antes da próxima entrega; não anunciar distribuição geral da Agenda como SaaS (provisionamento de equipes não faz parte desta mudança).
 
 - Correção das cores Google e seletor de tipo passou no CI #40494905388 e teve capturas revisadas; consolidar com demais feedbacks antes de outro instalador. Acabamento Apple completo permanece pendente; tema/arredondamento nativo da beta não equivale ao redesign completo.
 
@@ -304,6 +308,13 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-27 — visual ARANY, primeira abertura neutra e Sobre
+
+- Pedido explícito do usuário substitui a antiga predominância azul/verde na interface: mantém logo MODUX, aplica cabeçalho grafite, superfícies neutras, seleção lavanda, botões arredondados, respiro na Agenda e aparência consistente em formulários. Conteúdo WhatsApp/WebView2 não é reestilizado.
+- Removido seed `São Bento + WaSeller`, exemplos comerciais e nomes fixos em telas/títulos. Instalação nova abre boas-vindas e primeira conta explícita. Atualização lê nomes/IDs originais, respeita lista vazia e mantém pastas de sessão; perfil legado real sem cadastro tem recuperação com rótulo neutro. Cadastro ilegível recebe cópia local antes de qualquer novo salvamento.
+- Botão Sobre acessível no menu expandido/recolhido: versão Windows, Desenvolvido e disponibilizado por ARANY, www.arany.com.br e apresentação do produto. Instalador/executável identificam ARANY como desenvolvedora, mantendo AppId/diretórios para atualizar sem perder sessões.
+- Smoke Windows expandido para primeira abertura sem navegadores/rede, contas existentes sem regravação, perfil legado, lista vazia, corrupção preservada, interface 1024 e créditos. Aguardar CI e revisão das capturas; nenhum novo instalador publicado ainda.
 
 ### 2026-10-27 — cores originais Google e tipo explícito de evento
 

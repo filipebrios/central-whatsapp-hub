@@ -238,13 +238,13 @@ internal sealed class AgendaWorkflowStore(
             url.UserInfo.Length != 0 || !url.IsDefaultPort || value.Length > 1200 ||
             !(url.Host == "google.com" || url.Host.EndsWith(".google.com", StringComparison.OrdinalIgnoreCase) ||
               url.Host is "g.page" or "maps.app.goo.gl"))
-            throw new InvalidOperationException("Use o link HTTPS oficial de avaliações Google da São Bento.");
+            throw new InvalidOperationException("Use o link HTTPS oficial de avaliações Google da sua empresa.");
         using var existing = await authorized(HttpMethod.Get,
             "rest/v1/agenda_message_templates?select=key,updated_at&company_id=eq." + Uri.EscapeDataString(companyId) +
             "&key=eq.avaliacao_google", null);
         Check(existing);
         using var previous = JsonDocument.Parse(await existing.Content.ReadAsStringAsync());
-        var body = "Olá, {cliente}! Obrigado pelo retorno! Se desejar, deixe também sua avaliação da São Bento no Google: " + url.AbsoluteUri;
+        var body = "Olá, {cliente}! Obrigado pelo retorno! Se desejar, deixe também sua avaliação no Google: " + url.AbsoluteUri;
         var path = "rest/v1/agenda_message_templates";
         object data;
         var method = HttpMethod.Post;

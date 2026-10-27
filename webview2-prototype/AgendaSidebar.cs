@@ -14,12 +14,12 @@ public sealed partial class MainForm
     private readonly Button agendaShortcutButton = new()
     {
         Dock = DockStyle.Fill,
-        Text = "▦  Agenda São Bento",
+        Text = "▦  Agenda",
         FlatStyle = FlatStyle.Flat,
         Font = new Font("Segoe UI", 10f, FontStyle.Bold),
         ForeColor = Color.White,
         BackColor = Color.FromArgb(0, 103, 44),
-        AccessibleName = "Abrir Agenda São Bento",
+        AccessibleName = "Abrir Agenda",
         Cursor = Cursors.Hand
     };
     private AgendaPanel? agendaPanel;
@@ -27,6 +27,7 @@ public sealed partial class MainForm
 
     private void ConfigureAgendaFeature()
     {
+        ModuxAppearance.Role(agendaShortcutButton, "sidebar");
         agendaShortcutPanel.Controls.Add(agendaShortcutButton);
         agendaShortcutButton.Click += (_, _) => ShowAgendaFeature();
         collapseButton.Click += (_, _) => UpdateAgendaSidebar();
@@ -40,16 +41,13 @@ public sealed partial class MainForm
         agendaShortcutPanel.Padding = sidebarCollapsed
             ? new Padding(7, 10, 7, 10)
             : new Padding(10, 8, 10, 8);
-        agendaShortcutButton.Text = sidebarCollapsed ? "▦" : "▦  Agenda São Bento";
+        agendaShortcutButton.Text = sidebarCollapsed ? "▦" : "▦  Agenda";
         agendaShortcutButton.Font = CreateInterfaceFont(sidebarCollapsed ? 16f : 10f, FontStyle.Bold);
-        agendaShortcutButton.BackColor = showingAgenda
-            ? Color.FromArgb(0, 130, 51)
-            : Color.FromArgb(0, 103, 44);
+        agendaShortcutButton.BackColor = showingAgenda ? ModuxAppearance.Selection : ModuxAppearance.Surface;
+        agendaShortcutButton.ForeColor = ModuxAppearance.Text;
         agendaShortcutButton.FlatAppearance.BorderColor =
-            showingAgenda ? Color.FromArgb(168, 207, 69) : Color.FromArgb(0, 103, 44);
-        agendaShortcutPanel.BackColor = IsLightTheme()
-            ? Color.FromArgb(226, 232, 240)
-            : Color.FromArgb(6, 12, 28);
+            showingAgenda ? ModuxAppearance.Accent : ModuxAppearance.Border;
+        agendaShortcutPanel.BackColor = ModuxAppearance.Field;
     }
 
     private void ShowAgendaFeature()
@@ -63,13 +61,14 @@ public sealed partial class MainForm
         if (!browserHost.Controls.Contains(agendaPanel))
             browserHost.Controls.Add(agendaPanel);
         showingAgenda = true;
+        welcomePanel.Visible = false;
         agendaPanel.Visible = true;
         agendaPanel.BringToFront();
         installButton.Enabled = false;
         reloadButton.Enabled = false;
         clearCacheButton.Enabled = false;
         UpdateAgendaSidebar();
-        statusLabel.Text = "Agenda São Bento • acesso protegido • dados compartilhados";
+        statusLabel.Text = "Agenda • acesso protegido • dados da sua equipe";
     }
 
     private void ShowWhatsAppFeature()
@@ -77,9 +76,7 @@ public sealed partial class MainForm
         if (!showingAgenda) return;
         showingAgenda = false;
         if (agendaPanel is not null) agendaPanel.Visible = false;
-        installButton.Enabled = true;
-        reloadButton.Enabled = true;
-        clearCacheButton.Enabled = true;
+        UpdateEmptyState();
         UpdateAgendaSidebar();
     }
 }

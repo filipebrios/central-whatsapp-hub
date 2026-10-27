@@ -68,7 +68,7 @@ internal sealed class AgendaAppointmentDialog : Form
             availableCatalog.Clear();
             availableCatalog.AddRange(sharedServices.Where(x => x.Active).Select(x => (x.Id, x.Label)));
         }
-        Text = source is null ? "Novo agendamento • São Bento" : "Editar atendimento • São Bento";
+        Text = source is null ? "Novo agendamento • MODUX" : "Editar atendimento • MODUX";
         googleSync.Enabled = googleSync.Checked = allowGoogle && source is null;
         googleSync.Visible = source is null;
         Width = 680; Height = 765;
@@ -206,20 +206,20 @@ internal sealed class AgendaAppointmentDialog : Form
             string.IsNullOrWhiteSpace(address.Text) || (selected.Count == 0 && custom.Length == 0 && !(original is not null && !serviceChanged && original.Service.Length > 0)))
         {
             MessageBox.Show(this, "Preencha cliente, WhatsApp, endereço e ao menos um serviço.",
-                "Agenda São Bento", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                "Agenda MODUX", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
         if (!string.IsNullOrWhiteSpace(email.Text) &&
             (!email.Text.Contains('@') || !email.Text.Split('@').Last().Contains('.')))
         {
             MessageBox.Show(this, "Confira o e-mail ou deixe o campo vazio.",
-                "Agenda São Bento", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                "Agenda MODUX", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
         if (custom.Length > 120 || notes.Text.Length > 4000)
         {
             MessageBox.Show(this, "O texto de serviço personalizado ou observações está muito longo.",
-                "Agenda São Bento", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                "Agenda MODUX", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
         if (appointmentStatus.SelectedItem?.ToString() == "concluido" && completedDay.Value.Date > DateTime.Today)

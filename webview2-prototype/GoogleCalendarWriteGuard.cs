@@ -29,7 +29,7 @@ internal static class GoogleCalendarWriteGuard
         if (!IsWritableTestCalendar(displayName, calendarId, authorized))
             throw new InvalidOperationException(
                 "Gravação Google bloqueada nesta etapa. Selecione a agenda isolada " +
-                "'MODUX - TESTES'. Os agendamentos reais da São Bento estão protegidos.");
+                "'MODUX - TESTES'. Os agendamentos reais estão protegidos.");
     }
 }
 
