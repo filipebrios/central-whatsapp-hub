@@ -61,6 +61,9 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- **27/10 — MODUX 1.9.2 beta PUBLICADA:** release `modux-v1.9.2-beta1`, commit do pacote `bbd5f2ec9f4c746a008d069aeb6d1858c5b2696c`, CI #40503361048 totalmente aprovado. EXE `MODUX-Setup-1.9.2.exe`, 51.295.725 bytes, SHA-256 `1fa302524ba566b76acfc8134034bb4b6c07322038b7a97a0f3957a9f75b3515`. Release pública, não rascunho, prerelease. Download: https://github.com/filipebrios/central-whatsapp-hub/releases/download/modux-v1.9.2-beta1/MODUX-Setup-1.9.2.exe .
+- Entrega reúne visões reais mês/semana/dia pelo seletor da tela, grade horária/rolagem/duração/sobreposições/dia inteiro, eventos encerrados desbotados sem recoloração no Google, serviços combinados e otimização. CI repetiu testes C#/HTTP/CAS, cores/protocolo, navegador, smoke e instalação/desinstalação com hashes de cadastros/perfis fictícios preservados. Capturas finais do seletor Semana/Dia e editor múltiplo conferidas. Medição final do runner: 500 eventos, oito trocas/redesenhos, 136 ms, 25 controles nativos; não inclui rede nem equivale a velocidade medida no computador do usuário. Assets baixados e SHA comparado antes de publicar; versões 1.9.0/1.9.1 preservadas. Validação real do usuário ainda necessária.
+
 - **27/10 — nova rodada de feedback 1.9.1:** Semana apenas filtrava dados e continuava mensal; usuário pediu visões reais mês/semana/dia, eventos encerrados desbotados, mais rapidez e vários serviços no editor Google. Implementação em validação: superfície desenhada com grade horária/colunas de sobreposição, fim no fuso São Paulo, cache curto de navegação e lista de serviços com metadados compatíveis. CI #40502670078 aprovado: testes de intervalos/sobreposição/opacidade, PATCH múltiplo/CAS, compilação e smoke das três visões. Capturas clara/escura conferidas; teste de 500 eventos e oito trocas/redesenhos mediu 214 ms e 25 controles nativos. Ajustes finais de cache/status e teste do seletor real serão repetidos no pacote 1.9.2 beta; ainda não anunciar release publicada.
 
 - **27/10 — MODUX 1.9.1 beta PUBLICADA:** release `modux-v1.9.1-beta1`, commit do pacote `9c538a232265972edd6a9727ebc53a965444d285`, CI #40499144282 totalmente aprovado. EXE `MODUX-Setup-1.9.1.exe`, 51.280.337 bytes, SHA-256 `7f1209f278e5012c71a31e616ef1c98aa7307a1518d0a61c8275c7e875e64d75`. Release pública, não rascunho, prerelease. Download: https://github.com/filipebrios/central-whatsapp-hub/releases/download/modux-v1.9.1-beta1/MODUX-Setup-1.9.1.exe .
@@ -144,6 +147,8 @@ Requisitos permanentes:
 - Alterações atribuídas ao Manus não estão no repositório conhecido.
 
 ## Pendências priorizadas
+
+- Após entrega 1.9.2: recolher retorno real das três visões, velocidade percebida e edição de serviços combinados na conta do usuário. Cache não elimina latência de rede; Atualizar força consulta, edição mantém GET/revisão/ETag. Limites de séries/multidia, recuperação manual de falhas parciais e acesso restrito da Agenda continuam explícitos.
 
 - Validar nova grade mês/semana/dia, navegação entre meses, meia-noite/dia inteiro, sobreposições, opacidade, edição múltipla Google/atendimento por revisão e desempenho com 500 eventos. Conferir capturas antes de uma atualização consolidada; preservar conta/sessões e controles de conflito.
 
@@ -315,6 +320,13 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-27 — entrega consolidada 1.9.2 beta
+
+- CI #40503361048 passou integralmente, incluindo novo teste que muda a visão pelo ComboBox real (não apenas chamada direta da superfície). Capturas finais Semana/Dia mostram o seletor correspondente e foram revisadas; editor permite marcar dois serviços.
+- Regressões cobrem semana segunda-domingo, limites mês/dia, horários sobrepostos/adjacentes, meia-noite e fim exclusivo de dia inteiro, opacidade por término, PATCH com dois serviços preservando metadados de terceiros, filtro pelo segundo tipo e atualização operacional de serviços somente por revisão/empresa/ID. Paleta em cache e invalidação explícita também testadas.
+- Teste final com 500 eventos e oito trocas/redesenhos: 136 ms e 25 controles nativos no runner; não mede HTTP nem desempenho do computador do usuário. Calendário usa pintura em buffer; navegação tem cache curto, busca tem debounce e iCal redundante foi eliminado.
+- Instalador 1.9.2 gerado/testado, cadastro de duas contas e arquivo de perfil fictícios preservados por SHA, conteúdo auditado e assets baixados/conferidos antes da publicação. Release `modux-v1.9.2-beta1`, EXE 51.295.725 bytes, SHA-256 `1fa302524ba566b76acfc8134034bb4b6c07322038b7a97a0f3957a9f75b3515`. Nenhum evento/WhatsApp real alterado/enviado pelo desenvolvimento.
 
 ### 2026-10-27 — visões reais, serviços combinados e otimização da Agenda
 
