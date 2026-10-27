@@ -61,6 +61,8 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- **27/10 — edição noturna aprovada; pacote 1.9.6 em preparação:** CI #40560149184 integralmente aprovado. HTTP reproduziu 23:30–00:30 sem mover horários, preservando ETag/ID/série; testes de contato, reconciliação, confirmação e limites passaram. Capturas clara/escura do editor com término no dia seguinte conferidas. Manifesto 1.9.6 repetirá validações e instalação/preservação/assets SHA; ainda não anunciar instalador publicado.
+
 - **27/10 — evento atravessando meia-noite em validação:** usuário relatou bloqueio em serviço 23:30–00:30. SpansMultipleDays era usado como proibição mesmo para duração de uma hora. Mantida flag descritiva, criada guarda por duração/tipo: horário definido de 15 min a 24 h pode atravessar meia-noite; dia inteiro multidiário e duração fora do limite continuam no Google. UI/API, contato, reconciliação e confirmação seguem a mesma regra. Editor mostra data/hora do término e dia seguinte. Testes HTTP/ETag, contato/vínculo/rascunho e captura noturna preparados; aguardando CI. 1.9.5 ainda contém o bloqueio.
 
 - **27/10 — MODUX 1.9.5 beta e página São Bento PUBLICADOS:** fonte do pacote `153ac5b24def41792b619db6b6988c362857ddff`, CI #40558332082 integralmente aprovado. EXE `MODUX-Setup-1.9.5.exe`, 51.308.367 bytes, SHA-256 `38621db5d49d7afdf1b17cae1b9d1660f00d52b6e5e53c45f3a61edbbaf3c7df`. Release `modux-v1.9.5-beta1` pública, não rascunho, prerelease. Download: https://github.com/filipebrios/central-whatsapp-hub/releases/download/modux-v1.9.5-beta1/MODUX-Setup-1.9.5.exe .
@@ -174,7 +176,7 @@ Requisitos permanentes:
 
 ## Pendências priorizadas
 
-- Validar correção 23:30–00:30: edição sem deslocar data/hora/duração, limite de 24h, proteção de dia inteiro multidiário, contato e reconciliação/rascunho, prévia de término e capturas. Entregar correção consolidada após CI/instalador, preservando sessões e releases. Nenhum evento real deve ser usado como fixture.
+- CI #40560149184 e capturas aprovados para 23:30–00:30. Aguardar repetição e pacote 1.9.6, instalação/preservação e assets/SHA; depois validar no computador do usuário. 1.9.5 ainda bloqueia eventos atravessando meia-noite. Nenhum evento real deve ser usado como fixture.
 
 - Após entrega 1.9.5: usuário deve atualizar e gerar novamente o rascunho para validar endereço real. Página pública já usa identidade São Bento no mesmo link. CI/pacote/assets/SHA e HTTP público aprovados; 1.9.4 permanece sem correção de endereço. Mensagem antiga já aberta no WhatsApp não é alterada automaticamente.
 
@@ -356,6 +358,11 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-27 — preparação da correção noturna 1.9.6
+
+- CI #40560149184 aprovou C#/HTTP, edição de evento recorrente selecionado 23:30–00:30 com data final/ETag/ID corretos, virada do ano, bloqueios para duração longa/dia inteiro multidiário, contato/vínculo/rascunho, cores/protocolo, compilação, UI Windows, navegador e diagnóstico. Capturas dos dois temas com término 28/10 às 00:30 conferidas.
+- Manifesto 1.9.6 aciona validação repetida e pacote/instalação/preservação/download/SHA antes de publicar; ainda sem instalador corrigido. Nenhum serviço de cliente foi alterado e nenhuma mensagem foi enviada pelas ferramentas.
 
 ### 2026-10-27 — edição de serviço que atravessa meia-noite
 
