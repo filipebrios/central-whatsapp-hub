@@ -4,6 +4,7 @@ const path = require("node:path");
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 (async () => {
   const browser = await chromium.launch({ headless: true, ...(process.env.MODUX_BROWSER_CHANNEL ? { channel: process.env.MODUX_BROWSER_CHANNEL } : {}) });
+  if (process.env.MODUX_SCREENSHOTS) await fs.mkdir(process.env.MODUX_SCREENSHOTS, { recursive: true });
   const errors = [];
   const token = "a".repeat(64);
   let calls = [], reply = { status: "available", kind: "confirmacao", service: "<img src=x onerror=alert(1)>", date: "2026-10-27", time: "10:00" };
@@ -19,6 +20,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
         headers: { "access-control-allow-origin": "https://sbento.com.br" },
         body: JSON.stringify(data.operation === "lookup" ? reply : { status: "recorded" }) });
     }
+    if (url.origin === "https://sbento.com.br" && url.pathname === "/modux-resposta-logo.png")
+      return route.fulfill({ contentType: "image/png", body: await fs.readFile(path.join(__dirname, "../../client-response/modux-resposta-logo.png")) });
     const types = { ".html": "text/html", ".css": "text/css", ".mjs": "text/javascript" };
     const filename = path.basename(url.pathname);
     if (url.origin === "https://sbento.com.br" && /^modux-resposta\.(html|css|mjs)$/.test(filename))
@@ -38,12 +41,20 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
     assert.equal(await page.locator("#confirmation").isVisible(), false);
     await open();
     assert.equal(calls.length, 1); assert.equal(calls[0].operation, "lookup");
+    assert.equal(await page.locator(".brand-logo").evaluate(img => img.complete && img.naturalWidth === 591), true);
+    assert.equal(await page.locator(".mark").count(), 0);
+    assert.equal(await page.locator(".brand").evaluate(el => getComputedStyle(el).backgroundColor), "rgb(26, 54, 38)");
     assert.equal(new URL(page.url()).hash, "");
     assert.equal(await page.locator("#service").textContent(), reply.service);
     assert.equal(await page.locator("#service img").count(), 0);
     assert.equal(await page.locator("#schedule").textContent(), "27/10/2026 às 10:00");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     if (process.env.MODUX_SCREENSHOTS) await page.screenshot({ path: process.env.MODUX_SCREENSHOTS + "/confirmacao-mobile.png", fullPage: true });
+    await page.setViewportSize({ width: 320, height: 740 });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    if (process.env.MODUX_SCREENSHOTS) await page.screenshot({ path: process.env.MODUX_SCREENSHOTS + "/confirmacao-desktop.png", fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.locator("#confirm").click();
     await page.waitForFunction(() => document.getElementById("confirmation").hidden);
     assert.deepEqual(calls.map(x => x.operation), ["lookup", "confirm"]);

@@ -74,16 +74,22 @@ internal static class AgendaWorkflowRules
     {
         var phone = Phone(work.Appointment.Phone) ?? throw new InvalidOperationException("Complete o WhatsApp do cliente.");
         var a = work.Appointment;
+        var needsAddress = work.TemplateKey is "confirmacao" or "lembrete_d1" or "lembrete_d0";
+        var address = a.Address.Trim();
+        if (needsAddress && address.Length == 0)
+            throw new InvalidOperationException("Complete o endereço do serviço no evento Google ou no cadastro antes de preparar a mensagem.");
         var values = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["cliente"] = a.Client, ["servico"] = a.Service, ["hora"] = a.Time,
-            ["endereco"] = a.Address, ["responsavel"] = a.Responsible,
+            ["endereco"] = address, ["responsavel"] = a.Responsible,
             ["nota"] = a.FeedbackScore?.ToString(CultureInfo.InvariantCulture) ?? "",
             ["data"] = DateOnly.TryParse(a.Date, out var day) ? day.ToString("dd/MM/yyyy") : "a combinar"
         };
         var text = Regex.Replace(template, @"\{([a-z_]+)\}", match =>
             values.TryGetValue(match.Groups[1].Value, out var value) ? value :
                 throw new InvalidOperationException("Modelo contém campo desconhecido: " + match.Groups[1].Value));
+        if (needsAddress && !template.Contains("{endereco}", StringComparison.Ordinal))
+            text += "\n\nEndereço do serviço: " + address;
         if (string.IsNullOrWhiteSpace(text) || text.Length > ComposeRequest.MaxTextLength ||
             text.Any(c => char.IsControl(c) && c is not ('\n' or '\r' or '\t')))
             throw new InvalidOperationException("Revise o modelo: texto vazio, inválido ou longo demais para preparar.");
@@ -158,17 +164,17 @@ internal sealed class AgendaWorkflowStore(
         return job;
     }
 
-    internal async Task ValidateSchedule(string companyId, AgendaWorkItem work, string? calendarId,
+    internal async Task<AgendaWorkItem> ValidateSchedule(string companyId, AgendaWorkItem work, string? calendarId,
         Func<string, Task<GoogleEventSnapshot>> readEvent)
     {
-        if (work.TemplateKey is not ("confirmacao" or "lembrete_d1" or "lembrete_d0")) return;
+        if (work.TemplateKey is not ("confirmacao" or "lembrete_d1" or "lembrete_d0")) return work;
         using var response = await authorized(HttpMethod.Get,
             "rest/v1/agenda_calendar_links?select=company_id,appointment_id,calendar_id,event_id,event_etag,sync_status" +
             "&company_id=eq." + Uri.EscapeDataString(companyId) +
             "&appointment_id=eq." + Uri.EscapeDataString(work.Appointment.Id) + "&limit=2", null);
         Check(response);
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        if (json.RootElement.GetArrayLength() == 0) return;
+        if (json.RootElement.GetArrayLength() == 0) return work;
         if (json.RootElement.GetArrayLength() > 1)
             throw new InvalidOperationException("Há vínculos em mais de um calendário. Confira o horário antes de preparar a mensagem.");
         var link = AgendaCalendarLink.Parse(json.RootElement[0]);
@@ -180,6 +186,9 @@ internal sealed class AgendaWorkflowStore(
             current.Date.ToString("yyyy-MM-dd") != work.Appointment.Date || current.Time != work.Appointment.Time ||
             current.Duration != work.Appointment.Duration || link.SyncStatus == "excluido")
             throw new InvalidOperationException("O evento Google mudou ou precisa de revisão. Use Conferir vínculo e atualize as pendências antes de preparar a mensagem.");
+        // Endereço do evento vinculado é a fonte atual; não regrava o cadastro por leitura.
+        var address = string.IsNullOrWhiteSpace(current.Location) ? work.Appointment.Address : current.Location;
+        return work with { Appointment = work.Appointment with { Address = address.Trim() } };
     }
 
     internal async Task<string> IssueResponseToken(string companyId, AgendaWorkItem work)

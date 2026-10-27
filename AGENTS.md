@@ -61,6 +61,8 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- **27/10 — endereço nas mensagens e marca São Bento em validação:** modelo remoto já contém {endereco}, mas rascunho usava endereço local vazio/desatualizado. Validação do evento vinculado agora devolve endereço atual do Google sem regravar cadastro por leitura; confirmação e lembretes incluem endereço mesmo em modelo sem variável e bloqueiam preparo se ambas as fontes estiverem vazias. Página usa logo oficial do favicon do site e paleta #1A3626/#95C11E; CSP só permite imagem local. Regressões e capturas aguardam CI. Correção ainda não está no instalador 1.9.4 nem no site publicado.
+
 - **27/10 — MODUX 1.9.4 beta PUBLICADA:** release `modux-v1.9.4-beta1`, fonte `c648f78bb61b4c0133830a65c9c20fa303ddacef`, CI #40548665870 integralmente aprovado. EXE `MODUX-Setup-1.9.4.exe`, 51.307.659 bytes, SHA-256 `e681e64ee82b7d6ccf9107f6d3710b2a9a9ff15b0074f4dea1d03c2034b21ccb`. Release pública, não rascunho, prerelease. Download: https://github.com/filipebrios/central-whatsapp-hub/releases/download/modux-v1.9.4-beta1/MODUX-Setup-1.9.4.exe .
 - Campo WhatsApp do cliente/Salvar WhatsApp no editor do evento Google existente e Editar WhatsApp na fila. Cadastro/vínculo explícito para o evento, recuperação por ID, telefone liberado após vínculo, PATCH só phone por revisão e identidade operacional existente preservada. Janelas/rodapés cabem na área útil; capturas clara/escura/filas revisadas. Testes C#/HTTP/cores/protocolo, navegador, UI, diagnóstico e pacote/instalação/desinstalação passaram; hashes de contas/perfil fictícios preservados e assets baixados/SHA comparado pelo pipeline antes de publicar. Nenhum envio real ou alteração Google pelas ferramentas. Retorno real do usuário ainda pendente; 1.9.3 preservada e sem esta correção.
 
@@ -163,6 +165,8 @@ Requisitos permanentes:
 - Alterações atribuídas ao Manus não estão no repositório conhecido.
 
 ## Pendências priorizadas
+
+- Validar endereço atual/fallback/ausência nas três mensagens, prévia final e página São Bento no celular (logo real, confirmação/cancelamento/NPS e capacidade por fragmento). Atualizar os assets no repositório sbento, conferir preview/build e publicar somente o escopo autorizado; gerar correção consolidada após CI/capturas.
 
 - Após entrega 1.9.4: recolher validação real do telefone no evento existente → Salvar WhatsApp → Serviços a confirmar e da edição na fila. CI #40548665870 e capturas/instalação/assets/SHA aprovados. Preservar sessões e envio manual. Contato é do atendimento selecionado, sem sincronização do catálogo global do WhatsApp; eventos de dia inteiro/multidia exigem horário definido.
 
@@ -342,6 +346,12 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-27 — endereço do serviço e página institucional
+
+- Consulta somente leitura confirmou que os três modelos já contêm {endereco}. Falha era uso do endereço local, que pode estar ausente/desatualizado em atendimento vinculado. ValidateSchedule devolve work com Location Google atual, mantendo fallback local e todas as verificações de horário/ETag/ID. Duas telas compõem depois da validação; não gravam no Google/banco por leitura.
+- Confirmação/D-1/D0 exigem endereço; modelo sem variável recebe bloco Endereço do serviço. Variável existente não duplica texto; pós-venda continua sem exigir endereço. Testes preparados para endereço Google com local vazio, fallback, modelo legado sem variável e ausência total.
+- Página recebe símbolo oficial (mesmo PNG do favicon público), verde institucional/lima do src/styles.css do site São Bento, contraste, rodapé/site e layout móvel. Mantidos IDs/handler, política de capacidade/sem analytics; CSP img-src self e logo local, sem novas chamadas externas. Teste de navegador verifica logo carregada, identidade, 320/390 px, confirmação/cancelamento/NPS zero e capturas. Aguardando CI e publicação separada do site.
 
 ### 2026-10-27 — entrega da correção de contato 1.9.4 beta
 

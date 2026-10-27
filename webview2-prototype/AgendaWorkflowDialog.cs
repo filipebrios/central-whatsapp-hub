@@ -4,7 +4,7 @@ internal sealed class AgendaWorkflowDialog : Form
 {
     private readonly AgendaWorkflowStore store;
     private readonly string company;
-    private readonly Func<AgendaWorkItem, Task>? validateSchedule;
+    private readonly Func<AgendaWorkItem, Task<AgendaWorkItem>>? validateSchedule;
     private readonly bool admin;
     private readonly ListBox list = new() { Dock = DockStyle.Fill, IntegralHeight = false, HorizontalScrollbar = true };
     private readonly Button refresh = new() { Text = "Atualizar", AutoSize = true };
@@ -20,7 +20,7 @@ internal sealed class AgendaWorkflowDialog : Form
     internal ComposeRequest? Prepared { get; private set; }
     internal AgendaLocalSnapshot? EditRequested { get; private set; }
 
-    internal AgendaWorkflowDialog(AgendaWorkflowStore store, string company, bool admin, Func<AgendaWorkItem, Task>? validateSchedule = null)
+    internal AgendaWorkflowDialog(AgendaWorkflowStore store, string company, bool admin, Func<AgendaWorkItem, Task<AgendaWorkItem>>? validateSchedule = null)
     {
         this.store = store; this.company = company; this.admin = admin; this.validateSchedule = validateSchedule;
         Text = "Pendências, lembretes e pós-venda • MODUX";
@@ -44,8 +44,8 @@ internal sealed class AgendaWorkflowDialog : Form
             await Run(async () =>
             {
                 if (list.SelectedItem is not Row row || !store.Templates.TryGetValue(row.Work.TemplateKey, out var template)) return;
-                if (validateSchedule is not null) await validateSchedule(row.Work);
-                var message = AgendaWorkflowRules.Message(row.Work, template);
+                var currentWork = validateSchedule is not null ? await validateSchedule(row.Work) : row.Work;
+                var message = AgendaWorkflowRules.Message(currentWork, template);
                 var job = await store.Prepare(company, row.Work);
                 if (job.State is "enviada_manual" or "tratada_manual" or "cancelada")
                     throw new InvalidOperationException("Essa ocorrência já foi tratada. Atualize para conferir o registro.");

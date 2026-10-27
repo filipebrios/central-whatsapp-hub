@@ -5,7 +5,7 @@ internal sealed class AgendaConfirmationDialog : Form
 {
     private readonly AgendaWorkflowStore store;
     private readonly string company;
-    private readonly Func<AgendaWorkItem, Task> validateSchedule;
+    private readonly Func<AgendaWorkItem, Task<AgendaWorkItem>> validateSchedule;
     private readonly Func<ComposeRequest, Task<bool>> openDraft;
     private readonly Func<DateOnly> today;
     private readonly Func<string, bool> confirmSend;
@@ -30,7 +30,7 @@ internal sealed class AgendaConfirmationDialog : Form
     private Rectangle expandedBounds;
 
     internal AgendaConfirmationDialog(AgendaWorkflowStore store, string company,
-        Func<AgendaWorkItem, Task> validateSchedule, Func<ComposeRequest, Task<bool>> openDraft,
+        Func<AgendaWorkItem, Task<AgendaWorkItem>> validateSchedule, Func<ComposeRequest, Task<bool>> openDraft,
         Func<DateOnly>? today = null, Func<string, bool>? confirmSend = null)
     {
         this.store = store; this.company = company; this.validateSchedule = validateSchedule; this.openDraft = openDraft;
@@ -182,8 +182,8 @@ internal sealed class AgendaConfirmationDialog : Form
         list.SelectedItem = row;
         if (!store.Templates.TryGetValue("confirmacao", out var template))
             throw new InvalidOperationException("Configure o modelo de confirmação da equipe.");
-        var message = AgendaWorkflowRules.Message(row.Work, template);
-        await validateSchedule(row.Work); EnsureActive();
+        var currentWork = await validateSchedule(row.Work); EnsureActive();
+        var message = AgendaWorkflowRules.Message(currentWork, template);
         var job = await store.Prepare(company, row.Work); EnsureActive();
         if (job.State is not ("preparada" or "erro"))
             throw new InvalidOperationException("Esta confirmação já foi tratada. Atualize a fila.");

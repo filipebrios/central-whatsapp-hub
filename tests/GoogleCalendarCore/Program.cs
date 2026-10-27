@@ -740,6 +740,31 @@ await ExpectFailure(() => scheduleStore.ValidateSchedule(company, scheduledWork,
     id => Task.FromResult(item! with { ETag = "changed" })), "Conferir vínculo");
 if (scheduleReads != 1) throw new Exception("Conferência inesperada do calendário.");
 Console.WriteLine("PASS: confirmação/lembretes conferem evento vinculado antes de emitir link ou rascunho.");
+var addressWork = await scheduleStore.ValidateSchedule(company,
+    scheduledWork with { Appointment = scheduledWork.Appointment with { Address = "" } }, "fixture-calendar",
+    id => Task.FromResult(item! with { Location = "Rua de teste, 42 — Itajubá/MG" }));
+var withAddress = AgendaWorkflowRules.Message(addressWork, "Olá, {cliente}! {servico} em {data}, às {hora}.");
+if (!withAddress.Text.Contains("Endereço do serviço: Rua de teste, 42 — Itajubá/MG") || addressWork.Appointment.Revision != scheduledWork.Appointment.Revision ||
+    scheduledWork.Appointment.Address == addressWork.Appointment.Address)
+    throw new Exception("Endereço atual do evento não chegou à mensagem ou houve mutação do cadastro.");
+var placeholderAddress = AgendaWorkflowRules.Message(addressWork, "Endereço: {endereco}");
+if (!placeholderAddress.Text.Contains("Rua de teste, 42") || placeholderAddress.Text.Contains("Endereço do serviço:"))
+    throw new Exception("Endereço com variável foi duplicado/omitido.");
+foreach (var key in new[] { "confirmacao", "lembrete_d1", "lembrete_d0" })
+{
+    var messageWithAddress = AgendaWorkflowRules.Message(addressWork with { TemplateKey = key }, "{cliente}, {data}, {hora}");
+    if (!messageWithAddress.Text.Contains("Rua de teste, 42")) throw new Exception("Rotina perdeu o endereço do serviço.");
+    await ExpectFailure(() => Task.Run(() => AgendaWorkflowRules.Message(addressWork with
+        { TemplateKey = key, Appointment = addressWork.Appointment with { Address = "  " } }, "{cliente}")), "endereço do serviço");
+}
+var fallbackAddress = await scheduleStore.ValidateSchedule(company, scheduledWork, "fixture-calendar",
+    id => Task.FromResult(item! with { Location = "" }));
+if (fallbackAddress.Appointment.Address != scheduledWork.Appointment.Address)
+    throw new Exception("Google sem local apagou endereço do cadastro.");
+var pastMessage = AgendaWorkflowRules.Message(new AgendaWorkItem(completedAppointment with { Address = "" }, "pos_venda", "Pós-venda"), "Olá, {cliente}");
+if (pastMessage.Text.Contains("Endereço")) throw new Exception("Pós-venda passou a exigir endereço desnecessariamente.");
+Console.WriteLine("PASS: endereço atual Google na mensagem, fallback local, três rotinas, modelo sem variável, sem duplicação e bloqueio quando ausente.");
+
 
 // Google colors must come from the API, including IDs beyond the historic eleven.
 using (var colorTransport = new CalendarTestHandler((method, uri, bearer, body) =>

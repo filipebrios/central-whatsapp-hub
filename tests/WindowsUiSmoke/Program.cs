@@ -105,7 +105,7 @@ internal static class Program
 
     private static bool allowDraft;
     private static readonly List<(string Phone, string Text)> drafts = [];
-    private static Task FixtureValidate<T>(T work) => Task.CompletedTask;
+    private static Task<T> FixtureValidate<T>(T work) => Task.FromResult(work);
     private static Task<bool> FixtureDraft<T>(T request)
     {
         if (allowDraft)
@@ -165,7 +165,7 @@ internal static class Program
         };
         var store = Activator.CreateInstance(storeType, flags | BindingFlags.Public, null, [transport], null)!;
         var validate = typeof(Program).GetMethod(nameof(FixtureValidate), BindingFlags.Static | BindingFlags.NonPublic)!
-            .MakeGenericMethod(workType).CreateDelegate(typeof(Func<,>).MakeGenericType(workType, typeof(Task)));
+            .MakeGenericMethod(workType).CreateDelegate(typeof(Func<,>).MakeGenericType(workType, typeof(Task<>).MakeGenericType(workType)));
         var open = typeof(Program).GetMethod(nameof(FixtureDraft), BindingFlags.Static | BindingFlags.NonPublic)!
             .MakeGenericMethod(requestType).CreateDelegate(typeof(Func<,>).MakeGenericType(requestType, typeof(Task<bool>)));
         using var queue = (Form)Activator.CreateInstance(dialogType, flags, null,
