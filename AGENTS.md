@@ -61,7 +61,7 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
-- **27/10 — feedback real da beta:** usuário conseguiu login e ativou Google API operacional no Windows (captura: 257 eventos Google editáveis, sem iCal duplicado). Relatou cores divergentes e pediu seleção explícita de serviço/evento. Correção em desenvolvimento: paleta Google dinâmica e cor herdada do calendário; seletor no editor Google com metadado privado, sem alterar títulos nem recolorir eventos por leitura. Aguardar CI Windows; nenhum novo instalador publicado.
+- **27/10 — feedback real da beta:** usuário conseguiu login e ativou Google API operacional no Windows (captura: 257 eventos Google editáveis, sem iCal duplicado). Relatou cores divergentes e pediu seleção explícita de serviço/evento. Correção em desenvolvimento: paleta Google dinâmica e cor herdada do calendário; seletor no editor Google com metadado privado, sem alterar títulos nem recolorir eventos por leitura. CI Windows #40494905388 passou (testes C#/HTTP, build principal, smoke e verificador isolado); capturas do seletor claro/escuro revisadas. Nenhum novo instalador publicado.
 
 - **26/10 — beta consolidada PUBLICADA:** release `modux-v1.9.0-beta1`, Windows x64, instalador `MODUX-Setup-1.9.0.exe` (51.268.369 bytes), commit do pacote `bdc0e6fd987d1d36dc417a49a4bdd9ed08e9aff9`. CI #40376455340 concluiu com sucesso todos os testes, smoke Windows, geração, instalação/desinstalação com perfil fictício, download dos assets e SHA-256. Release não está em rascunho e é prerelease. SHA-256 EXE: `90fec62ae89840ee85d68aceaa061a3944e32cadd1cae0862560d8ba38392bff`.
 - Download: https://github.com/filipebrios/central-whatsapp-hub/releases/download/modux-v1.9.0-beta1/MODUX-Setup-1.9.0.exe . Página de respostas ativa em `https://sbento.com.br/modux-resposta.html`; links usam domínio sem www verificado. Nenhum WhatsApp/convite real foi enviado por estas ferramentas.
@@ -138,7 +138,7 @@ Requisitos permanentes:
 
 ## Pendências priorizadas
 
-- Validar correção das cores Google e seletor de tipo no editor (testes HTTP/C#/smoke visual), revisar capturas e consolidar com demais feedbacks antes de outro instalador. Acabamento Apple completo permanece pendente; tema/arredondamento nativo da beta não equivale ao redesign completo.
+- Correção das cores Google e seletor de tipo passou no CI #40494905388 e teve capturas revisadas; consolidar com demais feedbacks antes de outro instalador. Acabamento Apple completo permanece pendente; tema/arredondamento nativo da beta não equivale ao redesign completo.
 
 - **Pós-entrega 1.9.0 beta1:** recolher uma rodada estruturada de feedback, preservar sessões e corrigir falhas críticas. Não gerar outro instalador por ajuste pequeno. Edição de série completa/multidia, restauração de backup integral e refinamentos do escopo continuam abertos e não foram anunciados como entregues. WhatsApp permanece manual; cancelamento público é solicitação para equipe.
 - As entradas anteriores abaixo registram histórico de implementação; o estado publicado confirmado acima prevalece sobre antigas frases “aguardando CI/sem instalador”.
@@ -310,7 +310,7 @@ Antes de entregar uma versão:
 - API passa a ler paleta `colors` e `calendarList.backgroundColor`, sem novos escopos, usando `colorId` individual ou a cor herdada. Leitura não escreve/recolore eventos; falha de paleta informa fallback e mantém leitura dos compromissos.
 - Editor Google ganha seleção de serviço/evento do catálogo da equipe. Escolha explícita salva `modux_service_id` privado e cor Google disponível mais próxima da configuração, sem modificar título; edição comum preserva cor/metadados. PATCH mantém propriedades privadas de terceiros e IDs do vínculo. Para eventos vinculados, tipo segue definido no cadastro operacional (Editar atendimento).
 - Criação Google integrada usa tipo escolhido no cadastro local. Cores originais Google prevalecem visualmente no calendário/grade, inclusive em eventos com título só de cliente. Cores não são usadas para inventar um tipo de serviço.
-- Novas regressões cobrem cor individual/herdada/desconhecida, paleta dinâmica além de onze cores, tipo persistido e preservação de metadados; smoke abre seletor real e captura claro/escuro. Aguardando execução Windows; beta1 existente preservada, sem novo instalador.
+- Novas regressões cobrem cor individual/herdada/desconhecida, paleta dinâmica além de onze cores, tipo persistido e preservação de metadados; smoke abre seletor real e captura claro/escuro. CI #40494905388 aprovado: regressões Google/cores/protocolo, build Windows, smoke do seletor e temas, verificador isolado e navegador. Capturas do editor claro/escuro revisadas. Beta1 existente preservada, sem novo instalador; teste real das cores na conta do usuário depende da próxima entrega consolidada.
 
 ### 2026-10-26 — entrega única MODUX 1.9.0 beta1
 
