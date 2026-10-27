@@ -721,6 +721,10 @@ using (var colorTransport = new CalendarTestHandler((method, uri, bearer, body) 
 using (var colorApi = new GoogleCalendarApi(new FakeCalendarAuthorization(), new HttpClient(colorTransport)))
 {
     await colorApi.LoadColors();
+    await colorApi.LoadColors();
+    if (colorTransport.Calls != 2) throw new Exception("Cache da paleta repetiu GETs desnecessários.");
+    colorApi.InvalidateColors(); await colorApi.LoadColors();
+    if (colorTransport.Calls != 4) throw new Exception("Atualização explícita não invalidou a paleta.");
     if (colorApi.EventColorHex(item! with { ColorId = "24" }) != "#123456" ||
         colorApi.EventColorHex(item! with { ColorId = "" }) != "#0B8043" ||
         colorApi.EventColorHex(item! with { ColorId = "0" }) != "#0B8043" ||

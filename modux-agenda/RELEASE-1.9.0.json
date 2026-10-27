@@ -1,11 +1,11 @@
 {
-  "version": "1.9.1",
-  "tag": "modux-v1.9.1-beta1",
-  "validated_run": 40498741432,
+  "version": "1.9.2",
+  "tag": "modux-v1.9.2-beta1",
+  "validated_run": 40502670078,
   "platform": "windows-x64",
   "customer_response_page_required": true,
   "response_page": "https://sbento.com.br/modux-resposta.html",
   "attempt": 1,
   "browser": "preinstalled-chrome",
-  "notes": "modux-agenda/RELEASE-1.9.1.md"
+  "notes": "modux-agenda/RELEASE-1.9.2.md"
 }

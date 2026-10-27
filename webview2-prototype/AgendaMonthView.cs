@@ -132,7 +132,7 @@ internal sealed class AgendaMonthView : UserControl
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             if (owner.Mode == AgendaCalendarMode.Month) DrawMonth(e.Graphics); else DrawTimeline(e.Graphics);
         }
-        private void Text(Graphics g, string text, Rectangle bounds, Color color, bool bold = false, bool wrap = false)
+        private void DrawText(Graphics g, string text, Rectangle bounds, Color color, bool bold = false, bool wrap = false)
         {
             TextRenderer.DrawText(g, text, bold ? strong : regular, bounds, color, TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis |
                 (wrap ? TextFormatFlags.WordBreak : TextFormatFlags.SingleLine) | TextFormatFlags.PreserveGraphicsClipping);
@@ -144,32 +144,32 @@ internal sealed class AgendaMonthView : UserControl
             if (bounds.Height < 3 || bounds.Width < 3) return;
             var past = item.IsPast(AgendaCalendarLayout.Now);
             Fill(g, bounds, AgendaCalendarLayout.Fade(item.Category.Color, ModuxAppearance.Surface, past));
-            Text(g, text, Rectangle.Inflate(bounds, -4, -2), past ? ModuxAppearance.Muted : item.Category.TextColor, false, wrap);
+            DrawText(g, text, Rectangle.Inflate(bounds, -4, -2), past ? ModuxAppearance.Muted : item.Category.TextColor, false, wrap);
             hits.Add((bounds, day, item));
         }
         private void DrawMonth(Graphics g)
         {
             var width = ClientSize.Width; var height = ClientSize.Height;
             using var line = new Pen(ModuxAppearance.Border);
-            var first = AgendaCalendarLayout.MonthEnvelope(owner.selectedDate).First;
+            var first = AgendaCalendarLayout.MonthEnvelope(owner.SelectedDate).First;
             for (var i = 0; i < 7; i++)
-                Text(g, new[] { "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom" }[i],
+                DrawText(g, new[] { "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom" }[i],
                     new Rectangle(i * width / 7 + 8, 5, width / 7, 22), ModuxAppearance.Muted);
             for (var i = 0; i < 42; i++)
             {
                 var day = first.AddDays(i); var col = i % 7; var row = i / 7;
                 var bounds = Rectangle.FromLTRB(col * width / 7, 28 + row * (height - 28) / 6,
                     (col + 1) * width / 7, 28 + (row + 1) * (height - 28) / 6);
-                Fill(g, bounds, day == owner.selectedDate ? ModuxAppearance.Selection : day.Month == owner.selectedDate.Month ? ModuxAppearance.Surface : ModuxAppearance.Canvas);
+                Fill(g, bounds, day == owner.SelectedDate ? ModuxAppearance.Selection : day.Month == owner.SelectedDate.Month ? ModuxAppearance.Surface : ModuxAppearance.Canvas);
                 g.DrawRectangle(line, bounds); hits.Add((bounds, day, null));
-                Text(g, day.Day.ToString(), new Rectangle(bounds.X + 5, bounds.Y + 3, bounds.Width - 8, 20),
+                DrawText(g, day.Day.ToString(), new Rectangle(bounds.X + 5, bounds.Y + 3, bounds.Width - 8, 20),
                     day == DateOnly.FromDateTime(AgendaCalendarLayout.Now) ? ModuxAppearance.Accent : ModuxAppearance.Muted, true);
                 var list = Entries.Where(x => x.Start < day.AddDays(1).ToDateTime(TimeOnly.MinValue) && x.End > day.ToDateTime(TimeOnly.MinValue)).OrderBy(x => x.Time).ToArray();
                 var slots = Math.Max(0, (bounds.Height - 25) / 20);
                 var shown = Math.Min(list.Length, slots);
                 for (var index = 0; index < shown; index++) Chip(g, new Rectangle(bounds.X + 3, bounds.Y + 24 + index * 20, bounds.Width - 6, 19),
                     list[index], day, $"{list[index].Time} {list[index].Client}");
-                if (list.Length > shown) Text(g, $"+{list.Length - shown}", new Rectangle(bounds.Right - 39, bounds.Y + 3, 36, 19), ModuxAppearance.Muted);
+                if (list.Length > shown) DrawText(g, $"+{list.Length - shown}", new Rectangle(bounds.Right - 39, bounds.Y + 3, 36, 19), ModuxAppearance.Muted);
             }
         }
         private void DrawTimeline(Graphics g)
@@ -185,7 +185,7 @@ internal sealed class AgendaMonthView : UserControl
             {
                 var y = gridTop + hour * Hour + scroll;
                 g.DrawLine(line, Gutter, y, ClientSize.Width, y);
-                if (hour < 24) Text(g, $"{hour:00}:00", new Rectangle(2, y + 2, Gutter - 4, 20), ModuxAppearance.Muted);
+                if (hour < 24) DrawText(g, $"{hour:00}:00", new Rectangle(2, y + 2, Gutter - 4, 20), ModuxAppearance.Muted);
             }
             for (var dayIndex = 0; dayIndex < count; dayIndex++)
             {
@@ -213,13 +213,13 @@ internal sealed class AgendaMonthView : UserControl
             for (var dayIndex = 0; dayIndex < count; dayIndex++)
             {
                 var day = span.First.AddDays(dayIndex); var x = Gutter + (int)(dayIndex * column);
-                Text(g, day.ToDateTime(TimeOnly.MinValue).ToString("ddd dd/MM", Br), new Rectangle(x + 6, 10, (int)column - 10, 25), day == today ? ModuxAppearance.Accent : ModuxAppearance.Text, true);
+                DrawText(g, day.ToDateTime(TimeOnly.MinValue).ToString("ddd dd/MM", Br), new Rectangle(x + 6, 10, (int)column - 10, 25), day == today ? ModuxAppearance.Accent : ModuxAppearance.Text, true);
                 hits.Add((new Rectangle(x, 0, (int)column, Heading), day, null));
                 var all = Entries.Where(item => item.IsAllDay && item.Date <= day && item.End > day.ToDateTime(TimeOnly.MinValue)).ToArray();
                 for (var i = 0; i < Math.Min(AllDayRows, all.Length); i++) Chip(g, new Rectangle(x + 2, Heading + i * 22, (int)column - 4, 20), all[i], day, all[i].Client);
-                if (all.Length > AllDayRows) Text(g, $"+{all.Length - AllDayRows} dia inteiro", new Rectangle(x + 3, Heading + AllDayRows * 22, (int)column - 6, 20), ModuxAppearance.Muted);
+                if (all.Length > AllDayRows) DrawText(g, $"+{all.Length - AllDayRows} dia inteiro", new Rectangle(x + 3, Heading + AllDayRows * 22, (int)column - 6, 20), ModuxAppearance.Muted);
             }
-            Text(g, "GMT−03", new Rectangle(1, 20, Gutter - 2, 20), ModuxAppearance.Muted);
+            DrawText(g, "GMT−03", new Rectangle(1, 20, Gutter - 2, 20), ModuxAppearance.Muted);
             g.DrawLine(line, 0, gridTop, ClientSize.Width, gridTop);
         }
         private (Rectangle Bounds, DateOnly Day, AgendaCalendarEntry? Entry)? Hit(Point point)
@@ -246,7 +246,7 @@ internal sealed class AgendaMonthView : UserControl
         protected override void OnKeyDown(KeyEventArgs e)
         {
             if (e.KeyCode is Keys.Left or Keys.Right)
-            { owner.Choose(owner.selectedDate.AddDays(e.KeyCode == Keys.Left ? -1 : 1), null, false); e.Handled = true; }
+            { owner.Choose(owner.SelectedDate.AddDays(e.KeyCode == Keys.Left ? -1 : 1), null, false); e.Handled = true; }
             else if (e.KeyCode is Keys.PageUp or Keys.PageDown) { owner.Navigate(e.KeyCode == Keys.PageUp ? -1 : 1); e.Handled = true; }
             base.OnKeyDown(e);
         }

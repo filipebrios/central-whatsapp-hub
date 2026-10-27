@@ -171,6 +171,7 @@ internal sealed class AgendaPanel : UserControl
             using var manager = new GoogleCalendarManageDialog(googleOAuth, googleApi);
             manager.ShowDialog(this);
             if (!manager.Changed) return;
+            googleApi.InvalidateColors();
             UpdateGoogleLabel();
             await LoadAppointments();
         }
@@ -433,9 +434,10 @@ internal sealed class AgendaPanel : UserControl
         var visibleRange = AgendaCalendarLayout.Range(chosen, SelectedMode);
         if (!force && loadedCompany == companyId && loadedCalendar == googleOAuth.CalendarId &&
             loadedRange?.Covers(visibleRange) == true && DateTimeOffset.UtcNow - loadedAt < TimeSpan.FromSeconds(90))
-        { ShowCachedRows(); Status("Período já carregado • Atualizar consulta as alterações da equipe."); return; }
+        { ShowCachedRows(); Status($"{grid.Rows.Count} eventos na lista • {visibleRange.First:dd/MM} a {visibleRange.Last:dd/MM}. Período carregado • Atualizar consulta as alterações da equipe."); return; }
         var envelope = AgendaCalendarLayout.MonthEnvelope(chosen);
         var first = envelope.First; var last = envelope.Last;
+        loadedRange = null;
         Status("Atualizando a agenda…");
         SetBusy(true);
         try
@@ -546,8 +548,9 @@ internal sealed class AgendaPanel : UserControl
                 var google = row.Google;
                 var category = local is not null
                     ? serviceCatalog.Resolve(local)
-                    : serviceCatalog.Apply(google!.ServiceTypeId is { } typeId
-                        ? AgendaServiceColors.FromServiceIds([typeId], google.Title, null)
+                    : serviceCatalog.Apply(google!.PrivateProperties.ContainsKey("modux_service_ids")
+                        ? AgendaServiceColors.FromServiceIds(google.ServiceTypeIds, null, null)
+                        : google.ServiceTypeId is { } typeId ? AgendaServiceColors.FromServiceIds([typeId], google.Title, null)
                         : AgendaServiceColors.Classify(google.Title, google.Description));
                 if (local is null && google is not null && google.ServiceTypeIds.Length > 0)
                     category = category with { Label = string.Join(" + ", google.ServiceTypeIds.Select(id =>
@@ -575,7 +578,7 @@ internal sealed class AgendaPanel : UserControl
             cachedRows.Sort((left, right) =>
                 string.CompareOrdinal(left.Values[0] + left.Values[1],
                     right.Values[0] + right.Values[1]));
-            loadedRange = envelope; loadedCompany = companyId; loadedCalendar = googleOAuth.CalendarId; loadedAt = DateTimeOffset.UtcNow;
+            loadedRange = envelope; loadedCompany = companyId; loadedCalendar = googleOAuth.CalendarId; loadedAt = googleWarning is null ? DateTimeOffset.UtcNow : DateTimeOffset.MinValue;
             ShowCachedRows();
             string? backupWarning = null;
             try
@@ -587,8 +590,7 @@ internal sealed class AgendaPanel : UserControl
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or
                 System.Security.Cryptography.CryptographicException or InvalidOperationException)
             { backupWarning = "Não foi possível gerar o checkpoint local do período."; }
-            Status($"{supabaseEventCount} cadastros locais • {googleEventCount} Google iCal (leitura) " +
-                $"• {googleTestEventCount} Google API ({(googleOAuth.IsTestCalendarSelected ? "testes" : "selecionado")}) • {first:dd/MM} a {last:dd/MM}. " +
+            Status($"{grid.Rows.Count} eventos na lista • {visibleRange.First:dd/MM} a {visibleRange.Last:dd/MM}. " +
                 (googleWarning ?? backupWarning ?? (googleOAuth.CanWriteSelectedCalendar
                     ? "Duplo clique para editar no calendário Google selecionado. Alterações exigem confirmação."
                     : "Agenda operacional iCal: somente leitura. Sem envio WhatsApp.")));
@@ -622,11 +624,12 @@ internal sealed class AgendaPanel : UserControl
         var entries = new List<AgendaCalendarEntry>();
         foreach (var (record, category, google, local) in visible)
         {
-            if (DateOnly.TryParse(record[0], out _))
-                entries.Add(CalendarEntry(record, category, google, local));
-            if (!calendar.VisibleRange.Contains(DateOnly.Parse(record[0]))) continue;
-            if (filterDate is not null && record[0] != filterDate.Value.ToString("yyyy-MM-dd"))
-                continue;
+            var entry = CalendarEntry(record, category, google, local);
+            entries.Add(entry);
+            if (entry.Start >= calendar.VisibleRange.Last.AddDays(1).ToDateTime(TimeOnly.MinValue) ||
+                entry.End <= calendar.VisibleRange.First.ToDateTime(TimeOnly.MinValue)) continue;
+            if (filterDate is { } chosen && (entry.Start >= chosen.AddDays(1).ToDateTime(TimeOnly.MinValue) ||
+                entry.End <= chosen.ToDateTime(TimeOnly.MinValue))) continue;
             var index = grid.Rows.Add(record);
             grid.Rows[index].Tag = new AgendaRowContext(google, local);
             grid.Rows[index].Cells[2].ToolTipText = google is not null
@@ -634,7 +637,7 @@ internal sealed class AgendaPanel : UserControl
                 : "Operacional: agendamento local ou iCal somente leitura";
             var state = record[4];
             var serviceCell = grid.Rows[index].Cells[3];
-            var past = CalendarEntry(record, category, google, local).IsPast(AgendaCalendarLayout.Now);
+            var past = entry.IsPast(AgendaCalendarLayout.Now);
             serviceCell.Style.BackColor = AgendaCalendarLayout.Fade(category.Color, ModuxAppearance.Surface, past);
             serviceCell.Style.ForeColor = past ? ModuxAppearance.Muted : category.TextColor;
             serviceCell.ToolTipText = category.Label + " • " + category.GoogleColorName

@@ -91,8 +91,11 @@ internal static class Program
         foreach (var mode in new[] { "Month", "Week", "Day" })
         {
             configure.Invoke(null, [dark]);
-            calendar.GetType().GetMethod("SetView", flags)!.Invoke(calendar, [today, Enum.Parse(modeType, mode)]);
+            var period = (ComboBox)panel.GetType().GetField("period", flags)!.GetValue(panel)!;
+            period.SelectedIndex = mode switch { "Day" => 0, "Week" => 1, _ => 2 };
             Pump();
+            if (calendar.GetType().GetProperty("Mode", flags)!.GetValue(calendar)!.ToString() != mode)
+                throw new Exception("O seletor de período não mudou a visão real do calendário.");
             if (Descendants(calendar).Count() > 60) throw new Exception("Calendário voltou a criar controles por evento.");
             Capture(form, "calendario-" + mode.ToLowerInvariant() + (dark ? "-escuro" : "-claro"));
         }
@@ -164,7 +167,7 @@ internal static class Program
             var initialSize = main.Size;
             main.Size = new Size(1024, 640); Pump(); Capture(main, "primeira-abertura-1024");
             main.Size = initialSize;
-            typeof(MainForm).GetMethod("ToggleSidebar", flags)!.Invoke(main, null); Pump();
+            ((Button)typeof(MainForm).GetField("collapseButton", flags)!.GetValue(main)!).PerformClick(); Pump();
             if (!aboutButton.Visible || aboutButton.Width < 35) throw new Exception("Sobre não está acessível no menu recolhido.");
             Capture(main, "primeira-abertura-menu-recolhido");
             using var about = (Form)typeof(MainForm).GetMethod("CreateAboutDialog", flags)!.Invoke(main, null)!;
