@@ -77,7 +77,7 @@ internal static class Program
         var flags = BindingFlags.Instance | BindingFlags.NonPublic;
         var sourceType = assembly.GetType("CentralWhatsApp.WebView2.GoogleEventSnapshot", true)!;
         var source = Activator.CreateInstance(sourceType,
-            ["event-contact-ui", "v1", "Cliente fictício", "", "Endereço fictício", new DateOnly(2026,10,27), "14:00", false, 60, null, null]);
+            ["event-contact-ui", "v1", "Cliente fictício", "", "Endereço fictício", new DateOnly(2026,10,27), "23:30", false, 60, null, null]);
         var editorType = assembly.GetType("CentralWhatsApp.WebView2.GoogleCalendarEventDialog", true)!;
         var contactChoiceType = assembly.GetType("CentralWhatsApp.WebView2.GoogleEventTypeChoice", true)!;
         var contactChoices = Array.CreateInstance(contactChoiceType, 2);
@@ -89,6 +89,13 @@ internal static class Program
             [source, new DateOnly(2026,10,27), false, contactChoices, new[]{"desinsetizacao","reservatorio"}, "", saveContact], null)!;
         editor.Show(owner); Pump();
         if (!Screen.FromControl(editor).WorkingArea.Contains(editor.Bounds)) throw new Exception("Editor e botões ficaram fora da área útil.");
+        var endsAt = (Label)editorType.GetField("endsAt", flags)!.GetValue(editor)!;
+        var durationBox = (NumericUpDown)editorType.GetField("minutes", flags)!.GetValue(editor)!;
+        if (!endsAt.Visible || !endsAt.Text.Contains("28/10/2026 às 00:30") || !endsAt.Text.Contains("dia seguinte") || durationBox.Value != 60)
+            throw new Exception("Editor noturno perdeu data/duração da madrugada.");
+        durationBox.Value = 90; Pump();
+        if (!endsAt.Text.Contains("28/10/2026 às 01:00")) throw new Exception("Término não acompanhou edição da duração.");
+        durationBox.Value = 60; Pump();
         var phoneBox = (TextBox)editorType.GetField("phone", flags)!.GetValue(editor)!;
         var savePhone = (Button)editorType.GetField("savePhone", flags)!.GetValue(editor)!;
         if (!phoneBox.Visible || !phoneBox.Enabled || !savePhone.Enabled) throw new Exception("WhatsApp não está editável no evento Google.");
@@ -98,7 +105,7 @@ internal static class Program
         if (writes != 1 || savedPhone != "5535999991111" || !(bool)editorType.GetProperty("ContactSaved", flags)!.GetValue(editor)!)
             throw new Exception("Salvar WhatsApp não persistiu telefone válido.");
         foreach (var dark in new[] { false, true })
-        { configure.Invoke(null, [dark]); Pump(); Capture(editor, "editor-whatsapp-" + (dark ? "escuro" : "claro")); }
+        { configure.Invoke(null, [dark]); Pump(); Capture(editor, "editor-noturno-" + (dark ? "escuro" : "claro")); }
         editor.Close();
         Console.WriteLine("PASS: editor Google oferece telefone/Salvar WhatsApp, valida DDD e mantém sucesso ao voltar; zero envio.");
     }

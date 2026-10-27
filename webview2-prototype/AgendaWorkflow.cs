@@ -182,7 +182,7 @@ internal sealed class AgendaWorkflowStore(
             link.CalendarId != calendarId || string.IsNullOrWhiteSpace(link.ETag))
             throw new InvalidOperationException("Conecte o calendário vinculado e confira o atendimento antes de preparar a mensagem.");
         var current = await readEvent(link.EventId);
-        if (current.Id != link.EventId || current.ETag != link.ETag || current.AllDay || current.SpansMultipleDays ||
+        if (current.Id != link.EventId || current.ETag != link.ETag || current.AllDay || current.RequiresGoogleEditor ||
             current.Date.ToString("yyyy-MM-dd") != work.Appointment.Date || current.Time != work.Appointment.Time ||
             current.Duration != work.Appointment.Duration || link.SyncStatus == "excluido")
             throw new InvalidOperationException("O evento Google mudou ou precisa de revisão. Use Conferir vínculo e atualize as pendências antes de preparar a mensagem.");

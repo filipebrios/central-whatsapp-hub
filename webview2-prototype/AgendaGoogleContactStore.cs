@@ -20,8 +20,8 @@ internal sealed class AgendaGoogleContactStore(Func<HttpMethod, string, object?,
             throw new InvalidOperationException("Entre novamente na Agenda para salvar o contato.");
         if (original.OperationalCompanyId is { } identityCompany && identityCompany.ToString("D") != company)
             throw new InvalidOperationException("O evento identifica outra empresa. Confira o vínculo antes de cadastrar o contato.");
-        if (original.AllDay || original.SpansMultipleDays || original.Duration > 1440)
-            throw new InvalidOperationException("O contato para confirmação exige evento de um dia com horário definido.");
+        if (original.AllDay || original.RequiresGoogleEditor)
+            throw new InvalidOperationException("O contato para confirmação exige horário definido e duração entre 15 minutos e 24 horas.");
         var current = await readEvent(original.Id);
         if (current.Id != original.Id || current.ETag != original.ETag)
             throw new InvalidOperationException("O evento Google mudou. Atualize antes de salvar o contato.");

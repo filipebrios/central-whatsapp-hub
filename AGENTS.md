@@ -61,6 +61,8 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- **27/10 — evento atravessando meia-noite em validação:** usuário relatou bloqueio em serviço 23:30–00:30. SpansMultipleDays era usado como proibição mesmo para duração de uma hora. Mantida flag descritiva, criada guarda por duração/tipo: horário definido de 15 min a 24 h pode atravessar meia-noite; dia inteiro multidiário e duração fora do limite continuam no Google. UI/API, contato, reconciliação e confirmação seguem a mesma regra. Editor mostra data/hora do término e dia seguinte. Testes HTTP/ETag, contato/vínculo/rascunho e captura noturna preparados; aguardando CI. 1.9.5 ainda contém o bloqueio.
+
 - **27/10 — MODUX 1.9.5 beta e página São Bento PUBLICADOS:** fonte do pacote `153ac5b24def41792b619db6b6988c362857ddff`, CI #40558332082 integralmente aprovado. EXE `MODUX-Setup-1.9.5.exe`, 51.308.367 bytes, SHA-256 `38621db5d49d7afdf1b17cae1b9d1660f00d52b6e5e53c45f3a61edbbaf3c7df`. Release `modux-v1.9.5-beta1` pública, não rascunho, prerelease. Download: https://github.com/filipebrios/central-whatsapp-hub/releases/download/modux-v1.9.5-beta1/MODUX-Setup-1.9.5.exe .
 - Confirmação/lembretes usam endereço atual Google após conferir vínculo/ETag/horário, fallback local, bloco para modelo sem variável e bloqueio se ambas fontes vazias. CI inclui rascunho, três rotinas, não duplicação, pós-venda, Windows/navegador e instalação/desinstalação com hashes de contas/perfil fictícios preservados. Assets baixados e SHA comparado pelo pipeline. Nenhum envio real nem escrita Google/banco pela leitura.
 - Página com marca oficial publicada no sbento PR #27 (merge comum `604ce497c22573c471a0ba15555020d78ccef602`), CI #40557886867 concluído e preview/build conferidos. Produção Vercel `dpl_7P62WQPgqhP9MFRTEdD1tsUaHdRv` READY. GET público HTML/CSS/logo conferido em https://sbento.com.br/modux-resposta.html ; PNG idêntico ao favicon oficial por SHA. Mesmo link e fluxos/capacidade preservados, sem alteração ERP/login/banco. Teste real do novo rascunho pelo usuário ainda pendente.
@@ -171,6 +173,8 @@ Requisitos permanentes:
 - Alterações atribuídas ao Manus não estão no repositório conhecido.
 
 ## Pendências priorizadas
+
+- Validar correção 23:30–00:30: edição sem deslocar data/hora/duração, limite de 24h, proteção de dia inteiro multidiário, contato e reconciliação/rascunho, prévia de término e capturas. Entregar correção consolidada após CI/instalador, preservando sessões e releases. Nenhum evento real deve ser usado como fixture.
 
 - Após entrega 1.9.5: usuário deve atualizar e gerar novamente o rascunho para validar endereço real. Página pública já usa identidade São Bento no mesmo link. CI/pacote/assets/SHA e HTTP público aprovados; 1.9.4 permanece sem correção de endereço. Mensagem antiga já aberta no WhatsApp não é alterada automaticamente.
 
@@ -352,6 +356,12 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-27 — edição de serviço que atravessa meia-noite
+
+- Corrigida confusão entre mudança de data e evento fora da capacidade do editor. RequiresGoogleEditor centraliza limites de 15 min a 24h e dia inteiro multidiário; SpansMultipleDays permanece descritivo. Painel/API, contato, conferência de mensagens e reconciliação usam guarda comum. Não amplia edição para série completa/múltiplos dias inteiros.
+- Rascunho continua start + duração no fuso São Paulo; API gera término no dia seguinte e usa GET/ETag/If-Match/sendUpdates none existentes. Editor mostra data/hora de término e indicação dia seguinte, reagindo a data/hora/duração.
+- Regressões reproduzem 23:30–00:30, PATCH sem alteração de horários/série/convidados, virada do ano, bloqueio antes de HTTP para duração longa/dia inteiro multidiário, telefone/vínculo/rascunho e captura do editor noturno. Aguardando CI/compilação; nenhum evento/WhatsApp real alterado/enviado.
 
 ### 2026-10-27 — entrega 1.9.5 e identidade São Bento publicada
 

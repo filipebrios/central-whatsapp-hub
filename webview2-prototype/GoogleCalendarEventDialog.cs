@@ -22,6 +22,7 @@ internal sealed class GoogleCalendarEventDialog : Form
     private readonly TextBox phone = new() { Dock = DockStyle.Fill, MaxLength = 30, PlaceholderText = "DDD + número do WhatsApp" };
     private readonly Button savePhone = Button("Salvar WhatsApp");
     private readonly Label contactStatus = new() { Dock = DockStyle.Bottom, Height = 38, Padding = new Padding(20, 3, 20, 0), AutoEllipsis = true };
+    private readonly Label endsAt = new() { Dock = DockStyle.Bottom, Height = 25, Padding = new Padding(20, 2, 20, 0), AutoEllipsis = true };
     private bool savingContact;
     private string phoneSavedValue = "";
     internal bool ContactSaved { get; private set; }
@@ -158,7 +159,19 @@ internal sealed class GoogleCalendarEventDialog : Form
                 ? "Evento recorrente: alterações serão aplicadas SOMENTE a esta ocorrência. Convidados não serão notificados automaticamente."
                 : "Somente o calendário Google selecionado será alterado; eventos e lembretes do WhatsApp não serão enviados."
         };
-        Controls.Add(layout); Controls.Add(contactStatus); Controls.Add(hint); Controls.Add(footer);
+        void UpdateEndPreview()
+        {
+            var starts = date.Value.Date.Add(TimeOnly.FromDateTime(time.Value).ToTimeSpan());
+            var ends = starts.AddMinutes((int)minutes.Value);
+            endsAt.Text = allDay.Checked ? "Dia inteiro • ocupa o dia selecionado." :
+                "Término: " + ends.ToString("dd/MM/yyyy 'às' HH:mm") + (ends.Date > starts.Date ? " • dia seguinte" : "");
+        }
+        date.ValueChanged += (_, _) => UpdateEndPreview();
+        time.ValueChanged += (_, _) => UpdateEndPreview();
+        minutes.ValueChanged += (_, _) => UpdateEndPreview();
+        allDay.CheckedChanged += (_, _) => UpdateEndPreview();
+        UpdateEndPreview();
+        Controls.Add(layout); Controls.Add(endsAt); Controls.Add(contactStatus); Controls.Add(hint); Controls.Add(footer);
         AcceptButton = save;
         CancelButton = cancel;
     }

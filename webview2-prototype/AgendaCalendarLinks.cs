@@ -145,7 +145,7 @@ internal sealed class AgendaCalendarLinkStore(
             string.IsNullOrWhiteSpace(link.ETag) || (!cancelled && google is null) ||
             (google is not null && google.Id != link.EventId))
             throw new InvalidOperationException("Identidade incompleta para reconciliar. Atualize a agenda.");
-        if (!cancelled && (google!.SpansMultipleDays || google.Duration > 1440))
+        if (!cancelled && google!.RequiresGoogleEditor)
             throw new InvalidOperationException("Eventos de vários dias exigem revisão no Google antes de vincular horários.");
         using var response = await authorized(HttpMethod.Post, "rest/v1/rpc/agenda_reconcile_google_event", new
         {

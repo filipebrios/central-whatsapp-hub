@@ -74,14 +74,16 @@ if (recurring is null || recurring.RecurringEventId != "series-123" ||
     recurring.SpansMultipleDays || recurring.Duration != 60)
     throw new Exception("Instância recorrente identificada incorretamente.");
 
-var overMidnight = FromJson("""
-{"id":"night","etag":"\"v1\"",
+var nightJson = """
+{"id":"night","etag":"\"v1\"","summary":"Cliente de teste noturno","location":"Endereço de teste",
+ "recurringEventId":"series-night",
  "start":{"dateTime":"2026-10-23T23:30:00-03:00"},
- "end":{"dateTime":"2026-10-24T00:45:00-03:00"}}
-""");
-if (overMidnight is null || overMidnight.Duration != 75 ||
+ "end":{"dateTime":"2026-10-24T00:30:00-03:00"}}
+""";
+var overMidnight = FromJson(nightJson);
+if (overMidnight is null || overMidnight.Duration != 60 || overMidnight.RequiresGoogleEditor ||
     !overMidnight.SpansMultipleDays || overMidnight.Time != "23:30")
-    throw new Exception("Evento passando da meia-noite deve ser protegido.");
+    throw new Exception("Evento de uma hora passando da meia-noite deve continuar editável.");
 
 var manyDays = FromJson("""
 {"id":"holiday","etag":"\"v2\"",
@@ -174,6 +176,40 @@ using (var api = new GoogleCalendarApi(auth, new HttpClient(transport)))
     if (created.Id != "event-987" || transport.Calls != 1)
         throw new Exception("Criação deve fazer exatamente uma requisição.");
 }
+
+// Reproduz 23:30 → 00:30 com GET/If-Match/PATCH reais do cliente, sem rede real.
+var nightDraft = new GoogleEventDraft("Cliente de teste atualizado", "Dados revisados", overMidnight!.Location,
+    overMidnight.Date, new TimeOnly(23,30), 60, false);
+using (var nightTransport = new CalendarTestHandler((method, uri, bearer, body) =>
+{
+    if (!uri.AbsolutePath.EndsWith("/events/night")) throw new Exception("Edição noturna perdeu ID exato.");
+    if (method == "GET") return CalendarTestHandler.Json(nightJson);
+    if (method != "PATCH" || uri.Query != "?sendUpdates=none") throw new Exception("Edição noturna enviou operação incorreta.");
+    using var payload = JsonDocument.Parse(body!);
+    if (payload.RootElement.GetProperty("start").GetProperty("dateTime").GetString() != "2026-10-23T23:30:00-03:00" ||
+        payload.RootElement.GetProperty("end").GetProperty("dateTime").GetString() != "2026-10-24T00:30:00-03:00" ||
+        payload.RootElement.TryGetProperty("recurrence", out _) || payload.RootElement.TryGetProperty("attendees", out _))
+        throw new Exception("Editar dados deslocou data final ou alterou série/convidados.");
+    return CalendarTestHandler.Json(nightJson.Replace("v1", "v2"));
+}))
+using (var nightApi = new GoogleCalendarApi(auth, new HttpClient(nightTransport)))
+{
+    var savedNight = await nightApi.Update(overMidnight, nightDraft);
+    if (nightTransport.Calls != 2 || nightTransport.LastETag != overMidnight.ETag || savedNight.Duration != 60 ||
+        !savedNight.SpansMultipleDays || savedNight.RequiresGoogleEditor)
+        throw new Exception("PATCH noturno perdeu duração/ETag ou repetiu escrita.");
+}
+using (var rejectedNightTransport = new CalendarTestHandler((_,_,_,_) => throw new Exception("Evento fora dos limites chegou à API.")))
+using (var nightApi = new GoogleCalendarApi(auth, new HttpClient(rejectedNightTransport)))
+{
+    await ExpectFailure(() => nightApi.Update(manyDays!, nightDraft), "Google Agenda");
+    await ExpectFailure(() => nightApi.Update(overMidnight with { Duration = 2880 }, nightDraft), "Google Agenda");
+    if (rejectedNightTransport.Calls != 0) throw new Exception("Proteção multidiária foi removida por completo.");
+}
+using var yearEndNight = JsonDocument.Parse(JsonSerializer.Serialize((nightDraft with { Date = new DateOnly(2026,12,31) }).AsGoogleFields()));
+if (yearEndNight.RootElement.GetProperty("end").GetProperty("dateTime").GetString() != "2027-01-01T00:30:00-03:00")
+    throw new Exception("Edição noturna perdeu virada do ano.");
+Console.WriteLine("PASS: edição 23:30–00:30 com data final seguinte, ETag/ID/série preservados, virada do ano e bloqueios multidiários mantidos.");
 
 // Uma agenda operacional deve ser barrada antes de qualquer chamada HTTP.
 auth.AllowWrite = false;
@@ -442,7 +478,7 @@ var reconcileStore = new AgendaCalendarLinkStore((method, path, payload) =>
 await reconcileStore.Reconcile(company, association, localRecord, item);
 await reconcileStore.Reconcile(company, association, localRecord, null, cancelled: true);
 await ExpectFailure(() => reconcileStore.Reconcile("outra empresa", association, localRecord, item), "Identidade incompleta");
-await ExpectFailure(() => reconcileStore.Reconcile(company, association, localRecord, item with { SpansMultipleDays = true }), "vários dias");
+await ExpectFailure(() => reconcileStore.Reconcile(company, association, localRecord, item with { AllDay = true, SpansMultipleDays = true }), "vários dias");
 if (reconciledPosts != 2) throw new Exception("Reconciliação inválida chegou à API.");
 Console.WriteLine("PASS: reconciliação/cancelamento RPC, revisão/ETag e guarda multidiária.");
 
@@ -1027,6 +1063,39 @@ var reusedIdentity = await contactStore.Save(company, contactUser, contactCalend
 if (contactCreates != 1 || reusedIdentity.Local.Id != contactId || reusedIdentity.Local.Phone != "5535999994444")
     throw new Exception("Cadastro explicitamente identificado pelo Google foi duplicado.");
 Console.WriteLine("PASS: contato de Google existente, telefone com DDD, vínculo explícito, falha recuperável sem duplicata/telefone liberado, CAS e rascunho correto; sem escrita no Google.");
+
+// O mesmo evento noturno deve permitir contato, reconciliação e confirmação vinculados.
+var nightLocal = todayAppointment with { Id=contactId, Date=overMidnight.Date.ToString("yyyy-MM-dd"), Time="23:30", Duration=60, Address="Endereço de teste" };
+var nightLink = new AgendaCalendarLink(company, nightLocal.Id, contactCalendar, overMidnight.Id, overMidnight.ETag);
+var nightReconciles = 0;
+var nightStore = new AgendaCalendarLinkStore((method,path,data) =>
+{
+    var fields = JsonSerializer.SerializeToElement(data);
+    if (method != HttpMethod.Post || fields.GetProperty("p_date").GetString() != nightLocal.Date ||
+        fields.GetProperty("p_time").GetString() != "23:30:00" || fields.GetProperty("p_duration").GetInt32() != 60)
+        throw new Exception("Reconciliação noturna alterou o começo/duração.");
+    nightReconciles++; return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK));
+});
+await nightStore.Reconcile(company, nightLink, nightLocal, overMidnight);
+var nightWorkflow = new AgendaWorkflowStore((_,_,_) => ContactJson(new[] { ContactLinkRow(nightLink) }));
+var nightWork = await nightWorkflow.ValidateSchedule(company, new AgendaWorkItem(nightLocal,"confirmacao","A confirmar"), contactCalendar,
+    _ => Task.FromResult(overMidnight));
+if (nightReconciles != 1 || !AgendaWorkflowRules.Message(nightWork,"{data}, {hora}, {endereco}").Text.Contains("23:30"))
+    throw new Exception("Confirmação bloqueou evento noturno ou mudou horário.");
+var nightContactStore = new AgendaGoogleContactStore((method,path,data) =>
+{
+    if (method == HttpMethod.Get && path.StartsWith("rest/v1/agenda_calendar_links?")) return ContactJson(new[] { ContactLinkRow(nightLink) });
+    if (method == HttpMethod.Get) return ContactJson(new[] { ContactDbRow(nightLocal) });
+    if (method == HttpMethod.Patch)
+    {
+        var fields = JsonSerializer.SerializeToElement(data);
+        if (fields.EnumerateObject().Count()!=1 || !fields.TryGetProperty("phone",out _)) throw new Exception("Contato noturno alterou dados do evento.");
+        return ContactJson(new[] { ContactDbRow(nightLocal with { Revision=nightLocal.Revision+1, Phone="5535999991111" }) });
+    }
+    throw new Exception("Contato noturno tentou criar duplicata.");
+});
+await nightContactStore.Save(company,contactUser,contactCalendar,overMidnight,nightLocal,"35999991111",[],"",_=>Task.FromResult(overMidnight));
+Console.WriteLine("PASS: atendimento 23:30 permite telefone, reconciliação e rascunho sem duplicar nem deslocar horário.");
 
 static async Task ExpectFailure(Func<Task> operation, string message)
 {

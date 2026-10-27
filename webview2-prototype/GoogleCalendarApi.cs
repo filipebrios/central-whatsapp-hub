@@ -271,8 +271,8 @@ internal sealed class GoogleCalendarApi : IDisposable
         auth.DemandSafeWrite();
         if (string.IsNullOrWhiteSpace(original.ETag))
             throw new InvalidOperationException("A versão do evento é desconhecida. Atualize a agenda.");
-        if (original.SpansMultipleDays || original.Duration > 1440)
-            throw new InvalidOperationException("Eventos que duram mais de um dia ainda devem ser editados diretamente no Google Agenda.");
+        if (original.RequiresGoogleEditor)
+            throw new InvalidOperationException("Este tipo de evento ou duração exige edição diretamente no Google Agenda.");
         var current = await Event(original.Id, ct);
         if (current.ETag != original.ETag)
             throw new InvalidOperationException(
@@ -380,6 +380,9 @@ internal sealed record GoogleEventSnapshot(
     int Duration, string? ColorId, string? RecurringEventId)
 {
     internal bool SpansMultipleDays { get; init; }
+    // Timed events are represented by start + duration, including the next calendar date.
+    // Multi-day all-day events and durations outside the editor's limits stay in Google.
+    internal bool RequiresGoogleEditor => Duration < 15 || Duration > 1440 || (AllDay && SpansMultipleDays);
     internal Guid? OperationalCompanyId { get; init; }
     internal Guid? OperationalAppointmentId { get; init; }
     internal IReadOnlyDictionary<string, string> PrivateProperties { get; init; } = new Dictionary<string, string>();
@@ -446,8 +449,7 @@ internal sealed record GoogleEventSnapshot(
             local.ToString("HH:mm"), false, minutes, Get(e, "colorId"),
             Get(e, "recurringEventId"))
         {
-            // Importante: eventos com horário atravessando a meia-noite também
-            // precisam da proteção contra edição que alteraria sua duração.
+            // Descreve a mudança de data para exibição; a edição considera duração/tipo.
             SpansMultipleDays = local.Date != localEnd.Date
         }, e);
     }
