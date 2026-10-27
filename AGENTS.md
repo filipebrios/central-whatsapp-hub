@@ -61,6 +61,9 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- **27/10 — MODUX 1.9.4 beta PUBLICADA:** release `modux-v1.9.4-beta1`, fonte `c648f78bb61b4c0133830a65c9c20fa303ddacef`, CI #40548665870 integralmente aprovado. EXE `MODUX-Setup-1.9.4.exe`, 51.307.659 bytes, SHA-256 `e681e64ee82b7d6ccf9107f6d3710b2a9a9ff15b0074f4dea1d03c2034b21ccb`. Release pública, não rascunho, prerelease. Download: https://github.com/filipebrios/central-whatsapp-hub/releases/download/modux-v1.9.4-beta1/MODUX-Setup-1.9.4.exe .
+- Campo WhatsApp do cliente/Salvar WhatsApp no editor do evento Google existente e Editar WhatsApp na fila. Cadastro/vínculo explícito para o evento, recuperação por ID, telefone liberado após vínculo, PATCH só phone por revisão e identidade operacional existente preservada. Janelas/rodapés cabem na área útil; capturas clara/escura/filas revisadas. Testes C#/HTTP/cores/protocolo, navegador, UI, diagnóstico e pacote/instalação/desinstalação passaram; hashes de contas/perfil fictícios preservados e assets baixados/SHA comparado pelo pipeline antes de publicar. Nenhum envio real ou alteração Google pelas ferramentas. Retorno real do usuário ainda pendente; 1.9.3 preservada e sem esta correção.
+
 - **27/10 — correção do contato 1.9.4 em preparação:** CI #40514412022 aprovou C#/HTTP/cores/protocolo, editor/fila Windows, navegador e diagnóstico isolado. Capturas mostram WhatsApp do cliente e Editar WhatsApp. Revisão visual identificou janelas além da área útil do runner; ajustadas altura/posição com rolagem e teste dos limites. Acrescentada reutilização de identidade operacional explícita do evento e bloqueio de empresa divergente. Manifesto 1.9.4 repetirá todos os testes/capturas e instalação antes da publicação. Ainda não há instalador corrigido disponível.
 
 - **27/10 — telefone no editor Google em validação:** captura real mostra que o editor não oferecia WhatsApp, tornando a fila inacessível aos eventos sem cadastro. Implementado campo WhatsApp do cliente/Salvar WhatsApp no editor existente e Editar WhatsApp na fila. Cadastro explícito para o evento atual, ID estável por empresa/calendário/evento, vínculo por IDs e telefone liberado somente após vínculo confirmado; edição posterior faz PATCH apenas do telefone por revisão. Não cria evento Google nem envia mensagem. Regressões e capturas aguardam CI; 1.9.3 ainda não contém a correção.
@@ -161,7 +164,7 @@ Requisitos permanentes:
 
 ## Pendências priorizadas
 
-- CI #40514412022 aprovou o fluxo de WhatsApp, recuperação parcial e CAS. Conferir repetição após ajuste das janelas e guardas de identidade no pacote 1.9.4; revisar capturas com rodapé visível, instalação e assets/SHA antes de anunciar disponibilidade.
+- Após entrega 1.9.4: recolher validação real do telefone no evento existente → Salvar WhatsApp → Serviços a confirmar e da edição na fila. CI #40548665870 e capturas/instalação/assets/SHA aprovados. Preservar sessões e envio manual. Contato é do atendimento selecionado, sem sincronização do catálogo global do WhatsApp; eventos de dia inteiro/multidia exigem horário definido.
 
 - Após entrega 1.9.3: recolher retorno real da fila (revisão, próxima, pular/rever), conta selecionada e cor da desinsetização. CI #40510559720 e instalação/assets/SHA aprovados. 1.9.2 permanece sem estas mudanças; atualizar pelo instalador 1.9.3. Cadastros só do Google não são importados automaticamente; exigem atendimento/vínculo e contato autorizado.
 
@@ -339,6 +342,12 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-27 — entrega da correção de contato 1.9.4 beta
+
+- CI #40548665870 aprovou testes HTTP de vínculo/CAS/recuperação/isolamento/identidade existente, telefone editado no rascunho, editor e fila Windows com limites de tela, regressões, navegador, diagnóstico isolado e compilação. Capturas clara/escura mostram telefone, dois serviços e rodapés acessíveis; fila mostra Editar WhatsApp.
+- Pacote versão ARANY, auditoria de ausência de dados pessoais, instalação/desinstalação e hashes de duas contas/perfil fictícios passaram. Assets baixados e SHA-256 conferido antes da publicação pública `modux-v1.9.4-beta1`. EXE 51.307.659 bytes, SHA `e681e64ee82b7d6ccf9107f6d3710b2a9a9ff15b0074f4dea1d03c2034b21ccb`, fonte `c648f78bb61b4c0133830a65c9c20fa303ddacef`.
+- Versões anteriores preservadas; nenhuma migração/dado real/evento/WhatsApp alterado/enviado pelas ferramentas. Beta pronta para validação real do usuário.
 
 ### 2026-10-27 — preparação da correção consolidada 1.9.4
 
