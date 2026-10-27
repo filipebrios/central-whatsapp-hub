@@ -61,6 +61,9 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- **27/10 — MODUX 1.9.6 beta PUBLICADA:** fonte do pacote `0257460a3235b715f6046a8be97e7ee867886ad3`, CI #40560596273 integralmente aprovado. EXE `MODUX-Setup-1.9.6.exe`, 51.310.303 bytes, SHA-256 `2d981d28ecab461ff778d35b20f7e9c3e43b9c911226287e2a9d3a6945daffa6`. Release `modux-v1.9.6-beta1` pública, não rascunho, prerelease. Download: https://github.com/filipebrios/central-whatsapp-hub/releases/download/modux-v1.9.6-beta1/MODUX-Setup-1.9.6.exe .
+- Corrige bloqueio de evento com horário 23:30–00:30: mudança de data não impede edição quando duração está entre 15 min e 24h. UI/API, telefone, reconciliação e confirmação usam guarda comum; término mostra data/hora e dia seguinte. Proteções de dia inteiro multidiário/duração fora do limite e série inteira mantidas. Testes HTTP/ETag/datas/virada de ano, contato/vínculo/rascunho, UI/navegador, diagnóstico e pacote passaram; capturas clara/escura revisadas. Instalação/desinstalação e hashes de contas/perfil fictícios preservados; assets baixados/SHA comparado antes de publicar. Nenhum evento real alterado ou WhatsApp enviado pelas ferramentas. Validação no Windows do usuário pendente.
+
 - **27/10 — edição noturna aprovada; pacote 1.9.6 em preparação:** CI #40560149184 integralmente aprovado. HTTP reproduziu 23:30–00:30 sem mover horários, preservando ETag/ID/série; testes de contato, reconciliação, confirmação e limites passaram. Capturas clara/escura do editor com término no dia seguinte conferidas. Manifesto 1.9.6 repetirá validações e instalação/preservação/assets SHA; ainda não anunciar instalador publicado.
 
 - **27/10 — evento atravessando meia-noite em validação:** usuário relatou bloqueio em serviço 23:30–00:30. SpansMultipleDays era usado como proibição mesmo para duração de uma hora. Mantida flag descritiva, criada guarda por duração/tipo: horário definido de 15 min a 24 h pode atravessar meia-noite; dia inteiro multidiário e duração fora do limite continuam no Google. UI/API, contato, reconciliação e confirmação seguem a mesma regra. Editor mostra data/hora do término e dia seguinte. Testes HTTP/ETag, contato/vínculo/rascunho e captura noturna preparados; aguardando CI. 1.9.5 ainda contém o bloqueio.
@@ -176,7 +179,7 @@ Requisitos permanentes:
 
 ## Pendências priorizadas
 
-- CI #40560149184 e capturas aprovados para 23:30–00:30. Aguardar repetição e pacote 1.9.6, instalação/preservação e assets/SHA; depois validar no computador do usuário. 1.9.5 ainda bloqueia eventos atravessando meia-noite. Nenhum evento real deve ser usado como fixture.
+- Após entrega 1.9.6: usuário deve atualizar e validar edição do atendimento noturno pelo duplo clique, telefone e confirmação. CI #40560596273, pacote/instalação/preservação e assets/SHA aprovados. 1.9.5 ainda bloqueia esses eventos. Dia inteiro multidiário e duração fora de 15 min–24h permanecem no Google; série inteira não é editada por esta mudança.
 
 - Após entrega 1.9.5: usuário deve atualizar e gerar novamente o rascunho para validar endereço real. Página pública já usa identidade São Bento no mesmo link. CI/pacote/assets/SHA e HTTP público aprovados; 1.9.4 permanece sem correção de endereço. Mensagem antiga já aberta no WhatsApp não é alterada automaticamente.
 
@@ -358,6 +361,12 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-10-27 — entrega da correção noturna 1.9.6 beta
+
+- CI #40560596273 repetiu e aprovou HTTP de 23:30–00:30 preservando data/duração/ID/ETag/recorrência, virada do ano e guardas; contato/vínculo/rascunho, cores/protocolo, compilação, UI Windows, navegador e diagnóstico. Capturas do editor noturno nos dois temas revisadas.
+- Pacote ARANY auditado sem dados pessoais; instalação/desinstalação mantiveram hashes de contas/perfil fictícios. Assets baixados e SHA conferido antes de publicar `modux-v1.9.6-beta1`, fonte `0257460a3235b715f6046a8be97e7ee867886ad3`, EXE 51.310.303 bytes e SHA `2d981d28ecab461ff778d35b20f7e9c3e43b9c911226287e2a9d3a6945daffa6`. Releases anteriores preservadas.
+- Nenhum evento/WhatsApp real alterado/enviado; serviço do usuário deve ser validado após atualização. Página São Bento/ERP/banco e base Electron não foram alterados nesta correção.
 
 ### 2026-10-27 — preparação da correção noturna 1.9.6
 
