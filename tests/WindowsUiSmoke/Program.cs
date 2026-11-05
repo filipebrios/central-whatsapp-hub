@@ -234,6 +234,19 @@ internal static class Program
                 throw new Exception("O seletor de período não mudou a visão real do calendário.");
             if (Descendants(calendar).Count() > 60) throw new Exception("Calendário voltou a criar controles por evento.");
             Capture(form, "calendario-" + mode.ToLowerInvariant() + (dark ? "-escuro" : "-claro"));
+            if (mode != "Month")
+            {
+                var surface = Descendants(calendar).First(x => x.GetType().Name == "CalendarSurface");
+                var bar = surface.Controls.OfType<VScrollBar>().Single();
+                foreach (var value in new[] { 0, 120, 360, 720, 240, 0 })
+                {
+                    bar.Value = Math.Min(value, bar.Maximum - bar.LargeChange + 1);
+                    Pump();
+                }
+                if (bar.Value != 0) throw new Exception("A rolagem não retornou ao início.");
+                Capture(form, "calendario-rolagem-" + mode.ToLowerInvariant() + (dark ? "-escuro" : "-claro"));
+            }
+
         }
         // Stress the actual drawing surface with 500 events; log time without a flaky runner-speed assertion.
         var stress = Array.CreateInstance(entryType, 500);

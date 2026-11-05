@@ -100,34 +100,59 @@ internal sealed class AgendaMonthView : UserControl
         if (edit && !string.IsNullOrEmpty(key)) EventActivated?.Invoke(key);
     }
 
-    private sealed class CalendarSurface : ScrollableControl
+    private sealed class CalendarSurface : Control
     {
         private readonly AgendaMonthView owner;
         private readonly ToolTip tip = new() { AutoPopDelay = 14000, ShowAlways = true };
         private readonly System.Windows.Forms.Timer clock = new() { Interval = 60000 };
         private readonly List<(Rectangle Bounds, DateOnly Day, AgendaCalendarEntry? Entry)> hits = [];
         private string lastTip = "";
+        private readonly VScrollBar scrollBar = new() { Dock = DockStyle.Right, SmallChange = 26 };
+        private int GridWidth => ClientSize.Width - (scrollBar.Visible ? scrollBar.Width : 0);
         private readonly Font regular = new("Segoe UI", 8.5f);
         private readonly Font strong = new("Segoe UI", 8.5f, FontStyle.Bold);
         internal AgendaCalendarEntry[] Entries = [];
         private const int Hour = 52, Gutter = 52, Heading = 46, AllDayRows = 3;
         internal CalendarSurface(AgendaMonthView owner)
         {
-            this.owner = owner; DoubleBuffered = true; AutoScroll = true; TabStop = true;
+            this.owner = owner; DoubleBuffered = true; TabStop = true;
+            Controls.Add(scrollBar);
+            scrollBar.ValueChanged += (_, _) => Invalidate();
             ResizeRedraw = true; Cursor = Cursors.Hand;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
             clock.Tick += (_, _) => { if (Visible) Invalidate(); }; clock.Start();
         }
         internal void ResetScroll()
         {
-            AutoScrollPosition = Point.Empty;
-            AutoScrollMinSize = owner.Mode == AgendaCalendarMode.Month ? Size.Empty : new Size(0, Heading + 24 * Hour + 92);
-            if (owner.Mode != AgendaCalendarMode.Month) AutoScrollPosition = new Point(0, 7 * Hour);
+            UpdateScrollRange();
+            scrollBar.Value = owner.Mode == AgendaCalendarMode.Month ? 0 : Math.Min(7 * Hour, ScrollLimit);
+            Invalidate();
         }
-        protected override void OnScroll(ScrollEventArgs se) { base.OnScroll(se); Invalidate(); }
+        private int ScrollLimit => Math.Max(0, scrollBar.Maximum - scrollBar.LargeChange + 1);
+        private void UpdateScrollRange()
+        {
+            scrollBar.Visible = owner.Mode != AgendaCalendarMode.Month;
+            scrollBar.LargeChange = Math.Max(1, ClientSize.Height - Heading);
+            scrollBar.Maximum = Math.Max(0, Heading + 24 * Hour + 92 - 1);
+            scrollBar.Value = Math.Min(scrollBar.Value, ScrollLimit);
+        }
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            if (scrollBar != null) UpdateScrollRange();
+        }
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            base.OnMouseWheel(e);
+            if (!scrollBar.Visible) return;
+            var lines = SystemInformation.MouseWheelScrollLines;
+            var step = lines < 0 ? scrollBar.LargeChange : Math.Max(1, lines) * scrollBar.SmallChange;
+            scrollBar.Value = Math.Clamp(scrollBar.Value - e.Delta / 120 * step, 0, ScrollLimit);
+        }
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e); hits.Clear();
+            e.Graphics.Clear(BackColor);
             if (ClientSize.Width < 80 || ClientSize.Height < 40) return;
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             if (owner.Mode == AgendaCalendarMode.Month) DrawMonth(e.Graphics); else DrawTimeline(e.Graphics);
@@ -175,16 +200,16 @@ internal sealed class AgendaMonthView : UserControl
         private void DrawTimeline(Graphics g)
         {
             var span = owner.VisibleRange; var count = owner.Mode == AgendaCalendarMode.Day ? 1 : 7;
-            var column = (ClientSize.Width - Gutter) / (float)count;
+            var column = (GridWidth - Gutter) / (float)count;
             using var line = new Pen(ModuxAppearance.Border);
             var maxAllDay = Enumerable.Range(0, count).Select(i => Entries.Count(x => x.IsAllDay && x.Date <= span.First.AddDays(i) && x.End > span.First.AddDays(i).ToDateTime(TimeOnly.MinValue))).DefaultIfEmpty().Max();
             var allHeight = maxAllDay == 0 ? 0 : Math.Min(AllDayRows, maxAllDay) * 22 + (maxAllDay > AllDayRows ? 20 : 0);
-            var gridTop = Heading + allHeight; var scroll = AutoScrollPosition.Y;
-            var state = g.Save(); g.SetClip(new Rectangle(0, gridTop, ClientSize.Width, Math.Max(0, ClientSize.Height - gridTop)));
+            var gridTop = Heading + allHeight; var scroll = -scrollBar.Value;
+            var state = g.Save(); g.SetClip(new Rectangle(0, gridTop, GridWidth, Math.Max(0, ClientSize.Height - gridTop)));
             for (var hour = 0; hour <= 24; hour++)
             {
                 var y = gridTop + hour * Hour + scroll;
-                g.DrawLine(line, Gutter, y, ClientSize.Width, y);
+                g.DrawLine(line, Gutter, y, GridWidth, y);
                 if (hour < 24) DrawText(g, $"{hour:00}:00", new Rectangle(2, y + 2, Gutter - 4, 20), ModuxAppearance.Muted);
             }
             for (var dayIndex = 0; dayIndex < count; dayIndex++)
@@ -198,7 +223,7 @@ internal sealed class AgendaMonthView : UserControl
                         Math.Max(4, (int)(column / slot.Lanes) - 4), Math.Max(18, (int)((slot.EndMinute - slot.StartMinute) * Hour / 60) - 2));
                     if (bounds.Bottom < gridTop || bounds.Top > ClientSize.Height) continue;
                     Chip(g, bounds, slot.Entry, day, slot.Entry.Client + "\n" + slot.Entry.Time + " – " + slot.Entry.End.ToString("HH:mm"), true);
-                    hits[^1] = (Rectangle.Intersect(bounds, new Rectangle(0, gridTop, ClientSize.Width, Math.Max(0, ClientSize.Height - gridTop))), day, slot.Entry);
+                    hits[^1] = (Rectangle.Intersect(bounds, new Rectangle(0, gridTop, GridWidth, Math.Max(0, ClientSize.Height - gridTop))), day, slot.Entry);
                 }
             }
             var now = AgendaCalendarLayout.Now; var today = DateOnly.FromDateTime(now);
@@ -209,7 +234,7 @@ internal sealed class AgendaMonthView : UserControl
                 using var red = new Pen(Color.FromArgb(211, 57, 57), 2); g.DrawLine(red, x, y, x + column, y);
             }
             g.Restore(state);
-            Fill(g, new Rectangle(0, 0, ClientSize.Width, gridTop), ModuxAppearance.Surface);
+            Fill(g, new Rectangle(0, 0, GridWidth, gridTop), ModuxAppearance.Surface);
             for (var dayIndex = 0; dayIndex < count; dayIndex++)
             {
                 var day = span.First.AddDays(dayIndex); var x = Gutter + (int)(dayIndex * column);
@@ -220,7 +245,7 @@ internal sealed class AgendaMonthView : UserControl
                 if (all.Length > AllDayRows) DrawText(g, $"+{all.Length - AllDayRows} dia inteiro", new Rectangle(x + 3, Heading + AllDayRows * 22, (int)column - 6, 20), ModuxAppearance.Muted);
             }
             DrawText(g, "GMT−03", new Rectangle(1, 20, Gutter - 2, 20), ModuxAppearance.Muted);
-            g.DrawLine(line, 0, gridTop, ClientSize.Width, gridTop);
+            g.DrawLine(line, 0, gridTop, GridWidth, gridTop);
         }
         private (Rectangle Bounds, DateOnly Day, AgendaCalendarEntry? Entry)? Hit(Point point)
         {
@@ -228,7 +253,7 @@ internal sealed class AgendaMonthView : UserControl
             if (owner.Mode != AgendaCalendarMode.Month && point.X >= Gutter)
             {
                 var count = owner.Mode == AgendaCalendarMode.Day ? 1 : 7;
-                var index = Math.Clamp((point.X - Gutter) * count / Math.Max(1, ClientSize.Width - Gutter), 0, count - 1);
+                var index = Math.Clamp((point.X - Gutter) * count / Math.Max(1, GridWidth - Gutter), 0, count - 1);
                 return (Rectangle.Empty, owner.VisibleRange.First.AddDays(index), null);
             }
             return null;

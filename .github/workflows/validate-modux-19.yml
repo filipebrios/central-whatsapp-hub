@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/modux-1.9-consolidated
+      - fix/calendar-rendering
     paths:
       - "webview2-prototype/**"
       - "modux-agenda/**"

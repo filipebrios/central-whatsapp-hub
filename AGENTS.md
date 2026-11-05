@@ -61,6 +61,8 @@ Requisitos permanentes:
 
 ## Estado atual confirmado
 
+- **05/11 — correção de rolagem em preparação:** grade semana/dia usa barra explícita e deslocamento lógico, evitando cópia nativa de pixels do cabeçalho fixo. Ainda sem compilação Windows ou instalador.
+
 - **27/10 — MODUX 1.9.6 beta PUBLICADA:** fonte do pacote `0257460a3235b715f6046a8be97e7ee867886ad3`, CI #40560596273 integralmente aprovado. EXE `MODUX-Setup-1.9.6.exe`, 51.310.303 bytes, SHA-256 `2d981d28ecab461ff778d35b20f7e9c3e43b9c911226287e2a9d3a6945daffa6`. Release `modux-v1.9.6-beta1` pública, não rascunho, prerelease. Download: https://github.com/filipebrios/central-whatsapp-hub/releases/download/modux-v1.9.6-beta1/MODUX-Setup-1.9.6.exe .
 - Corrige bloqueio de evento com horário 23:30–00:30: mudança de data não impede edição quando duração está entre 15 min e 24h. UI/API, telefone, reconciliação e confirmação usam guarda comum; término mostra data/hora e dia seguinte. Proteções de dia inteiro multidiário/duração fora do limite e série inteira mantidas. Testes HTTP/ETag/datas/virada de ano, contato/vínculo/rascunho, UI/navegador, diagnóstico e pacote passaram; capturas clara/escura revisadas. Instalação/desinstalação e hashes de contas/perfil fictícios preservados; assets baixados/SHA comparado antes de publicar. Nenhum evento real alterado ou WhatsApp enviado pelas ferramentas. Validação no Windows do usuário pendente.
 
@@ -178,6 +180,8 @@ Requisitos permanentes:
 - Alterações atribuídas ao Manus não estão no repositório conhecido.
 
 ## Pendências priorizadas
+
+- Validar rolagem repetida, cabeçalho fixo e eventos dia inteiro no Windows antes de empacotar a correção visual de 05/11.
 
 - Após entrega 1.9.6: usuário deve atualizar e validar edição do atendimento noturno pelo duplo clique, telefone e confirmação. CI #40560596273, pacote/instalação/preservação e assets/SHA aprovados. 1.9.5 ainda bloqueia esses eventos. Dia inteiro multidiário e duração fora de 15 min–24h permanecem no Google; série inteira não é editada por esta mudança.
 
@@ -361,6 +365,11 @@ Antes de entregar uma versão:
 - Não gerar instaladores até a release consolidada e não autorizar escrita no calendário operacional antes de validar explicitamente.
 
 ## Registro de mudanças
+
+### 2026-11-05 — cabeçalho repetido ao rolar
+
+- Substituído AutoScroll da superfície desenhada por VScrollBar com deslocamento lógico e redesenho completo; mouse, barra e resize compartilham o mesmo deslocamento. Evita mover pixels do cabeçalho junto com o conteúdo.
+- Pendente compilação e smoke Windows; não publicado.
 
 ### 2026-10-27 — entrega da correção noturna 1.9.6 beta
 
